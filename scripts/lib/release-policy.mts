@@ -45,6 +45,12 @@ export const targets = loadMetadata().release.artifacts.map(
   (artifact) => artifact.target,
 );
 
+export function checksMatrix(metadata = loadMetadata()) {
+  const include = [{ os: "windows-2025" }, { os: "xcode-27" }];
+  if (metadata.platforms.linux.check) include.unshift({ os: "ubuntu-24.04" });
+  return { include };
+}
+
 export function artifactName(
   version: string,
   target: Target,

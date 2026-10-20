@@ -2,7 +2,7 @@
 
 ## Current scope
 
-DevDuo is an experimental Avalonia workbench, with a macOS WKWebView baseline and Windows WebView2 implementation whose native input, DPI and rendering acceptance remains pending. Linux runs portable checks and documentation tooling; no Linux desktop package is produced. Build success and signing do not establish native acceptance or rights to redistribute simulator-derived geometry. Preserve the [third-party notices](../../THIRD_PARTY_NOTICES.md).
+DevDuo is an experimental Avalonia workbench, with a macOS WKWebView baseline and Windows WebView2 implementation whose native input, DPI and rendering acceptance remains pending. Linux platform validation and releases are disabled by `[platforms.linux]` (`check = false`, `release = false`). Workflow planning, reports and documentation may still run on Ubuntu. Build success and signing do not establish native acceptance or rights to redistribute simulator-derived geometry. Preserve the [third-party notices](../../THIRD_PARTY_NOTICES.md).
 
 The release workflow builds self-contained .NET 10 packages for **macOS 27 arm64** and **Windows x64**. Windows still requires WebView2 Runtime. macOS uses GitHub's `xcode-27` preview runner, verified against the [runner image inventory](https://github.com/actions/runner-images#available-images); runner availability is an external dependency. Existing `just package-macos` remains an unsigned, framework-dependent development bundle. Release packaging preserves the existing `local.DevDuo.Calibration` bundle identity and uses the native app host directly.
 
@@ -19,7 +19,7 @@ After editing the TOML version directly, run `just sync-version`. `just check-ve
 | Exact `vX.Y.Z[-alpha.N/-beta.N]` tag | Matching package version | Verify and release; stable versions require approval |
 | Other branch or mismatched tag | Any | Reject before accessing signing credentials |
 
-Pushes to `release` and `v*` tags trigger the workflow. Manual dispatch uses the selected ref and its immutable `github.sha`; it cannot nominate an unrelated source SHA. All jobs check out that same triggering commit. Reusable Checks reruns portable tests, localization tests, lint/typecheck, a docs build and native macOS/Windows compilation before signing jobs can start. Release jobs are serialized. Credentials are never passed to PR or reusable verification jobs.
+Pushes to `release` and `v*` tags trigger the workflow. Manual dispatch uses the selected ref and its immutable `github.sha`; it cannot nominate an unrelated source SHA. All jobs check out that same triggering commit. Reusable Checks derives its platform matrix from metadata and reruns portable tests, localization tests, lint/typecheck, a docs build and native macOS/Windows compilation before signing jobs can start. Release jobs are serialized. Credentials are never passed to PR or reusable verification jobs.
 
 Stable versions require the `stable-release` environment approval. Both prerelease and stable macOS packages require Developer ID signing and Apple notarization; unlike the reference project's configurable unsigned prereleases, this workflow has no unsigned release fallback. Signing uses a secure timestamp, hardened runtime and the .NET JIT entitlement. Every bundled Mach-O is signed before the app, then the app is notarized, stapled and checked with Gatekeeper before archiving. See [Microsoft's macOS deployment guidance](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos).
 

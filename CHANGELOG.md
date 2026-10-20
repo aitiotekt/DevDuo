@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Made the Checks platform matrix follow metadata and disabled unverified Linux checks and releases.
 - Added `devduo-metadata.toml` as the release source of truth with synchronized version setting, incrementing and drift checks.
 - Added gated macOS/Windows release packaging, signed and notarized macOS releases, artifact integrity/provenance checks and main-only Pages deployment.
 - Established DevDuo as an Avalonia desktop viewport workbench using WKWebView on macOS and WebView2 on Windows.

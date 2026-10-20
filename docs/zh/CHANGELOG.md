@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 根据元数据生成 Checks 平台矩阵，关闭尚未验证的 Linux 检查和发布。
 - 增加 `devduo-metadata.toml` 作为发布配置来源，支持版本同步设置、递增和一致性检查。
 - 增加带检查门禁的 macOS/Windows 发布打包、macOS 签名公证、产物完整性与来源验证，以及仅 main 的 Pages 部署。
 - 建立 Avalonia 桌面视口工作台，macOS 使用 WKWebView，Windows 使用 WebView2。

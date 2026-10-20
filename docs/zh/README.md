@@ -22,7 +22,7 @@ DevDuo 是面向 Web 开发者的实验性桌面视口调试工具。它使用 A
 
 `mise.toml` 选择兼容的 Python 3.14、Node 26、pnpm 12、.NET 10 系列，uv、just、prek 使用当前版本。`global.json` 定义最低 SDK 及特性带滚动策略。Python 依赖由 `uv.lock` 锁定，安装到项目虚拟环境；uv 不得另行下载解释器。无需系统 Python、全局 pip 包或 Windows Python launcher。
 
-macOS 原生构建需要 Xcode 与 macOS 27 SDK/运行环境；只有采集新 Safari 参考数据才需要 Device Hub 及 iOS runtime。Windows 需要 WebView2 Runtime。Linux 支持可移植工具和文档站，尚无 Linux 原生浏览器宿主。
+macOS 原生构建需要 Xcode 与 macOS 27 SDK/运行环境；只有采集新 Safari 参考数据才需要 Device Hub 及 iOS runtime。Windows 需要 WebView2 Runtime。Linux 应用支持尚未验证，其平台检查和发布在元数据中关闭。
 
 ## 安装和运行
 

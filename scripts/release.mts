@@ -6,6 +6,7 @@ import {
 } from "./lib/release-artifacts.mts";
 import {
   checkReleaseConfiguration,
+  checksMatrix,
   currentVersion,
   releasePlan,
 } from "./lib/release-policy.mts";
@@ -31,7 +32,15 @@ try {
     console.log(
       `Release configuration for ${checkReleaseConfiguration()} is consistent.`,
     );
-  else {
+  else if (command === "checks-matrix") {
+    const matrix = checksMatrix();
+    if (process.env.GITHUB_OUTPUT)
+      appendFileSync(
+        process.env.GITHUB_OUTPUT,
+        `matrix=${JSON.stringify(matrix)}\n`,
+      );
+    console.log(JSON.stringify(matrix, null, 2));
+  } else {
     const plan = releasePlan(
       currentVersion(),
       process.env.GITHUB_REF ?? "",
@@ -67,7 +76,7 @@ try {
       }
     } else
       throw new Error(
-        "Use check, check-version, set-version, bump-version, sync-version, plan, assemble, verify, verify-published or ensure-tag.",
+        "Use check, checks-matrix, check-version, set-version, bump-version, sync-version, plan, assemble, verify, verify-published or ensure-tag.",
       );
   }
 } catch (error) {

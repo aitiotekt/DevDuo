@@ -22,6 +22,7 @@ export type DevDuoMetadata = {
     docsUrl: string;
   };
   macos: { minimumSystemVersion: string };
+  platforms: { linux: { check: boolean; release: false } };
   release: {
     branch: string;
     tagPrefix: string;
@@ -70,6 +71,17 @@ function httpsUrl(value: string): string {
   return value;
 }
 
+function boolean(
+  object: Record<string, unknown>,
+  key: string,
+  location: string,
+): boolean {
+  const value = object[key];
+  if (typeof value !== "boolean")
+    throw new Error(`${location}.${key} must be a boolean in ${metadataFile}.`);
+  return value;
+}
+
 export function parseMetadata(source: string): DevDuoMetadata {
   const raw = parse(source);
   if (raw.schema_version !== 1)
@@ -77,6 +89,14 @@ export function parseMetadata(source: string): DevDuoMetadata {
   const project = table(raw.project, "project"),
     release = table(raw.release, "release"),
     macos = table(raw.macos, "macos");
+  const platforms = table(raw.platforms, "platforms");
+  const linux = table(platforms.linux, "platforms.linux");
+  const linuxCheck = boolean(linux, "check", "platforms.linux");
+  const linuxRelease = boolean(linux, "release", "platforms.linux");
+  if (linuxRelease)
+    throw new Error(
+      "Linux release is not implemented; keep platforms.linux.release = false.",
+    );
   const signing = table(release.signing, "release.signing");
   if (
     signing.macos !== "signed" ||
@@ -139,6 +159,7 @@ export function parseMetadata(source: string): DevDuoMetadata {
       docsUrl: httpsUrl(text(project, "docs_url", "project")),
     },
     macos: { minimumSystemVersion },
+    platforms: { linux: { check: linuxCheck, release: false } },
     release: { branch, tagPrefix, signing: { macos: "signed" }, artifacts },
   };
 }

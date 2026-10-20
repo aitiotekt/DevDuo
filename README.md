@@ -22,7 +22,7 @@ Install Git and [mise](https://mise.jdx.dev/installing-mise.html). **Every contr
 
 `mise.toml` selects compatible Python 3.14, Node 26, pnpm 12 and .NET 10 lines, with current uv, just and prek utilities. `global.json` sets the minimum SDK and allowed feature-band roll-forward. Python dependencies live in a project virtual environment and are locked in `uv.lock`; uv is forbidden to download a second interpreter. No system Python, global pip packages or Python launcher selection is required.
 
-macOS native builds require Xcode and the macOS 27 SDK/runtime. Device Hub and an installed iOS runtime are needed only for new Safari reference captures. Windows needs WebView2 Runtime. Linux supports portable tooling and the documentation site; no Linux browser host is implemented.
+macOS native builds require Xcode and the macOS 27 SDK/runtime. Device Hub and an installed iOS runtime are needed only for new Safari reference captures. Windows needs WebView2 Runtime. Linux application support is unverified; its platform checks and releases are disabled in metadata.
 
 ## Setup and run
 

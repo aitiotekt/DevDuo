@@ -11,6 +11,10 @@ docs_url = "https://dev-duo.aitiotekt.com/"
 [macos]
 minimum_system_version = "27.0"
 
+[platforms.linux]
+check = false
+release = false
+
 [release]
 branch = "release"
 tag_prefix = "v"

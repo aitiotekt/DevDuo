@@ -107,46 +107,59 @@ test("release names, refs and macOS identity come from metadata", () => {
   );
 });
 
-test("set and sync update all version consumers and preserve metadata comments and CRLF", () => {
-  const root = fixture();
-  try {
-    const path = join(root, metadataFile);
-    writeFileSync(
-      path,
-      source
-        .replace(
-          'version = "0.1.0-dev"',
-          "version = '0.1.0-dev' # Keep this comment",
-        )
-        .replaceAll("\n", "\r\n"),
-    );
-    setVersion("1.2.3-beta.4", root);
-    assert.equal(checkVersion(root), "1.2.3-beta.4");
-    assert.match(
-      readFileSync(path, "utf8"),
-      /version = "1.2.3-beta.4" # Keep this comment\r\n/,
-    );
-    writeFileSync(
-      path,
-      readFileSync(path, "utf8").replace('"1.2.3-beta.4"', '"1.2.3-beta.5"'),
-    );
-    assert.throws(() => checkVersion(root), /package.json.*DevDuo.csproj/);
-    assert.equal(syncVersion(root), "1.2.3-beta.5");
-    assert.equal(checkVersion(root), "1.2.3-beta.5");
-    assert.equal(bumpVersion("prerelease", root), "1.2.3-beta.6");
-    assert.equal(checkVersion(root), "1.2.3-beta.6");
-    const before = managedFiles.map((file) =>
-      readFileSync(join(root, file), "utf8"),
-    );
-    syncVersion(root);
-    assert.deepEqual(
-      managedFiles.map((file) => readFileSync(join(root, file), "utf8")),
-      before,
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+for (const [lineEnding, eol] of [
+  ["LF", "\n"],
+  ["CRLF", "\r\n"],
+]) {
+  test(`set and sync update all version consumers and preserve metadata comments and ${lineEnding}`, () => {
+    const root = fixture();
+    try {
+      const path = join(root, metadataFile);
+      writeFileSync(
+        path,
+        source
+          .replaceAll("\r\n", "\n")
+          .replace(
+            /^version\s*=.*$/m,
+            "version = '0.1.0-dev' # Keep this comment",
+          )
+          .replaceAll("\n", eol),
+      );
+      assert.ok(
+        readFileSync(path, "utf8").includes(
+          `version = '0.1.0-dev' # Keep this comment${eol}`,
+        ),
+        "The fixture must contain a comment before testing its preservation.",
+      );
+      setVersion("1.2.3-beta.4", root);
+      assert.equal(checkVersion(root), "1.2.3-beta.4");
+      assert.ok(
+        readFileSync(path, "utf8").includes(
+          `version = "1.2.3-beta.4" # Keep this comment${eol}`,
+        ),
+      );
+      writeFileSync(
+        path,
+        readFileSync(path, "utf8").replace('"1.2.3-beta.4"', '"1.2.3-beta.5"'),
+      );
+      assert.throws(() => checkVersion(root), /package.json.*DevDuo.csproj/);
+      assert.equal(syncVersion(root), "1.2.3-beta.5");
+      assert.equal(checkVersion(root), "1.2.3-beta.5");
+      assert.equal(bumpVersion("prerelease", root), "1.2.3-beta.6");
+      assert.equal(checkVersion(root), "1.2.3-beta.6");
+      const before = managedFiles.map((file) =>
+        readFileSync(join(root, file), "utf8"),
+      );
+      syncVersion(root);
+      assert.deepEqual(
+        managedFiles.map((file) => readFileSync(join(root, file), "utf8")),
+        before,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("malformed consumers and invalid bumps fail before changing any version file", () => {
   const root = fixture();

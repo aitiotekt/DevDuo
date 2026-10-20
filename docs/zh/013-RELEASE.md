@@ -2,7 +2,7 @@
 
 ## 当前范围
 
-DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Windows WebView2 实现，但 Windows 原生输入、DPI 和绘制验收尚未完成。Linux 运行跨平台检查和文档工具，不生成 Linux 桌面包。构建和签名成功不代表原生验收通过，也不代表已取得模拟器衍生几何数据的再分发权。保留[第三方声明](THIRD_PARTY_NOTICES.md)。
+DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Windows WebView2 实现，但 Windows 原生输入、DPI 和绘制验收尚未完成。Linux 平台检查与发布由 `[platforms.linux]` 的 `check = false`、`release = false` 关闭；工作流计划、汇总和文档仍可使用 Ubuntu。构建和签名成功不代表原生验收通过，也不代表已取得模拟器衍生几何数据的再分发权。保留[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 发布流水线生成自带 .NET 10 的 **macOS 27 arm64** 和 **Windows x64** 包。Windows 仍需 WebView2 Runtime。macOS 使用 GitHub 的 `xcode-27` 预览运行器，已对照[运行器清单](https://github.com/actions/runner-images#available-images)核实；运行器可用性是外部依赖。原有 `just package-macos` 仍生成未签名、依赖外部 .NET 的开发包。发布包保留 `local.DevDuo.Calibration` Bundle ID，直接使用原生应用启动器。
 
@@ -19,7 +19,7 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 | 精确的 `vX.Y.Z[-alpha.N/-beta.N]` tag | 与包版本一致 | 检查并发布；正式版需要审批 |
 | 其他分支或不匹配的 tag | 任意 | 在访问签名凭据前拒绝 |
 
-推送到 `release` 或 `v*` tag 触发流水线。手动触发使用所选 ref 及其不可变的 `github.sha`，不能指定无关源码 SHA。所有任务检出同一个触发提交。可复用 Checks 在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
+推送到 `release` 或 `v*` tag 触发流水线。手动触发使用所选 ref 及其不可变的 `github.sha`，不能指定无关源码 SHA。所有任务检出同一个触发提交。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
 
 正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。先签全部内嵌 Mach-O，再签应用，然后公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 
