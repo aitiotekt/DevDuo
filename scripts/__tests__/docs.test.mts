@@ -95,10 +95,10 @@ test("website links resolve canonical sources and retain locale and fragments", 
   );
   assert.equal(
     siteHref(
-      "010-DEVELOPMENT.md",
+      "CONTRIBUTING.md",
       join(repoRoot, "docs/zh/009-WINDOWS-HANDOFF.md"),
     ),
-    "/zh/docs/010-DEVELOPMENT",
+    "/zh/contributing",
   );
   assert.equal(
     siteHref("../../PRIVACY.md", join(repoRoot, "docs/en/001-ARCHITECTURE.md")),

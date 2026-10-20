@@ -8,7 +8,7 @@ parser.add_argument('--output',type=Path,required=True)
 args=parser.parse_args()
 root=args.root.resolve()
 if not (root/'measurements/session-2026-10-21/selected-browser-records.jsonl').is_file():
- parser.error('Private source evidence is unavailable. Use the checked-in config/safari-scenes.json, or provide --root with the original local evidence. See docs/en/007-REFERENCE-DATA.md.')
+ parser.error('Private source evidence is unavailable. Use the checked-in config/safari-scenes.json, or provide --root with the original local evidence. See docs/en/002-MEASUREMENT-CONTRACT.md.')
 records=[json.loads(line) for line in (root/'measurements/session-2026-10-21/selected-browser-records.jsonl').read_text().splitlines()]
 def tab_geometry(native):
  components=native['nativeComponents']

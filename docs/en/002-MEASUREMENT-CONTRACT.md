@@ -1,31 +1,51 @@
-# Measurement contract
+# Measurement contract and reference data
 
-Each browser record is JSON schemaVersion 1. The POST receiver writes an individual UUID.json and appends records.jsonl under the chosen output directory. It adds id and receivedAt in UTC. The browser supplies clientTimestamp and reason; event records are debounced 350 ms. Device, pose, browser and manually chosen state are labels from the URL/UI, not automatic proof. observedState derives from actual scrollY. Capture metadata links the record UUID to a PNG. Keep both files; do not associate captures by nearest timestamp without checking.
+Read this before changing calibrated geometry or collecting references. A public checkout runs from committed configuration without private captures; native builds still require the platform SDK. Simulator measurements do not establish physical hardware specifications.
 
-- screen: browser-reported CSS screen coordinates, orientation and color depth. DPR is a browser ratio, not physical density.
-- viewport: inner/client/outer dimensions, document extent, scrollX/Y, visual viewport bounds/scale. The visual viewport is affected by browser controls, keyboard and zoom.
-- safeAreaCssPx: computed env(safe-area-inset-*) in this page with viewport-fit=cover. A zero value means this browser page reported zero; it does not establish a square hardware edge or absence of system insets.
-- components: getBoundingClientRect values in layout viewport CSS coordinates plus document coordinates. Browser native chrome needs XCUI frames or screenshot measurements recorded separately.
-- environment: user agent, OS platform, URL, media preferences, locale and timezone. Desktop WKWebView records must never be labeled iPhone Safari.
-- unknown: physical dimensions in mm, real hardware corner radius and Liquid Glass implementation parameters remain null unless obtained from a separate authoritative source.
+## Browser and desktop records
 
-The calibration page itself contains no Safari toolbar or material imitation. The desktop host may wrap it in the explicitly labeled Safari approximation container; that host chrome is separate from the page DOM and never counted as real iPhone Safari. Observe actual Safari native controls in initial/scroll-down/scroll-up/keyboard states. Capture repeated frames/video if describing material motion: one screenshot only proves one sampled appearance. A simulator rendering does not establish behavior on a physical device.
+Browser records use `schemaVersion: 1`. The receiver writes individual `UUID.json` files and appends `records.jsonl`, assigning an ID and UTC `receivedAt`; the browser supplies `clientTimestamp` and `reason`, with events debounced 350 ms. Device/pose/browser/manual state are labels, while `observedState` derives from actual scrollY. Keep a capture's explicit record UUID/PNG association; nearest timestamp alone is insufficient.
 
-## Coordinates and curve provenance
+| Field | Meaning |
+| --- | --- |
+| `screen` | Actual browser CSS screen coordinates, orientation and color depth; DPR is not physical density |
+| `viewport` | Inner/client/outer dimensions, document extent, scroll and visual viewport bounds/scale |
+| `safeAreaCssPx` | Computed `env(safe-area-inset-*)` with viewport-fit=cover; zero does not establish hardware corners or absence of system insets |
+| `components` | DOM layout-viewport and document coordinates; native browser chrome requires separate XCUI frames or image measurements |
+| `environment` | Actual UA, platform, URL, preferences, locale and timezone |
+| `unknown` | Hardware millimeters/radii and Liquid Glass parameters stay null without an independent authoritative source |
 
-The local device type capabilities include 1398×2034 and 2007×2853 framebuffers with scale 3. Their primary display association must be checked in Device Hub. The first mask canvas is 466×678. The second is 1252×1780 and is scaled to fit; it is not the screen's CSS coordinate system. Corner metadata 8/59 and 55 has no established unit and does not directly equal the continuous Bezier transition extents. Preserve the raw values. Do not substitute border-radius using those numbers.
+The calibration page draws no Safari chrome. Desktop records retain `macOS-WKWebView` / `Windows-WebView2` and `safari-shell-approx` / `app-webview` labels. Their screen APIs, DPR and safe areas remain native; they must not be labeled actual iPhone Safari. Desktop-only `window.devduoContainerTelemetry` and **Save state** record requested scene, actual viewport/native frame, scroll/chrome state, separate optical/hit bounds, tint source and material parameters. DOM observations and native snapshots are asynchronous, not atomic. Rendering/output behavior is described in [Architecture](001-ARCHITECTURE.md).
 
-The shell uses an independently extracted outer path, not `outerRadius = innerRadius + bezel`. phone15 composite is 514×706 with screen 466×678 offset (25,14), including an asymmetric hinge. phone14 composite is 660×924 with screen 626×890 offset (17,17); its body is the measured source screen curve with a 34-unit outline. The historical `scripts/archive/2026-10-21/extract_geometry.py` can reproduce `config/device-profiles.json` from saved original artwork; see [Reference data](007-REFERENCE-DATA.md). macOS clips the actual WKWebView backing layer with the Bezier mask; Windows clips the native parent region with the same path. Avalonia drawing clip alone cannot reliably clip a hosted native view.
+## Coordinates, curves and unknown physical values
 
-The 460 hdpi/vdpi profile fields are simulator metadata. Do not derive or present millimeter dimensions from screenshot pixels divided by 460. Device Hub artwork and framebuffer sizes do not certify display diagonal, body dimensions, fold angle, glass curvature or real hardware corner radius. Those values remain parameters with an unknown status. Outer shell artwork units are for faithful simulator proportions only.
+Keep body angle, scene angle, CSS pixels, native points, rendered DIP and framebuffer pixels separate. The recorded simulator capabilities include 1398 × 2034 and 2007 × 2853 framebuffers at scale 3; display association must be verified in Device Hub. Screen-mask canvases are 466 × 678 and 1252 × 1780, with the second independently scaled rather than treated as screen CSS coordinates.
 
+Outer artwork is independent of the screen path, not `outerRadius = innerRadius + bezel`:
 
-## Desktop container labels
+| Source artwork | Canvas | Screen and offset in artwork units |
+| --- | --- | --- |
+| phone15 composite | 514 × 706 | 466 × 678 at (25, 14), including the asymmetric hinge |
+| phone14 composite | 660 × 924 | 626 × 890 at (17, 17), with the source curve and 34-unit outline |
 
-Desktop browser records retain `labels.browser=macOS-WKWebView` or `Windows-WebView2`. `labels.displayMode` distinguishes `safari-shell-approx` and `app-webview`; URL notes retain requested screen rotation and 1:1/scaled preview. Source screen fields remain the real desktop screen API. The host never injects iPhone DPR or hardware safe-area claims.
+Corner metadata 8/59 and 55 has no established unit and is not the continuous Bezier transition extent. Preserve it without substituting CSS border-radius. Likewise, the simulator's 460 hdpi/vdpi fields cannot turn screenshot pixels into certified millimeters. Display diagonal, physical body/bezel sizes, fold angle, glass curvature and real hardware radii remain parameterized unknowns.
 
-The injected desktop-only observer exposes `window.devduoContainerTelemetry`; **Save state** writes the same native container state under `captures/desktop-validation/container-modes/`. It records the requested scene, actual page viewport and native view frame, chrome state, page scrollY, optical address surface separately from its hit frame, color source, material backend and tunable parameters. These are desktop reproduction records, independent of canonical Safari telemetry. Meta theme-color takes priority; macOS otherwise samples an actual WKWebView snapshot near the chrome edge, with computed style only as a labeled fallback. DOM observation and snapshot capture are asynchronous.
+AX hit boxes, text boxes and visible glass are distinct. The Open compact address hit frame is 252 × 30.8. In the recorded 2853 × 2007 localhost PNG, estimated optical edges x1323…1531 / y71…133 imply about 69.3 × 20.7 CSS px, with ±2 image pixels of soft-edge ambiguity; hostname length changes width. Closed compact exposes no corresponding AX address field, so its adjustable hit target is not a measured native rectangle. Whole-tab versus title-hit bounds are specified in the [scene matrix](005-SAFARI-SCENES.md).
 
-AX hit boxes, text boxes and visible glass boundaries are different measurements. The open compact address AX frame252×30.8 is not the optical pill. The current localhost canonical PNG yields an estimated69.3×20.7 CSS optical surface with about ±2 image pixels of soft-edge ambiguity; host text changes the width. Configuration keeps that approximation separate. Closed compact has no exposed AX address field in these samples, so its adjustable hit target is not presented as measured.
+## Public configuration and provenance
+
+| File | Responsibility |
+| --- | --- |
+| `config/device-profiles.json` | Independent screen/exterior paths and canvas-to-screen mapping |
+| `config/safari-scenes.json` | Eight body/fold mappings and 24 initial/scrolled Safari states, including Open single/multiple tabs |
+| `config/safari-shell.json` | Editable layout/material defaults, with estimates distinguished from interaction frames |
+| `config/physical-parameters.json` | Explicit null physical dimensions and hardware radii |
+| `config/measurement-matrix.json` | Intended collection plan, not proof of completed coverage |
+
+The scene cohort is an Xcode 27.1 / iOS 27.1 iPhone Duo simulator observation. Runtime, Safari version, tab count and rotation history can change results. Logical portrait screens are Closed 466 × 678 and Open 669 × 951; the [scene matrix](005-SAFARI-SCENES.md) records actual body correspondence.
+
+Public records contain source-relative evidence names and SHA-256 hashes; originals are absent from Git. A hash identifies a file without making it available or certifying hardware. Preserve original bytes, hashes, frozen sources and failed attempts in local evidence. Share only separately reviewed derivatives; keep private paths, simulator identifiers and browsing content out of public files. See [Privacy](../../PRIVACY.md) and [Third-party notices](../../THIRD_PARTY_NOTICES.md).
+
+Historical extraction and full desktop/tab verification require the original local cohort. Their absence is an evidence limitation, not an app dependency failure. The [archive guide](../../scripts/archive/README.md) owns reproduction arguments and each tool's assumptions; generate into `temp/`, inspect against original frames/telemetry, and only then replace accepted configuration. New observations follow [Calibration and validation](003-CALIBRATION-WORKFLOW.md).
 
 [English](002-MEASUREMENT-CONTRACT.md) | [中文](../zh/002-MEASUREMENT-CONTRACT.md)

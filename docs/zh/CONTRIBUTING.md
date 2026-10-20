@@ -1,58 +1,73 @@
-# 贡献指南
+# 开发与贡献指南
 
-## 必需环境
+这是日常开发入口。先按 [README](README.md) 运行应用，再按修改范围查阅专题，无需通读全部技术文档。
 
-通过 mise 管理项目工具，通过已提交的锁文件管理依赖。先安装 Git 和 mise。Xcode 是 macOS 原生开发的额外条件，WebView2 Runtime 是 Windows 原生运行的额外条件。
+## 环境与初始化
 
-**所有平台都必须支持真实的文件和目录符号链接。** 文档源文件由文档工具校验的相对链接共享。Windows 贡献者必须使用支持符号链接的文件系统，并启用开发者模式或具备适当的符号链接创建权限。在克隆之前指定 Git 行为：
+安装 Git 与 mise。macOS 原生编译需要 Xcode 和 macOS 27 SDK/runtime；Windows 需要 WebView2 Runtime。**所有贡献者均须支持真实的相对文件和目录符号链接**，Windows 也一样：使用支持的文件系统，启用开发者模式或等价权限，克隆前设置 `core.symlinks=true`。不支持复制品、junction 或普通文本替代链接。
 
 ```sh
 git -c core.symlinks=true clone git@github.com:aitiotekt/DevDuo.git
 cd DevDuo
-git config core.symlinks true
 mise install
 mise exec -- just setup
-```
-
-参考 [Microsoft 开发设置](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode) 与 [Git core.symlinks](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)。`doctor` 会实际创建文件/目录链接，`docs check` 会检查相对链接的目标。普通文件替代和 junction 回退均不接受。如果链接被检出为文本文件，先保留自己的修改，再建立正确的检出目录；同步工具不会覆盖普通文件。
-
-## 命令与依赖
-
-```sh
 mise exec -- just doctor
-mise exec -- just check
-mise exec -- just verify
-mise exec -- just build-windows
 ```
 
-just 是仓库主命令入口。mise 选择兼容工具系列，pnpm 管理 JS/文档，uv 管理 Python。Python 自定义参数直接传给已安装的包：
+这些命令也适用于 PowerShell。`doctor` 实际测试链接创建，同步操作拒绝覆盖普通文件。若链接被检出成文本，先保留改动，再使用正确的符号链接检出。参见 [Windows 开发者设置](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode)与 [Git core.symlinks](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)。
 
-```sh
-mise exec -- uv run --locked devduo-tools png-compare captures/reference.png captures/candidate.png --output captures/comparison
-```
+| 层 | 职责 |
+| --- | --- |
+| mise | .NET 10、Python 3.14、Node 26、pnpm 12 兼容系列及当前 uv/just/prek，仅选择工具与环境 |
+| just | 仓库工作流、任务组合、原生构建与打包 |
+| pnpm | JavaScript/TypeScript 工具和独立 VitePress 包 |
+| uv | 锁定的 Python 环境与 `devduo-tools` 包 |
 
-不要使用全局 pip、系统 Python、`py -3`、临时 `npx` 下载或另一个 uv 管理的解释器。Python 来自 mise，uv 使用该确切可执行文件及锁定项目环境。依赖升级见[开发工具链](010-DEVELOPMENT.md)。需要 hooks 时显式运行 `mise exec -- prek install`，setup 不会自动修改 Git hooks。
+未激活 mise 时使用 `mise exec -- just <recipe>`。`global.json` 定义 SDK 基线及滚动策略，依赖锁保留精确包版本。Python 来自 mise，禁止 uv 下载解释器，依赖安装在 `.venv`。不使用全局 pip、系统 Python、`py -3` 或临时下载依赖。两个 pnpm 包在依赖缺失/过期时直接失败，不隐式安装。
 
-## 文档规范
+## 日常命令
 
-根目录约定文档为英文源文件；`docs/en` 链接到这些文件，并存放编号技术文档。`docs/zh` 存放文件名匹配的中文版本。行为变更应同步两种语言，并更新文档清单。`docsite` 是独立 VitePress 工作区，页面及目录以相对符号链接指向同一组源文件。
+下表假定已激活 mise。接收器和应用在不同终端运行。
 
-```sh
-mise exec -- just docs-sync
-mise exec -- just docs-check
-mise exec -- just build-docs
-```
+| 命令 | 用途 |
+| --- | --- |
+| `just serve` / `just dev` | loopback 标定接收器 / 原生应用 |
+| `just check` | 文档链接/双语配对、公开文件审查、Ruff 与 JS/Python/本地化测试 |
+| `just verify` | check 加 lint/类型检查、发布一致性、文档构建及当前平台编译 |
+| `just build-windows` | Windows 编译，原生运行验收单独进行 |
+| `just package-macos` | 未签名、依赖运行时的 `temp/DevDuo.app` |
+| `just docs` / `just build-docs` | 文档开发服务 / 严格构建至 `temp/build/docsite/` |
+| `just docs-sync` / `just docs-check` | 同步 / 检查相对源链接与双语覆盖 |
+| `just format` / `just clean` | 格式化维护中的工具 / 清理声明的构建及缓存输出 |
 
-编辑源文件，不复制出单独的网站内容。新增标识符及代码注释使用英文。公开文档不得依赖个人主机名、本地账号、模拟器标识或绝对用户目录。
+自定义参数直接传给对应生态，例如 `mise exec -- uv run --locked devduo-tools --help` 或 `mise exec -- pnpm --dir docsite dev --port 5174 --strictPort`。重新构建后需重启静态 preview。安装可选 hooks 使用 `mise exec -- prek install`。
 
-新增文档补充双向语言页脚。App 新文案同步加入两份资源目录并运行 `just test-localization`，见[本地化](011-LOCALIZATION.md)。新增脚本参照[逐项审查清单](012-SCRIPT-INVENTORY.md)。
+构建和缓存放在 `temp/build/`、`temp/cache/`；.NET 还使用标准且被忽略的 `bin/`、`obj/`。`just clean` 保留应用包、依赖环境和原始证据。一次性验证副本使用系统临时目录，用完清理。原始截图与测量保存在各自的忽略目录。`.gitignore` 不会移除已有暂存项，发布前仍需检查差异。
 
-## 测量与评审边界
+## 依赖与版本
 
-分别记录机身角度、场景角度、CSS 像素、原生点、呈现 DIP 和 framebuffer 像素。保留原始证据字节与哈希。物理未知值保持 null。除非有测量依据，宿主 UI 改动不得改变逻辑视口、预留空间、遮罩及选中标签的完整可见边界。
+日常 setup/check/build 使用冻结的 pnpm、uv 和分目标 NuGet 锁。有意升级时同步修改清单与相关锁：
 
-原生宿主改动应编译两个目标，并进行相关平台交互验收。Windows 交叉编译不代表 Windows 原生运行验证，详见 [Windows 交接](009-WINDOWS-HANDOFF.md)。
+- Python：编辑 `pyproject.toml`，运行 `mise exec -- uv lock` 与 `mise exec -- uv sync --locked --all-groups`。
+- JS/文档：修改对应包后，运行 `mise exec -- pnpm install` 或 `mise exec -- pnpm --dir docsite install`。
+- NuGet：有意识地更新相关目标，共享变更验证两个平台。
 
-原始证据、构建产物、浏览数据、密钥和个人绝对路径不得进入 Git。公开检查覆盖已知模式及批准的相对链接，仍需评审 diff。PR 应说明实际行为、完成的验证及未测试的平台。未经用户要求不要 commit 或 push。
+`devduo-metadata.toml` 统一管理版本、标识、URL 和发布策略。使用 `just set-version VERSION` 或 `just bump-version LEVEL`；直接修改元数据版本后运行 `just sync-version`，并通过 `just release-check`。签名、平台/runtime 锁、部署和仓库管理见[发布指南](013-RELEASE.md)。
+
+## 编辑与评审
+
+同步维护英中源文件、语言内链接和双向页脚。根目录英文规范文件是主源，`docs/en` 用相对符号链接引用，`docs/zh` 保存翻译；`docsite` 链接同一批源文件。增删技术页时同步 `scripts/docs-manifest.json`，不维护网站内容副本。
+
+标识符与代码注释使用英语。评审说明改后行为、相关检查与未验证平台。原生变更需平台构建及真实 UI 验收；Windows 交叉编译不能替代运行。区分模拟器坐标和硬件尺寸，保留证据哈希；修改标定数据前阅读[测量约定](002-MEASUREMENT-CONTRACT.md)。未经请求不 commit 或推送。
+
+| 修改范围 | 按需阅读 |
+| --- | --- |
+| 原生浏览器组合、宿主布局 | [架构与容器](001-ARCHITECTURE.md) |
+| 参考数据、采集和比较 | [测量约定](002-MEASUREMENT-CONTRACT.md)、[标定与验证](003-CALIBRATION-WORKFLOW.md)、[场景矩阵](005-SAFARI-SCENES.md) |
+| Windows 行为或应用文案 | [Windows 交接](009-WINDOWS-HANDOFF.md)、[本地化](011-LOCALIZATION.md) |
+| 测量工具 | [Python 指南](../../scripts/python/README.md)、[Swift 指南](../../scripts/swift/README.md) |
+| 历史复现 | [归档指南与审查索引](../../scripts/archive/README.md) |
+
+公开文件不得含个人路径、机器标识、原始浏览记录、秘密或未审查证据。公开边界见[隐私](PRIVACY.md)、[安全](SECURITY.md)及[第三方说明](THIRD_PARTY_NOTICES.md)。
 
 [English](../../CONTRIBUTING.md) | [中文](CONTRIBUTING.md)

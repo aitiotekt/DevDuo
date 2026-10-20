@@ -2,29 +2,13 @@
 
 Pesudo iPhone Duo Viewport Simulator for Web Developers
 
-DevDuo is an experimental desktop workbench for testing web layouts against measured iPhone Duo simulator viewports. Avalonia hosts system WKWebView on macOS and Microsoft Edge WebView2 on Windows. Choose a Safari shell with floating, page-colored controls or an immersive App WebView container.
+DevDuo is an experimental desktop workbench for testing web layouts against measured iPhone Duo simulator viewports. Avalonia hosts system WKWebView on macOS and Microsoft Edge WebView2 on Windows. Choose page-colored, floating Safari shell controls or an immersive App WebView.
 
 The engine remains the actual desktop engine. Safari optics are approximate; physical millimeters, real hardware radii and the iOS Liquid Glass kernel remain unknown. DevDuo is independent of Apple.
 
-## Status
+## Quick start
 
-| Area | State |
-| --- | --- |
-| macOS | Native build and interactive WKWebView baseline on macOS 27 |
-| Windows | Cross compiled; native Runtime, input, DPI and appearance acceptance pending |
-| Scenes | Closed/Open × four body rotations × initial/scrolled; Open adds single/multiple-tab variants |
-| Geometry | Independent screen mask and outer artwork; simulator coordinates, no inferred hardware millimeters |
-| Host UI | Functional calibration controls; address-bar/navigation and visual refinements are planned |
-
-## Requirements
-
-Install Git and [mise](https://mise.jdx.dev/installing-mise.html). **Every contributor must support real file and directory symbolic links**, including on Windows. Enable the appropriate Windows developer privileges and clone with `core.symlinks=true`; see [Contributing](CONTRIBUTING.md). Copies, junctions and text files standing in for symlinks are unsupported.
-
-`mise.toml` selects compatible Python 3.14, Node 26, pnpm 12 and .NET 10 lines, with current uv, just and prek utilities. `global.json` sets the minimum SDK and allowed feature-band roll-forward. Python dependencies live in a project virtual environment and are locked in `uv.lock`; uv is forbidden to download a second interpreter. No system Python, global pip packages or Python launcher selection is required.
-
-macOS native builds require Xcode and the macOS 27 SDK/runtime. Device Hub and an installed iOS runtime are needed only for new Safari reference captures. Windows needs WebView2 Runtime. Linux application support is unverified; its platform checks and releases are disabled in metadata.
-
-## Setup and run
+Install Git and [mise](https://mise.jdx.dev/installing-mise.html). Native macOS builds need Xcode and the macOS 27 SDK/runtime; Windows needs WebView2 Runtime. **Real file and directory symlinks are required on every contributor platform**, including Windows. Setup details and privileges are in [Development and contributing](CONTRIBUTING.md).
 
 ```sh
 git -c core.symlinks=true clone git@github.com:aitiotekt/DevDuo.git
@@ -33,71 +17,41 @@ mise install
 mise exec -- just setup
 ```
 
-In separate terminals:
+Run in separate terminals; the same commands work in PowerShell:
 
 ```sh
 mise exec -- just serve
 mise exec -- just dev
 ```
 
-The same commands work in PowerShell. just owns repository workflows; mise selects tools, pnpm owns JavaScript/documentation commands, and uv owns the maintained Python package. For tool-specific arguments, use its ecosystem entry:
+Select Safari/immersive, Closed/Open and **Body +90°**. **Multiple tabs** selects the Open shell variant, not real browser tabs. macOS Fit preserves CSS dimensions while scaling presentation. The app supports persisted English, 简体中文 and system-default language choices.
 
-```sh
-mise exec -- uv run --locked devduo-tools png-compare captures/reference.png captures/candidate.png --output captures/comparison
-```
+**Save state** writes checkout diagnostics to ignored `captures/desktop-validation/container-modes/`; installed apps use local application data under `DevDuo/captures`. `DEVDUO_OUTPUT_DIR` changes that location and `DEVDUO_URL` changes the initial URL. Original receiver measurements and desktop reproduction records remain separate.
 
-The app supports **English**, **简体中文** and the system default, with a persisted language selector. Switching language keeps the current page and measured viewport. See [Localization](docs/en/011-LOCALIZATION.md).
+## Status
 
-Choose Safari/immersive, Closed/Open and **Body +90°**. The **Multiple tabs** switch selects Open Safari shell variants; it does not manage real tabs. macOS Fit preview scales presentation while preserving CSS dimensions; Windows Fit still needs runtime verification.
+- macOS has a native macOS 27 WKWebView interactive baseline. Windows cross compilation passes; native input, DPI, zoom Fit and appearance acceptance remain pending. Linux application checks/releases are disabled in metadata.
+- References cover Closed/Open × four body angles × initial/scrolled, plus Open single/multiple tabs. Screen masks and exterior paths are independent. Partial-fold geometry is unavailable.
+- Checked-in config runs without private Safari captures or Apple PDFs. New Device Hub collection requires an installed simulator runtime; reference regeneration requires the original evidence.
+- Host controls are functional; a genuine address bar, navigation bindings and visual refinements remain on the [roadmap](docs/en/100-ROADMAP.md).
 
-**Save state** writes checkout diagnostics under ignored `captures/desktop-validation/container-modes/`. Installed apps use the current user's local application data under `DevDuo/captures`. `DEVDUO_OUTPUT_DIR` overrides the output location; `DEVDUO_URL` overrides the initial URL. Receiver measurements and desktop reproduction records remain separate.
+## Development and reading guide
 
-## Development commands
+**For everyday development, read this README and [Contributing](CONTRIBUTING.md).** It owns setup, commands, locks, cleanup and documentation conventions. Other pages are task references:
 
-| Command | Purpose |
+| Task | Read when needed |
 | --- | --- |
-| `mise exec -- just doctor` | Check managed tool executables and required symlink privileges |
-| `mise exec -- just check` | Check documentation links/parity, publication candidates, Python tooling and CLI regressions |
-| `mise exec -- just verify` | Also lint/typecheck tooling, build the docs site and compile the current platform |
-| `mise exec -- just build-windows` | Cross compile Windows; does not establish runtime correctness |
-| `mise exec -- just package-macos` | Create unsigned, framework-dependent `temp/DevDuo.app` |
-| `mise exec -- just docs` | Start bilingual documentation locally |
-| `mise exec -- just build-docs` | Build the VitePress site with strict internal-link checking |
-| `mise exec -- just docs-sync` | Synchronize the managed relative documentation symlinks |
+| Change browser composition/layout | [Architecture and containers](docs/en/001-ARCHITECTURE.md) |
+| Change measured data or collect observations | [Measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md), [Calibration and validation](docs/en/003-CALIBRATION-WORKFLOW.md), [Scene matrix](docs/en/005-SAFARI-SCENES.md) |
+| Work on a platform or language | [Windows handoff](docs/en/009-WINDOWS-HANDOFF.md), [Localization](docs/en/011-LOCALIZATION.md) |
+| Maintain distribution and infrastructure | [Releases and administration](docs/en/013-RELEASE.md) |
 
-`pnpm-lock.yaml`, `docsite/pnpm-lock.yaml`, `uv.lock` and per-target NuGet lock files are committed dependency contracts. Setup and normal checks use frozen/locked operations. See [Development toolchain](docs/en/010-DEVELOPMENT.md) for upgrades, optional tools and script arguments.
-
-## Documentation
-
-English convention documents live at the root and are linked into `docs/en`. Chinese convention documents and translated technical pages live in `docs/zh`. Numbered English technical pages live in `docs/en`. The independent VitePress workspace in `docsite/` links to those same sources, provides English/中文 navigation and local search, and builds for the root of `https://dev-duo.aitiotekt.com/`. The Documentation workflow deploys only `main` through GitHub Pages after infrastructure configuration is applied. There is no separate manually edited website copy.
-
-- [Overview](docs/en/000-OVERVIEW.md) · [Architecture](docs/en/001-ARCHITECTURE.md)
-- [Measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) · [Calibration workflow](docs/en/003-CALIBRATION-WORKFLOW.md)
-- [Safari scenes](docs/en/005-SAFARI-SCENES.md) · [Validation](docs/en/008-VALIDATION.md)
-- [Development toolchain](docs/en/010-DEVELOPMENT.md) · [Localization](docs/en/011-LOCALIZATION.md) · [Script inventory](docs/en/012-SCRIPT-INVENTORY.md)
-- [Releases and repository administration](docs/en/013-RELEASE.md)
-- [Windows handoff](docs/en/009-WINDOWS-HANDOFF.md) · [Host UI roadmap](docs/en/100-ROADMAP.md)
-- [Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
-
-## Repository layout
-
-| Path | Responsibility |
-| --- | --- |
-| `src/DevDuo/` | Avalonia host, shared scenes, macOS WKWebView bridge, Windows WebView2 and fixtures |
-| `config/` | Portable simulator geometry, Safari scenes and explicit unknowns |
-| `web/` | Calibration page |
-| `scripts/python/`, `scripts/swift/` | Maintained measurement package and macOS video diagnostics |
-| `scripts/DeviceHubUITests/` | Device Hub XCUITest probe for real Safari frames |
-| `scripts/archive/` | Reviewed historical cohort tools and experiments |
-| `scripts/`, `justfiles/` | JS/docs helpers and repository task recipes |
-| `docs/en/`, `docs/zh/`, `docsite/` | Canonical bilingual documentation and linked VitePress workspace |
-| `captures/`, `measurements/`, `.local/` | Ignored original evidence and private notes |
-| `temp/`, `.venv/`, `node_modules/` | Ignored generated outputs, caches and installed dependencies |
+English conventions live at the root, paired Chinese sources in `docs/zh`, and numbered technical sources in `docs/en` / `docs/zh`. The VitePress workspace links them through relative symlinks. Its configured site is [dev-duo.aitiotekt.com](https://dev-duo.aitiotekt.com/); only `main` deploys after infrastructure setup. There is no manually maintained website copy.
 
 ## Evidence and distribution
 
-Checked-in configuration is sufficient to run the app. Original Safari captures, raw browsing records and Apple PDFs are private local evidence and are excluded from Git. Regeneration tools require explicitly supplied local inputs; missing evidence must never become an invented passing result. Poppler remains an optional external prerequisite for PDF-mask checks; the locked Pillow runtime dependency supports image inspection and contact sheets.
+Raw captures, browsing records and private notes stay local. Keep original bytes/hashes and review sanitized derivatives separately. First-party code uses [MIT](LICENSE); simulator-artwork redistribution remains unconfirmed in [Third-party notices](THIRD_PARTY_NOTICES.md). Development bundles are unsigned; release signing and platform policy belong to `devduo-metadata.toml` and the release guide. WebView2 Runtime is not bundled.
 
-First-party code uses the [MIT License](LICENSE). Simulator-derived path data has a separate, unconfirmed redistribution status documented in [Third-party notices](THIRD_PARTY_NOTICES.md). There are no signed releases or bundled WebView2 Runtime.
+[Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md)
 
 [English](README.md) | [中文](docs/zh/README.md)

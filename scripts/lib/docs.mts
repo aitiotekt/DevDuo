@@ -16,7 +16,12 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { repoRoot } from "./paths.mts";
 
 export type LinkEntry = { link: string; target: string; type: "file" | "dir" };
-export type DocumentEntry = { name: string; en: string; zh: string };
+export type DocumentEntry = {
+  name: string;
+  en: string;
+  zh: string;
+  section: "development" | "calibration" | "topics";
+};
 type Manifest = {
   conventions: string[];
   documents: DocumentEntry[];
@@ -99,6 +104,10 @@ export function checkLinks(entries: LinkEntry[], root = repoRoot): void {
 }
 
 export function checkParity(root = repoRoot): void {
+  for (const doc of manifest.documents) {
+    if (!["development", "calibration", "topics"].includes(doc.section))
+      throw new Error(`Missing documentation reading group: ${doc.name}`);
+  }
   const names = (language: string) =>
     readdirSync(join(root, "docs", language))
       .filter((name) => name.endsWith(".md"))

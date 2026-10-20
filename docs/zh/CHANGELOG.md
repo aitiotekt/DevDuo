@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 将 15 篇技术指南合并为 8 篇，以一份日常开发指南和按任务分组的中英文导航减少重复阅读。
 - 根据元数据生成 Checks 平台矩阵，关闭尚未验证的 Linux 检查和发布。
 - 增加 `devduo-metadata.toml` 作为发布配置来源，支持版本同步设置、递增和一致性检查。
 - 增加带检查门禁的 macOS/Windows 发布打包、macOS 签名公证、产物完整性与来源验证，以及仅 main 的 Pages 部署。
@@ -15,6 +16,6 @@
 - 按编号整理中英文文档及 VitePress 文档站，强制相对符号链接及语言源文件配对检查。
 - 将 macOS WKWebView 桥接移入 `src/DevDuo/macos`，将 Device Hub XCUITest 探针移入 `scripts/DeviceHubUITests`。
 
-Windows 原生运行验收和宿主 UI 改进仍待完成。本节记录开发工作，不表示已经发布发行版，详见[验证记录](008-VALIDATION.md)和[路线图](100-ROADMAP.md)。
+Windows 原生运行验收和宿主 UI 改进仍待完成。本节记录开发工作，不表示已经发布发行版，详见[验证记录](003-CALIBRATION-WORKFLOW.md)和[路线图](100-ROADMAP.md)。
 
 [English](../../CHANGELOG.md) | [中文](CHANGELOG.md)

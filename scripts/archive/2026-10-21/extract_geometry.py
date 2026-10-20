@@ -29,6 +29,6 @@ def generate(source):
     {**common,'id':'open','label':'Open · secondary screen 3','screenWidthCssPx':669,'screenHeightCssPx':951,'maskCanvasWidth':1252,'maskCanvasHeight':1780,'screenMaskPath':opened,'shellCanvasWidth':660,'shellCanvasHeight':924,'screenX':17,'screenY':17,'screenCanvasWidth':626,'screenCanvasHeight':890,'shellPath':transform(opened,lambda x,y:(x/2+17,y/2+17)),'shellStrokeWidth':34,'hingePath':None}]
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--source',type=pathlib.Path,default=ROOT/'measurements/devicehub-source');p.add_argument('--output',type=pathlib.Path,required=True);a=p.parse_args();
-    if not (a.source/'mask-paths.json').is_file():p.error('Local Device Hub artwork extraction is unavailable. Use checked-in config/device-profiles.json, or provide --source. See docs/en/007-REFERENCE-DATA.md.')
+    if not (a.source/'mask-paths.json').is_file():p.error('Local Device Hub artwork extraction is unavailable. Use checked-in config/device-profiles.json, or provide --source. See docs/en/002-MEASUREMENT-CONTRACT.md.')
     a.output.write_text(json.dumps(generate(a.source),indent=2)+'\n');print(a.output)
 if __name__=='__main__':main()

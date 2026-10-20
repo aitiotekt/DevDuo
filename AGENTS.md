@@ -1,6 +1,6 @@
 # DevDuo contributor and agent guidance
 
-This file is the repository source of truth for coding-agent behavior. Read `README.md`, `docs/en/002-MEASUREMENT-CONTRACT.md` and the relevant technical or platform handoff before editing. Follow explicit user instructions when they override repository conventions.
+This file is the repository source of truth for coding-agent behavior. Read `README.md` and `CONTRIBUTING.md` for the normal workflow. Read `docs/en/002-MEASUREMENT-CONTRACT.md` before changing measured data, and the relevant platform/topic guide only when needed. Follow explicit user instructions when they override repository conventions.
 
 ## Collaboration and scope
 

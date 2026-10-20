@@ -8,6 +8,6 @@ Raw records belong in ignored `captures/`, `measurements/` or `.local/`. Generat
 
 Public configuration retains selected simulator measurements, source-relative file references and evidence hashes. It omits the original raw sessions. Before sharing a report, review both metadata and images, and publish a sanitized derivative without changing original evidence bytes. Never publish secrets, personal host names, simulator identifiers, private page contents or user-directory paths.
 
-See [Reference data](docs/en/007-REFERENCE-DATA.md) and [Security](SECURITY.md).
+See [Reference data](docs/en/002-MEASUREMENT-CONTRACT.md) and [Security](SECURITY.md).
 
 [English](PRIVACY.md) | [中文](docs/zh/PRIVACY.md)

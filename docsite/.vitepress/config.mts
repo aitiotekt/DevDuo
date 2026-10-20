@@ -7,15 +7,30 @@ import { repoRoot } from "../../scripts/lib/paths.mts";
 const metadata = loadMetadata();
 
 function sidebar(prefix: string, language: "en" | "zh") {
-  return [
-    {
-      text: language === "en" ? "Project documentation" : "项目文档",
-      items: manifest.documents.map((doc) => ({
-        text: doc[language],
-        link: `${prefix}/${doc.name.replace(/\.md$/, "")}`,
-      })),
-    },
+  const sections = [
+    { id: "development", en: "Development", zh: "开发入口" },
+    { id: "calibration", en: "Calibration reference", zh: "标定参考" },
+    { id: "topics", en: "Read as needed", zh: "按需专题" },
   ];
+  return sections.map((section) => ({
+    text: section[language],
+    items: [
+      ...(section.id === "development"
+        ? [
+            {
+              text: language === "en" ? "Development guide" : "开发与贡献指南",
+              link: language === "en" ? "/contributing" : "/zh/contributing",
+            },
+          ]
+        : []),
+      ...manifest.documents
+        .filter((doc) => doc.section === section.id)
+        .map((doc) => ({
+          text: doc[language],
+          link: `${prefix}/${doc.name.replace(/\.md$/, "")}`,
+        })),
+    ],
+  }));
 }
 
 export default defineConfig({
@@ -73,13 +88,16 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "Home", link: "/" },
-          { text: "Docs", link: "/docs/000-OVERVIEW" },
+          { text: "Docs", link: "/docs/001-ARCHITECTURE" },
           { text: "Security", link: "/security" },
           { text: "Privacy", link: "/privacy" },
           { text: "Contributing", link: "/contributing" },
           { text: "Changelog", link: "/changelog" },
         ],
-        sidebar: { "/docs/": sidebar("/docs", "en") },
+        sidebar: {
+          "/docs/": sidebar("/docs", "en"),
+          "/contributing": sidebar("/docs", "en"),
+        },
       },
     },
     zh: {
@@ -89,13 +107,16 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "首页", link: "/zh/" },
-          { text: "文档", link: "/zh/docs/000-OVERVIEW" },
+          { text: "文档", link: "/zh/docs/001-ARCHITECTURE" },
           { text: "安全", link: "/zh/security" },
           { text: "隐私", link: "/zh/privacy" },
           { text: "贡献", link: "/zh/contributing" },
           { text: "变更日志", link: "/zh/changelog" },
         ],
-        sidebar: { "/zh/docs/": sidebar("/zh/docs", "zh") },
+        sidebar: {
+          "/zh/docs/": sidebar("/zh/docs", "zh"),
+          "/zh/contributing": sidebar("/zh/docs", "zh"),
+        },
       },
     },
   },

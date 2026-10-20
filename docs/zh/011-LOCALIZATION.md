@@ -48,6 +48,6 @@ mise exec -- dotnet run --project tests/DevDuo.Localization.Tests -p:RestoreLock
 
 检查程序直接链接实际的本地化、配置、场景和容器选项源码，验证资源键与占位符一致性、非空文本、格式化、回退、显式／系统语言解析、偏好重启／损坏／写入失败行为、演示页键覆盖、全部八个映射和 24 个状态，以及不同语言载荷下实测选项值不变。它使用仓库管理的 .NET SDK，无需额外测试运行器。
 
-编译和可移植测试不能证明原生运行时正确性。macOS 需要另行验证页面已加载及滚动后的语言切换、原生辅助功能标签、模式／设备选择保留、颜色实验室、保存／错误消息和重启后的偏好恢复。比较切换前后的视口和原生框遥测。Windows 也需要相同的运行时检查，另需覆盖 WebView2 错误路径、输入和 DPI 行为。仅通过 Windows 交叉编译不能证明这些运行结果。参见 [Windows 交接](009-WINDOWS-HANDOFF.md)及[验证](008-VALIDATION.md)。
+编译和可移植测试不能证明原生运行时正确性。macOS 需要另行验证页面已加载及滚动后的语言切换、原生辅助功能标签、模式／设备选择保留、颜色实验室、保存／错误消息和重启后的偏好恢复。比较切换前后的视口和原生框遥测。Windows 也需要相同的运行时检查，另需覆盖 WebView2 错误路径、输入和 DPI 行为。仅通过 Windows 交叉编译不能证明这些运行结果。参见 [Windows 交接](009-WINDOWS-HANDOFF.md)及[验证](003-CALIBRATION-WORKFLOW.md)。
 
 [English](../en/011-LOCALIZATION.md) | [中文](011-LOCALIZATION.md)

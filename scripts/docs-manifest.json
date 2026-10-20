@@ -9,79 +9,52 @@
   ],
   "documents": [
     {
-      "name": "000-OVERVIEW.md",
-      "en": "Overview",
-      "zh": "项目概览"
-    },
-    {
       "name": "001-ARCHITECTURE.md",
-      "en": "Architecture",
-      "zh": "架构"
+      "en": "Architecture and containers",
+      "zh": "架构与容器",
+      "section": "development"
     },
     {
       "name": "002-MEASUREMENT-CONTRACT.md",
-      "en": "Measurement contract",
-      "zh": "测量约定"
+      "en": "Measurement and reference data",
+      "zh": "测量与参考数据",
+      "section": "calibration"
     },
     {
       "name": "003-CALIBRATION-WORKFLOW.md",
-      "en": "Calibration workflow",
-      "zh": "标定流程"
-    },
-    {
-      "name": "004-CONTAINER-MODES.md",
-      "en": "Container modes",
-      "zh": "容器模式"
+      "en": "Calibration and validation",
+      "zh": "标定与验证",
+      "section": "calibration"
     },
     {
       "name": "005-SAFARI-SCENES.md",
-      "en": "Safari scenes",
-      "zh": "Safari 场景"
-    },
-    {
-      "name": "006-UNDER-CHROME-RENDERING.md",
-      "en": "Under-chrome rendering",
-      "zh": "浮动组件下的绘制"
-    },
-    {
-      "name": "007-REFERENCE-DATA.md",
-      "en": "Reference data",
-      "zh": "参考数据"
-    },
-    {
-      "name": "008-VALIDATION.md",
-      "en": "Validation",
-      "zh": "验证记录"
+      "en": "Scene matrix",
+      "zh": "场景矩阵",
+      "section": "calibration"
     },
     {
       "name": "009-WINDOWS-HANDOFF.md",
       "en": "Windows handoff",
-      "zh": "Windows 交接"
-    },
-    {
-      "name": "010-DEVELOPMENT.md",
-      "en": "Development toolchain",
-      "zh": "开发工具链"
+      "zh": "Windows 交接",
+      "section": "topics"
     },
     {
       "name": "011-LOCALIZATION.md",
       "en": "Application localization",
-      "zh": "应用本地化"
-    },
-    {
-      "name": "012-SCRIPT-INVENTORY.md",
-      "en": "Script review inventory",
-      "zh": "脚本审查清单"
+      "zh": "应用本地化",
+      "section": "topics"
     },
     {
       "name": "013-RELEASE.md",
       "en": "Releases and administration",
-      "zh": "发布与仓库管理"
+      "zh": "发布与仓库管理",
+      "section": "topics"
     },
     {
       "name": "100-ROADMAP.md",
       "en": "Host UI roadmap",
-      "zh": "宿主 UI 路线图"
+      "zh": "宿主 UI 路线图",
+      "section": "topics"
     }
   ],
   "links": [
