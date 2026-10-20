@@ -38,4 +38,51 @@ Closed 180° 是顺时针采集序列的实际结果，不证明倒置纵向支�
 
 新采集/验收步骤见[标定与验证](003-CALIBRATION-WORKFLOW.md)。[架构](001-ARCHITECTURE.md)解释折叠真实组件下方绘制与展开/Windows 预留框近似，[测量约定](002-MEASUREMENT-CONTRACT.md)定义单位和硬件未知值。
 
+## 已入库的 Device Hub 参考图
+
+2026-10-23 参考集包含 **48 张实际画布裁剪图、四张矩阵总览及一张颜色触发对照**，以 WebP 保存在 `docs/shared/safari-reference/`。[索引](../shared/safari-reference/manifest.json) 为每个组合记录图像、真实 DOM viewport/scrollY、原生 WebView 与组件框、源图哈希、裁剪框及衍生图哈希。裁剪图保留机身相对画布的实际方向，没有旋转或重绘设备。总览图会缩放；有损图及窗口截图像素均不能证明物理几何或玻璃光学一致。原始窗口 PNG 与失败尝试仍保留在本地。
+
+| 形态 | 已采组合 | 内容布局归并 |
+| --- | --- | --- |
+| 折叠 | 两种 shell 配色 × 四个机身方向 × 展开/收窄 = 16 | 竖向右侧组件、横向右侧组件、横向左侧组件 |
+| 展开 | 两种 shell 配色 × 四个机身方向 × 单/双标签 × 展开/收窄 = 32 | 横向与竖向；初始单/多标签不同，收窄态共用布局 |
+
+五类内容布局按颜色、导航和标签形态可归并为 24 类语义组合，完整 48 项索引仍保留每个机身方向和实际数值差异。本次 Closed 180° 不仅保留前一横向场景，**内容在画布中还顺时针转了 90°**，因此须分别处理原生场景到画布的变换与外壳/机身方向。展开态在四个机身姿态下有两类内容布局。“布局类别”不等于旋转角度，也不表示两张原图逐像素相同。
+
+主矩阵覆盖**模拟器 Appearance Light/Dark** 及匹配的自动页面颜色（部分 Light 样本显式选择相同浅色配色），没有 `theme-color`。额外对照分别改变页面背景、系统外观和相反的 meta 提示。系统 Light 下的深色页面改变了底色，但**不能代替系统 Dark 的玻璃和图标文字效果**；系统 Dark 下强制浅色页面仍保留浅色 canvas，而材质/图标处理不同。本次 iOS 27.1 对照中，相反的 `theme-color` 没有盖过页面派生外观，不能据此推定其他 Safari 版本或任意背景的通用优先级。桌面着色观测器仍优先采用 meta 提示，这是已记录的近似差距。夹具没有绘制 Safari 组件，也不含私人浏览内容。
+
+| 条件 | 已观察行为 |
+| --- | --- |
+| 原生向下滚动 | 地址/导航区域收窄，展开态额外标签栏消失 |
+| 反向原生向上滚动 | scrollY 仍可大于零时导航已经展开：折叠 Y=545、展开双标签 Y=509、单标签 Y=562；文档位置不能直接代表 chrome 状态 |
+| 程序 `scrollTo` | 移动了夹具，但没有令本次展开态 Safari shell 收窄，属于不同输入路径 |
+| 标签数量 | 单标签无额外栏，双标签和三标签在展开形态、导航展开时显示；折叠双标签及导航收窄态不显示。“无标签栏”仍有一个真实页面标签 |
+| 折叠/旋转切换 | 可能残留偏移组件或旧视口预留；另一批跨折叠尝试还在折叠外壳中保留展开态顶部组件。此类尝试应拒收，重新建立场景并同时核对外观和真实视口 |
+
+手势方向、观测到的 chrome 和 DOM 整数滚动事件分别记录。目标行为不能实现为固定 `scrollY` 阈值。部分新初始态 `innerHeight` 比此前表格小 1 CSS px，索引保留真实值和原生浮点框，没有静默修正。默认 XCTest 应用框可能指向另一个显示屏，应分别使用当前 WebView/组件框和可见 Device Hub 画布。本次补充视觉参考，不改写应用的标定配置。
+
+### 折叠配色
+
+各行依次为机身 0°、90°、180°、270°；两列为地址栏展开、收窄。
+
+![折叠浅色 shell 参考](../shared/safari-reference/overview-closed-light.webp)
+
+![折叠系统 Dark shell 参考](../shared/safari-reference/overview-closed-dark.webp)
+
+### 展开配色
+
+各行仍为四个机身方向。各列依次为双标签导航展开/收窄、单标签导航展开/收窄。
+
+![展开浅色 shell 参考](../shared/safari-reference/overview-open-light.webp)
+
+![展开系统 Dark shell 参考](../shared/safari-reference/overview-open-dark.webp)
+
+### 颜色触发对照
+
+从左到右依次为：系统 Light/浅色页面/深色 meta，系统 Light/深色页面/浅色 meta，系统 Dark/浅色页面/无 meta，系统 Dark/自动深色页面/无 meta。前两组分离 meta 提示，后两组说明系统主题与页面派生底色必须作为不同输入。
+
+![系统外观、页面背景与 meta 提示对照](../shared/safari-reference/overview-color-triggers.webp)
+
+采集和验收见[标定与验证](003-CALIBRATION-WORKFLOW.md)，原生滑动及可复现导出命令见 [Python 指南](../../scripts/python/README.md)。衍生图保留 Apple UI/外观来源，不因入库而获得 MIT 再分发许可，见[第三方说明](THIRD_PARTY_NOTICES.md)。
+
 [English](../en/005-SAFARI-SCENES.md) | [中文](005-SAFARI-SCENES.md)

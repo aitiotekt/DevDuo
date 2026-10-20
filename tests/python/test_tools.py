@@ -401,6 +401,9 @@ class ReceiverTest(unittest.TestCase):
         with urllib.request.urlopen(self.url + "/document-end.html?fixed=narrow") as response:
             self.assertEqual(response.headers["Cache-Control"], "no-store")
             self.assertEqual(response.read(), (ROOT / "web/document-end.html").read_bytes())
+        with urllib.request.urlopen(self.url + "/safari-reference.html?tab=A") as response:
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(response.read(), (ROOT / "web/safari-reference.html").read_bytes())
 
         def post(index):
             body = json.dumps(

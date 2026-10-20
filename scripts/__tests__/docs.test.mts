@@ -104,6 +104,15 @@ test("website links resolve canonical sources and retain locale and fragments", 
     siteHref("../../PRIVACY.md", join(repoRoot, "docs/en/001-ARCHITECTURE.md")),
     "/privacy",
   );
+  for (const folder of ["python", "archive"]) {
+    assert.equal(
+      siteHref(
+        `../../scripts/${folder}/README.md`,
+        join(repoRoot, "docs/en/005-SAFARI-SCENES.md"),
+      ),
+      `https://github.com/aitiotekt/DevDuo/blob/main/scripts/${folder}/README.md`,
+    );
+  }
   assert.equal(
     siteHref("https://example.com/path", join(repoRoot, "README.md")),
     "https://example.com/path",

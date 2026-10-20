@@ -4,7 +4,7 @@
 
 ## 浏览器与桌面记录
 
-浏览器记录采用 `schemaVersion: 1`。接收器写入独立 `UUID.json` 并追加 `records.jsonl`，分配 ID 和 UTC `receivedAt`；浏览器提供 `clientTimestamp`、`reason`，事件防抖 350 ms。设备/姿态/浏览器/手动状态属于标签，`observedState` 才来自实际 scrollY。必须保留截图明确关联的记录 UUID/PNG，不能只按最近时间配对。
+浏览器记录采用 `schemaVersion: 1`。接收器写入独立 `UUID.json` 并追加 `records.jsonl`，分配 ID 和 UTC `receivedAt`；浏览器提供 `clientTimestamp`、`reason`，事件防抖 350 ms。设备/姿态/浏览器/手动状态属于标签，`observedState` 才来自实际 scrollY。它表示文档位置，不表示 Safari 的展开/收窄状态：向上滚动可在非零 scrollY 处展开组件，必须另记原生手势及实际 chrome。保留截图明确关联的记录 UUID/PNG，不能只按最近时间配对。
 
 | 字段 | 语义 |
 | --- | --- |

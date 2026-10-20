@@ -56,4 +56,6 @@ mise exec -- just dev
 
 [安全](SECURITY.md) · [隐私](PRIVACY.md) · [变更日志](CHANGELOG.md)
 
+已入库的 [Safari 场景图集](005-SAFARI-SCENES.md#已入库的-device-hub-参考图)包含 48 张经过审查的 WebP 画布参考、四张矩阵总览及颜色触发对照，附真实视口/组件框及源图哈希。
+
 [English](../../README.md) | [中文](README.md)

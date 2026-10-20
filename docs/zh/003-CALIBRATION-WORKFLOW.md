@@ -54,4 +54,6 @@ WKWebView 现负责 canvas 绘制；额外的被动底栏层只近似可命中�
 
 当前自动检查见[贡献指南](CONTRIBUTING.md)，平台清单见 [Windows 交接](009-WINDOWS-HANDOFF.md)。无论构建是否成功，物理尺寸、真实硬件半径和 iOS 光学参数仍未知。
 
+[已入库场景图集](005-SAFARI-SCENES.md#已入库的-device-hub-参考图)提供经审查的 WebP 画布图和完整 48 项索引。原生滑动会话、本地索引/审查字段和可复现导出命令见 [Python 指南](../../scripts/python/README.md#safari-canvas-reference-library)。动画等待失败、跨折叠 trait/inset 残留单独保留。若可见组件与真实视口不符，应先恢复干净场景再接受；重启可能重置机身方向，必须重新核对。
+
 [English](../en/003-CALIBRATION-WORKFLOW.md) | [中文](003-CALIBRATION-WORKFLOW.md)

@@ -59,6 +59,16 @@
   ],
   "links": [
     {
+      "link": "docsite/shared/safari-reference",
+      "target": "docs/shared/safari-reference",
+      "type": "dir"
+    },
+    {
+      "link": "docsite/zh/shared/safari-reference",
+      "target": "docs/shared/safari-reference",
+      "type": "dir"
+    },
+    {
       "link": "docs/en/README.md",
       "target": "README.md",
       "type": "file"

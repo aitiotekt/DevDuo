@@ -50,6 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             "/calibration.js": "calibration.js",
             "/style.css": "style.css",
             "/document-end.html": "document-end.html",
+            "/safari-reference.html": "safari-reference.html",
         }.get(path)
         if not name:
             return self.reply(404, {"error": "not found"})

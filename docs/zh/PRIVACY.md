@@ -10,4 +10,6 @@ DevDuo 的标定接收器及诊断输出写入本地文件，目前没有独立�
 
 另见[参考数据](002-MEASUREMENT-CONTRACT.md)和[安全](SECURITY.md)。
 
+已入库的 Safari 图集是经过明确审查的画布衍生图：只显示受控本地夹具与模拟器 UI，已裁掉 Device Hub 设备列表和桌面控件。索引排除原始浏览/环境记录及标签 UUID。公开文件审查验证精确图片名称、哈希、尺寸，以及没有嵌入 EXIF/XMP/ICC 元数据，但不能替代视觉或权利审查。
+
 [English](../../PRIVACY.md) | [中文](PRIVACY.md)

@@ -4,7 +4,7 @@ Read this before changing calibrated geometry or collecting references. A public
 
 ## Browser and desktop records
 
-Browser records use `schemaVersion: 1`. The receiver writes individual `UUID.json` files and appends `records.jsonl`, assigning an ID and UTC `receivedAt`; the browser supplies `clientTimestamp` and `reason`, with events debounced 350 ms. Device/pose/browser/manual state are labels, while `observedState` derives from actual scrollY. Keep a capture's explicit record UUID/PNG association; nearest timestamp alone is insufficient.
+Browser records use `schemaVersion: 1`. The receiver writes individual `UUID.json` files and appends `records.jsonl`, assigning an ID and UTC `receivedAt`; the browser supplies `clientTimestamp` and `reason`, with events debounced 350 ms. Device/pose/browser/manual state are labels, while `observedState` derives from actual scrollY. This is a document-position label, not Safari's expanded/compact chrome state: upward scrolling can expand chrome at nonzero scrollY. Record native gesture and observed chrome separately. Keep a capture's explicit record UUID/PNG association; nearest timestamp alone is insufficient.
 
 | Field | Meaning |
 | --- | --- |

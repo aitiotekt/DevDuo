@@ -164,14 +164,18 @@ function siteRoute(source: string): string | undefined {
   const normalized = source.split(sep).join("/");
   if (normalized === "LICENSE") return "/license";
   const name = normalized.split("/").at(-1) ?? "";
+  const languageDoc = /^docs\/(en|zh)\/[^/]+$/.test(normalized);
   const chinese = normalized.startsWith("docs/zh/");
   const prefix = chinese ? "/zh" : "";
-  if (manifest.conventions.includes(name)) {
+  if (
+    manifest.conventions.includes(name) &&
+    (normalized === name || languageDoc)
+  ) {
     return name === "README.md"
       ? `${prefix}/`
       : `${prefix}/${name.replace(/\.md$/, "").toLowerCase().replaceAll("_", "-")}`;
   }
-  if (manifest.documents.some((doc) => doc.name === name))
+  if (languageDoc && manifest.documents.some((doc) => doc.name === name))
     return `${prefix}/docs/${name.replace(/\.md$/, "")}`;
   return undefined;
 }

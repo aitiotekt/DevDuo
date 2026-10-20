@@ -36,6 +36,51 @@ The selected `TabBarTab` hit rectangle excludes its 32-point close button. Prese
 
 The original single-tab sources live under `open-single-ORIENTATION/verified/`; failed idle-wait attempts remain separate. The canonical Open cohort used explicit display 3, because the default XCTest image could target another display. Source hashes and original native frames support the 24-state and four-angle whole-tab checks. Reproduction inputs and historical verifiers are documented once in the [archive guide](../../scripts/archive/README.md).
 
-Follow [Calibration and validation](003-CALIBRATION-WORKFLOW.md) for new capture/acceptance steps. [Architecture](001-ARCHITECTURE.md) explains actual Closed under-chrome flow versus Open/Windows reserved-frame approximations; the [measurement contract](002-MEASUREMENT-CONTRACT.md) defines units and unknown hardware values.
+## Checked-in Device Hub reference gallery
+
+The 2026-10-23 cohort includes **48 actual canvas crops, four matrix overview sheets and a color-trigger comparison**, encoded as WebP in `docs/shared/safari-reference/`. The [manifest](../shared/safari-reference/manifest.json) maps every combination to its image, actual DOM viewport/scrollY, native WebView and component frames, source hash, crop and derivative hash. The crops retain the observed body in canvas coordinates without rotating or rebuilding it. Overview sheets resize those crops for comparison; neither lossy images nor window capture pixels certify physical geometry or glass optics. Original window PNGs and failed attempts remain local.
+
+| Fold | Captured combinations | Layout grouping |
+| --- | --- | --- |
+| Closed | Two shell palettes × four body angles × expanded/compact = 16 | Portrait/right widgets, landscape/right widgets, landscape/left widgets |
+| Open | Two shell palettes × four body angles × one/two tabs × expanded/compact = 32 | Landscape and portrait; expanded single/multiple tabs differ, compact variants share a layout |
+
+These give 24 semantic color/chrome/tab layout variants across the five content-layout groups; the complete 48-case index preserves every body angle and observed numeric difference. Closed 180° retains the preceding landscape scene **and its content is turned 90° clockwise in the canvas** in this cohort. Native scene coordinates must therefore be transformed separately from the exterior/body. Open has two content-layout classes across four body poses. A layout class is not a rotation angle or a claim that two original images are pixel-identical.
+
+The main matrix covers **simulator Appearance Light/Dark** with matching automatic page colors (some Light cases explicitly select the identical light palette), without `theme-color`. Separate controls isolate page background, system appearance and opposing meta hints. A dark page under system Light changed the backdrop but did **not** reproduce system Dark's glass/glyph treatment. Under system Dark, a deliberately light page retained a light canvas with different material/icon treatment. Opposing `theme-color` hints did not override the page-driven appearance in these iOS 27.1 controls. This does not establish a universal priority rule for other Safari releases or arbitrary page backgrounds. The desktop tint observer still prioritizes a meta hint, which remains a recorded approximation gap. The controlled fixture contains no simulated Safari widgets or private browsing content.
+
+| Condition | Observed behavior |
+| --- | --- |
+| Native scroll down | Address/navigation surface compacts; Open's extra tab row disappears |
+| Reverse native scroll up | Navigation expands while scrollY can remain nonzero: Closed at Y=545, Open two tabs at Y=509 and one tab at Y=562; document position alone is not the chrome state |
+| Programmatic `scrollTo` | Moved the fixture without compacting the observed Open Safari shell; it is a different input path |
+| Tab count | One tab has no extra row; two and three have it in Open expanded navigation; Closed with two and Open compact hide it. “No tab strip” still means one real page tab |
+| Fold/rotation transition | Can retain displaced chrome or stale viewport reservations; a further cross-fold attempt retained Open top chrome on a Closed exterior. Reject those attempts, re-establish the scene and verify both optics and actual viewport before capture |
+
+The gesture direction and observed chrome are recorded separately from integer DOM scroll events. Do not implement the target as a fixed `scrollY` cutoff. Some new initial `innerHeight` readings are one CSS pixel below the earlier table; the manifest keeps the actual values and native floating-point frames rather than silently normalizing them. Default XCTest application bounds can describe another display, so use the active WebView/component frames and the visible Device Hub canvas independently. This cohort adds visual references; it does not rewrite the calibrated application config.
+
+### Closed palettes
+
+Rows are body 0°, 90°, 180°, 270°; columns are expanded, compact.
+
+![Closed light shell references](../shared/safari-reference/overview-closed-light.webp)
+
+![Closed system Dark shell references](../shared/safari-reference/overview-closed-dark.webp)
+
+### Open palettes
+
+Rows use the same four body angles. Columns are two tabs expanded/compact, then one tab expanded/compact.
+
+![Open light shell references](../shared/safari-reference/overview-open-light.webp)
+
+![Open system Dark shell references](../shared/safari-reference/overview-open-dark.webp)
+
+### Color-trigger controls
+
+Left to right: system Light/light page/dark meta; system Light/dark page/light meta; system Dark/light page/no meta; system Dark/auto dark page/no meta. The first two isolate the meta hint; the last two show why system theme and page-derived backdrop must remain separate inputs.
+
+![System appearance, page background and meta hint comparison](../shared/safari-reference/overview-color-triggers.webp)
+
+Follow [Calibration and validation](003-CALIBRATION-WORKFLOW.md) for capture/acceptance and the [Python guide](../../scripts/python/README.md) for native swipe and reproducible export commands. [Architecture](001-ARCHITECTURE.md) explains actual Closed under-chrome flow versus Open/Windows reserved-frame approximations; the [measurement contract](002-MEASUREMENT-CONTRACT.md) defines units and unknown hardware values. The derivatives retain Apple's UI/artwork provenance and do not acquire an MIT redistribution grant; see [third-party notices](../../THIRD_PARTY_NOTICES.md).
 
 [English](005-SAFARI-SCENES.md) | [中文](../zh/005-SAFARI-SCENES.md)

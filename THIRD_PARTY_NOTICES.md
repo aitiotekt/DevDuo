@@ -8,6 +8,8 @@ Direct dependencies include Avalonia/Avalonia.Desktop 12, SukiUI (MIT) and Micro
 
 No independent redistribution license for Apple's source artwork has been established in this project. Simulator-derived path data is identified here separately from first-party code and is not relicensed by the root MIT License. Review that provenance and the relevant rights before distributing derived artwork or packaged releases. This repository preparation does not claim that review has occurred.
 
+`docs/shared/safari-reference/` contains reviewed, cropped WebP derivatives of Device Hub windows showing a first-party local fixture and Apple's simulator exterior/Safari UI. The manifest records original hashes, crop coordinates, encoding and observed geometry; original PNGs, native records and personal device metadata remain excluded. These derivatives document observed behavior and do not gain an MIT redistribution license for Apple UI/artwork. The redistribution uncertainty above still applies.
+
 iPhone, Safari, Xcode and related product names belong to Apple. Microsoft Edge and WebView2 belong to Microsoft. DevDuo is an independent developer tool and implies no affiliation or endorsement.
 
 [English](THIRD_PARTY_NOTICES.md) | [中文](docs/zh/THIRD_PARTY_NOTICES.md)

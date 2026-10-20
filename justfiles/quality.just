@@ -13,6 +13,10 @@ test-js:
 test-python:
     uv run --locked devduo-tools self-test
 
+# Public derivatives only; does not claim absent private originals passed native acceptance.
+references-check:
+    uv run --locked devduo-tools reference-library verify docs/shared/safari-reference
+
 # Dependency-free .NET harness; restore still uses its committed lockfile.
 test-localization:
     dotnet run --project tests/DevDuo.Localization.Tests -p:RestoreLockedMode=true

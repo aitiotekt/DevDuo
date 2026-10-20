@@ -10,4 +10,6 @@
 
 iPhone、Safari、Xcode 及相关名称属于 Apple；Microsoft Edge/WebView2 属于 Microsoft。本工具独立开发，不代表关联或背书。
 
+`docs/shared/safari-reference/` 保存经过审查的 Device Hub 窗口 WebP 裁剪衍生图，内容为第一方本地夹具及 Apple 模拟器外壳/Safari UI。索引记录原图哈希、裁剪坐标、编码和观测几何；原始 PNG、原生记录及个人设备元数据继续排除。这些图片用于记录观测行为，不因此获得 Apple UI/外观的 MIT 再分发许可，上述再分发权利不确定性仍适用。
+
 [English](../../THIRD_PARTY_NOTICES.md) | [中文](THIRD_PARTY_NOTICES.md)

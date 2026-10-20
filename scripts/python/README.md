@@ -26,4 +26,28 @@ Comparison uses equal-size decoded RGBA pixels and optional explicit crops/exclu
 
 The receiver also serves `web/document-end.html` at `/document-end.html`: a 2400-CSS-pixel striped fixture with full-width/narrow/absent fixed-footer controls, live DOM measurements and **Save observation**. Use it to compare presented windows at document end without modifying layout or scroll extents.
 
+## Safari canvas reference library
+
+`/safari-reference.html?tab=A&palette=auto` is the controlled gallery fixture. A second page uses `tab=B`. `palette=light|dark` changes the page background independently of simulator Appearance; optional `themeColor=%23101923` sets an opposing meta hint. Records retain the actual system color scheme, page background, meta hint, DOM/visual viewport and document position. No Safari chrome is drawn in the page.
+
+Use Device Hub to select fold, body rotation, appearance and one/two tabs. Use a fresh local session, preserve original window captures and verify the actual canvas after every transition. Native swipes and component frames are available through the existing XCUITest target:
+
+```sh
+mise exec -- uv run --locked devduo-tools reference-session --udid SIMULATOR_UDID --output captures/safari/reference-NEW/native
+```
+
+Enter one `ACTION ID` per line, for example `up closed-b000-light-expanded`, `down closed-b000-light-compact`, `observe inspect-current` and finally `stop complete`. Actions are restricted to `up`, `down`, `observe`, `stop`; IDs are safe local names and cannot be reused. Up means scrolling toward the document top (a native finger swipe down). The broker is loopback-only with a random capability path. It activates the existing Safari document and saves each native receipt before acknowledging it; it does not select poses, navigate, close tabs or capture the desktop. Use native upward gestures until the actual browser record confirms scrollY zero, and record reverse scrolling at nonzero Y separately. `scrollTo` alone did not compact the observed Open Safari.
+
+The initial reference cohort keeps original PNGs, per-case JSON and failed attempts locally. For export, `cases.json` contains 48 indexed observations with `id`, `fold`, `bodyAngleClockwise`, `appearance` (actual simulator Light/Dark, matching the observed color scheme), `tabCount`, `chrome`, `sourceImage`, `sourceSha256`, `fixtureSourceSha256`, `capturedAt`, `browser`, `native`, `nativeSession`, `nativeId` and `orientationSource`. Native session/ID point to the preserved receipt; orientationSource is the local devicectl JSON filename. Record observed content layout and scene-to-canvas rotation explicitly; the exporter must not infer them from a commanded body angle.
+
+`publication-review.json` supplies `reviewedForPublication: true` only after visual/privacy review, plus `cohort`, `themeAxis`, `fixtureSources`, `limits`, `triggers`, a per-ID `crops` map (`[left, top, right, bottom]` in original window pixels) and `layouts` map (`contentLayout`, `nativeSceneToCanvasClockwise`). Optional `conditions` list reviewed color-comparison sources with explicit crops/hashes and palette/system/meta observations. All inputs remain local; only selected numeric geometry and controlled colors enter the public manifest. Export refuses incomplete/duplicate combinations, path traversal, mismatched native receipts and changed source bytes, and requires a new output directory:
+
+```sh
+mise exec -- uv run --locked devduo-tools reference-library export --session captures/safari/reference-NEW --output temp/reference-library-NEW
+mise exec -- uv run --locked devduo-tools reference-library verify temp/reference-library-NEW
+mise exec -- just references-check
+```
+
+The last command checks the checked-in library. Repository audit also validates the exact image allowlist, hashes, dimensions and metadata. It rejects other binaries; it does not globally allow screenshots. Canvas crops are WebP quality 88 without resizing; overview sheets are explicitly resized derivatives. EXIF/XMP/ICC metadata is omitted. Public-only checks do not claim the absent private sources or native gestures were revalidated. See the [scene gallery](../../docs/en/005-SAFARI-SCENES.md) and [third-party notices](../../THIRD_PARTY_NOTICES.md).
+
 The [archive](../archive/README.md) preserves original cohort extraction and independent geometry verifiers. Those fixed-layout programs are not maintained generic commands and are not needed to run the application from public configuration.

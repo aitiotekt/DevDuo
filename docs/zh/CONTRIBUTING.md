@@ -36,6 +36,7 @@ mise exec -- just doctor
 | `just verify` | check 加 lint/类型检查、发布一致性、文档构建及当前平台编译 |
 | `just build-windows` | Windows 编译，原生运行验收单独进行 |
 | `just test-macos` | AppKit 裁剪/resize/Fit、逻辑 bounds 和被动底栏颜色层回归，实际窗口另行验收 |
+| `just references-check` | 已审查 Safari 参考图的哈希、元数据与 48 项覆盖 |
 | `just package-macos` | 未签名、依赖运行时的 `temp/DevDuo.app` |
 | `just docs` / `just build-docs` | 文档开发服务 / 严格构建至 `temp/build/docsite/` |
 | `just docs-sync` / `just docs-check` | 同步 / 检查相对源链接与双语覆盖 |

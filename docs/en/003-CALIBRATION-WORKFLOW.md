@@ -54,4 +54,6 @@ Original local evidence includes `captures/desktop-validation/container-modes/`,
 
 Use [Contributing](../../CONTRIBUTING.md) for current automated checks and the [Windows handoff](009-WINDOWS-HANDOFF.md) for the platform checklist. Physical dimensions, real hardware radii and iOS optical parameters remain unknown regardless of build success.
 
+The [checked-in scene gallery](005-SAFARI-SCENES.md#checked-in-device-hub-reference-gallery) supplies reviewed WebP canvas crops and a complete 48-case manifest. Native swipe sessions, local indexing/review fields and reproducible export commands are documented in the [Python guide](../../scripts/python/README.md#safari-canvas-reference-library). Keep failed animation waits and cross-fold trait/inset remnants separate. If visible chrome and actual viewport disagree, restore a clean scene before accepting it; restarting can reset the commanded body orientation, so verify it again.
+
 [English](003-CALIBRATION-WORKFLOW.md) | [中文](../zh/003-CALIBRATION-WORKFLOW.md)

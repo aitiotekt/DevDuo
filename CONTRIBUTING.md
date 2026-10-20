@@ -36,6 +36,7 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just verify` | Check plus lint/typecheck, release consistency, docs build and current-platform build |
 | `just build-windows` | Windows compilation; native runtime acceptance is separate |
 | `just test-macos` | AppKit clip/resize, logical bounds and passive footer-color regressions (macOS only) |
+| `just references-check` | Reviewed Safari reference image hashes, metadata and 48-case coverage |
 | `just package-macos` | Unsigned, framework-dependent `temp/DevDuo.app` |
 | `just docs` / `just build-docs` | Documentation dev server / strict build to `temp/build/docsite/` |
 | `just docs-sync` / `just docs-check` | Synchronize / check relative source links and bilingual coverage |

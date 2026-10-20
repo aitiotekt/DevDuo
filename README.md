@@ -34,6 +34,7 @@ Host settings except the body angle persist between launches; **Reset settings**
 
 - macOS has a native macOS 27 WKWebView interactive baseline. Windows cross compilation passes; native input, DPI, zoom Fit and appearance acceptance remain pending. Linux application checks/releases are disabled in metadata.
 - References cover Closed/Open × four body angles × initial/scrolled, plus Open single/multiple tabs. Screen masks and exterior paths are independent. Partial-fold geometry is unavailable.
+- The [Safari scene gallery](docs/en/005-SAFARI-SCENES.md#checked-in-device-hub-reference-gallery) includes 48 reviewed WebP canvas references, four matrix overview sheets and a color-trigger comparison, with actual viewport/frame data and source hashes.
 - Checked-in config runs without private Safari captures or Apple PDFs. New Device Hub collection requires an installed simulator runtime; reference regeneration requires the original evidence.
 - Host controls are functional; a genuine address bar, navigation bindings and visual refinements remain on the [roadmap](docs/en/100-ROADMAP.md).
 

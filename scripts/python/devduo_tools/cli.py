@@ -18,6 +18,16 @@ COMMANDS = {
         "main",
         "Capture actual Safari native/PNG milestones with XCTest",
     ),
+    "reference-session": (
+        "reference_session",
+        "main",
+        "Operate native reference swipes and save Safari chrome frames",
+    ),
+    "reference-library": (
+        "reference_library",
+        "main",
+        "Export or validate reviewed Device Hub canvas references",
+    ),
     "png-compare": ("png_compare", "main", "Compare exact-size PNG regions without alignment"),
     "sample-appearance": (
         "sample_appearance",

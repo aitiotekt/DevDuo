@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from .paths import repository_root
+from .reference_library import validate_library
 
 ROOT = repository_root()
 PRIVATE_ROOTS = {"captures", "measurements", "work", "temp", "tmp", ".local"}
@@ -49,6 +50,17 @@ def main(argv=None):
     # The untouched index still requires review/staging by the repository owner.
     names = [name for name in names if name not in removed]
     failures = []
+    reviewed_images = set()
+    library = ROOT / "docs/shared/safari-reference"
+    if (library / "manifest.json").exists():
+        try:
+            references = validate_library(library)
+            reviewed_images = {
+                (library / asset["file"]).relative_to(ROOT).as_posix()
+                for asset in references["assets"]
+            }
+        except (OSError, ValueError, KeyError) as error:
+            failures.append(f"Reference library validation failed: {error}")
     for name in names:
         path = ROOT / name
         if (
@@ -80,7 +92,8 @@ def main(argv=None):
         try:
             source = path.read_text(encoding="utf-8-sig")
         except UnicodeError:
-            failures.append(f"{name}: binary requires explicit publication review")
+            if name not in reviewed_images:
+                failures.append(f"{name}: binary requires explicit publication review")
             continue
         for label, pattern in PATTERNS.items():
             match = pattern.search(source)

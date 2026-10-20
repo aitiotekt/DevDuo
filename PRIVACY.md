@@ -8,6 +8,8 @@ Raw records belong in ignored `captures/`, `measurements/` or `.local/`. Generat
 
 Public configuration retains selected simulator measurements, source-relative file references and evidence hashes. It omits the original raw sessions. Before sharing a report, review both metadata and images, and publish a sanitized derivative without changing original evidence bytes. Never publish secrets, personal host names, simulator identifiers, private page contents or user-directory paths.
 
+The checked-in Safari reference gallery is explicitly reviewed canvas derivatives showing only the controlled local fixture and simulator UI, without the Device Hub device list or desktop controls. Its manifest excludes raw browsing/environment records and tab UUIDs. The publication audit verifies the exact reviewed image names, hashes, dimensions and absence of embedded EXIF/XMP/ICC metadata; it does not replace visual or rights review.
+
 See [Reference data](docs/en/002-MEASUREMENT-CONTRACT.md) and [Security](SECURITY.md).
 
 [English](PRIVACY.md) | [中文](docs/zh/PRIVACY.md)

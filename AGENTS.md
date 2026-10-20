@@ -51,6 +51,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 - Keep both languages current, use language-local links and add a bidirectional language footer. Describe current behavior and planned work clearly; keep historical change chronology in `CHANGELOG.md` or a documented archive.
 - Public content must not contain personal host names, simulator UDIDs, account names, private absolute paths, secrets or raw browsing records. Use repository-relative paths and placeholders. Ignored `captures/`, `measurements/`, `.local/` and `temp/` are local evidence, not publication inputs.
 - The publication audit is one check; review the actual diff and additions. Respect `THIRD_PARTY_NOTICES.md` and keep simulator-artwork redistribution uncertainty visible.
+- Reviewed Device Hub canvas derivatives belong in `docs/shared/safari-reference/` with complete case coverage, explicit crop/source provenance and exact image hashes. Keep originals private and unchanged. `just references-check` validates public derivatives; it does not establish native acceptance or redistribution rights. System appearance, page-derived color and meta hints are separate recorded inputs.
 
 ## Verification and handoff
 

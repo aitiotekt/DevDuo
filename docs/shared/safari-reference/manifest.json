@@ -1,0 +1,5512 @@
+{
+  "schemaVersion": 1,
+  "reviewedForPublication": true,
+  "cohort": "Xcode 27.1 / iOS 27.1 Device Hub / 2026-10-23",
+  "source": "Original Device Hub window observations; cropped canvas derivatives, not direct simulator framebuffers.",
+  "encoding": {
+    "format": "WebP",
+    "quality": 88,
+    "resizedCanvasCrops": false,
+    "metadata": "stripped"
+  },
+  "fixtureSources": {
+    "matrix-v1": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+    "matrix-v2": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea"
+  },
+  "themeAxis": "Simulator Appearance Light/Dark with matching automatic page backgrounds (some Light cases explicitly select the identical light palette). Independent page/meta controls are recorded separately.",
+  "toolVersions": {
+    "xcode": "Xcode 27.1\nBuild version 27A9275",
+    "hostOSVersion": "27.0.1",
+    "simulatorRuntime": "iOS 27.1"
+  },
+  "simulatorControls": {
+    "liquidGlassSlider": 0.5,
+    "reduceMotion": false,
+    "increaseContrast": false,
+    "reduceTransparency": false,
+    "showBorders": false,
+    "textSizeSlider": 3,
+    "status": "Observed Device Hub settings, not iOS material kernel parameters"
+  },
+  "units": "Body angles: clockwise in canvas; viewport: actual CSS px; native frames: XCTest points; crops: original window pixels. No physical mm.",
+  "limits": [
+    "Window canvas observations, not direct simulator framebuffers; WebP is lossy.",
+    "Content layout groups do not collapse the four observed body angles or rotation history.",
+    "Closed 180 degrees retained the preceding landscape scene in this clockwise sequence.",
+    "Some integer innerHeight readings are one CSS pixel below the earlier reference; original values are preserved.",
+    "Default XCTest applicationFrame can target the other display; use the WebView/component frames and actual canvas separately.",
+    "Original private evidence is not required to validate the public derivative bytes; its absence cannot establish native acceptance.",
+    "Simulator artwork and Safari UI are not relicensed under MIT; redistribution rights remain unconfirmed.",
+    "Additional cross-fold attempts retained Open top chrome on a Closed exterior; rejected outside the accepted 48-case matrix. Restart/restore a correct baseline before acceptance."
+  ],
+  "triggers": {
+    "shellPalette": "System Appearance changes glass/glyph treatment independently from the page canvas. Opposing theme-color hints did not override page-driven appearance in these controls. A dark page under Light is not a substitute for system Dark.",
+    "chrome": "A real native downward scroll compacts; reversing upward expands at nonzero scrollY. Top resets require native up after fold/rotation settling; fixture scrollTo alone did not compact the observed Open shell. Accepted clean Closed case expanded at Y=545 with a 382x580 viewport after reversing upward. Open two/one tab reversals expanded at Y=509/Y=562.",
+    "tabStrip": "Visible only in Open expanded navigation with at least two tabs. One/two/three were observed; Closed with two and Open compact hide the extra row. No tab strip means one page tab, not zero browser tabs."
+  },
+  "assets": [
+    {
+      "file": "closed-b000-light-compact-v2.webp",
+      "sha256": "25d233c56cbfd5cd88a20ca39c3d6747333dc492c70e9b1c263fa16b059907e7",
+      "sizePixels": [
+        384,
+        523
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b000-light-expanded-v2.webp",
+      "sha256": "d34b1d1e43eced3440a2fb90a5b8bb8040ed380d010028da4709ed2799a54ed9",
+      "sizePixels": [
+        384,
+        523
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b090-light-compact.webp",
+      "sha256": "12c820191afc7605c29f8b59747f75775ea04c45f8568fc52a3cc603a74c35a5",
+      "sizePixels": [
+        523,
+        384
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b090-light-expanded-v2.webp",
+      "sha256": "790e9b8843a1c0a5bc0a0c090e86e5d33419cb045bf446954924b8ddfaab0b64",
+      "sizePixels": [
+        523,
+        384
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b180-light-compact.webp",
+      "sha256": "f3d554e22aab5ff5046e78ec6aa61ca71067955b51ae74676c2730e34e3cb1d2",
+      "sizePixels": [
+        384,
+        523
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b180-light-expanded.webp",
+      "sha256": "f3ecca5e9cdfec7a15fb5dc1d8ec7ccd6c6fc3c7adf8218fbb20645b04067740",
+      "sizePixels": [
+        384,
+        523
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b270-light-compact.webp",
+      "sha256": "96ccf617453847adff7a0c5ec28bab8f372c46f60f03d048bb7601386e7b7328",
+      "sizePixels": [
+        523,
+        384
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b270-light-expanded.webp",
+      "sha256": "f5cfff7f2af137d9a65d5adff138aabfac8b16f818cb582997e165b53e1878e3",
+      "sizePixels": [
+        523,
+        384
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b000-light-compact.webp",
+      "sha256": "eb455d873f344355c82ccc4970f8e678dfd73acead4114aa157a468599e7bae6",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b000-light-expanded.webp",
+      "sha256": "4c979946a7ba70c72c15038941ebaa7320dd064b142e60eee3bc5fa2bdf8cde7",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b090-light-compact.webp",
+      "sha256": "00420553c9396002343b31f42aa2cea1a08c262680017f8fbb2d6d19ba42e73f",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b090-light-expanded.webp",
+      "sha256": "3f64394d171e61b947475b9f817d3203a0a7e5b5c904f8e130f7aa8fcd8eef78",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b180-light-compact.webp",
+      "sha256": "8dc9a30c9870e1a3f7f52b7996fa0328b74b0804d69d8ca43eee3cc9f4f9e0d8",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b180-light-expanded.webp",
+      "sha256": "9b8aaef0d5071e1450e66c40d5bd050fd7766d134a934ae657e598ed73158dbe",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b270-light-compact.webp",
+      "sha256": "b7c3c63542de6d760c64b9c05282f3d23a6f84143b58751b5b5559e482ddc8b6",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b270-light-expanded.webp",
+      "sha256": "13ca85a1b9445a8283d2ed60202c51fe3a8c2bb4e3d916c16f9e6cb1013c0269",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b000-light-compact.webp",
+      "sha256": "a320861f2f9ef2d87702f064544af094491b69b8782a0793efd676f62ea11d1e",
+      "sizePixels": [
+        720,
+        520
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b000-light-expanded.webp",
+      "sha256": "86560b282b8ba041459f850822c35ac25b4bc8577ef0bd5c4a98876281fd1639",
+      "sizePixels": [
+        720,
+        520
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b090-light-compact.webp",
+      "sha256": "26b2333702ca84df7434999cb4512ad75dde5ad5fb8698ad431334e6b8f11818",
+      "sizePixels": [
+        520,
+        719
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b090-light-expanded.webp",
+      "sha256": "f07c2290812396372fa8a143dc3dabfc6377e8c247bf8b86838b8faff928618b",
+      "sizePixels": [
+        520,
+        719
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b180-light-compact.webp",
+      "sha256": "2f6052e40e894d278be28caa3490a38740030469acd94e0372400c35b669de7c",
+      "sizePixels": [
+        720,
+        520
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b180-light-expanded.webp",
+      "sha256": "e0a6a632b03fd571b9cd6481ac1f8a1935c74acde87e49f97b63ef92eddd0e81",
+      "sizePixels": [
+        720,
+        520
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b270-light-compact.webp",
+      "sha256": "1c5d079162b920fd5d588b4e5db7128ad701168bb4a0c9908b7c1338afdd253c",
+      "sizePixels": [
+        520,
+        720
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b270-light-expanded.webp",
+      "sha256": "939e52edcfc33a274a683c90614cb55e5115fb68760ea149b1ecd7896700b3da",
+      "sizePixels": [
+        520,
+        720
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b000-system-dark-expanded.webp",
+      "sha256": "573ee592e501dbd8318b6910b8f5b12553ac0c96f6a38e4097067175d88a6142",
+      "sizePixels": [
+        292,
+        396
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b000-system-dark-compact.webp",
+      "sha256": "eeaae909434206b5433e7557e4bdb547df693378f0d31afa3613d8e568905591",
+      "sizePixels": [
+        292,
+        396
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b090-system-dark-expanded.webp",
+      "sha256": "e153b1ac2ffcc5e8a704fbf2d8eefa01a8f9ac48bc75faa9020bafe2f275d950",
+      "sizePixels": [
+        396,
+        292
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b090-system-dark-compact.webp",
+      "sha256": "77019ca039dad9f1e34d5ed84f824e51318c631a99ca56c54fc382f6881028bf",
+      "sizePixels": [
+        396,
+        292
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b180-system-dark-expanded.webp",
+      "sha256": "8540c23ed0a10f2779ac8c6e6fd6fecca885ad14224733b4225420106e0178be",
+      "sizePixels": [
+        292,
+        395
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b180-system-dark-compact.webp",
+      "sha256": "b4711f2da4b702543fed712a1b8ae91f785dbd960f67101ccbb539507aad214d",
+      "sizePixels": [
+        292,
+        395
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b270-system-dark-expanded.webp",
+      "sha256": "625038481b439da9e32f22dc0cbbfbded0d2eb3b84e3efa51d2b6b43d909fdca",
+      "sizePixels": [
+        396,
+        292
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "closed-b270-system-dark-compact.webp",
+      "sha256": "e50f6e918efdc6b73beddce1ba4d7dcab8fecbaf66ea040cb40908cd6946c9c2",
+      "sizePixels": [
+        396,
+        292
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b000-system-dark-expanded.webp",
+      "sha256": "f10fc6df3ab3871ff95955dab83cc45175f537a538a6240166ceae33e8ce8d77",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b000-system-dark-compact.webp",
+      "sha256": "af354c9192c4182c1866af425156260b5ec39ab2b71e2b75645c7ee0e647b405",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b090-system-dark-expanded.webp",
+      "sha256": "c97e94114e40007056f9aec893383d5b3408fc033d9db2f6abd76f349968c1c1",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b090-system-dark-compact.webp",
+      "sha256": "064b013eaa843684ceff56d35b89e43bb55ad4454d0c659127798a2b5e3a05fa",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b180-system-dark-expanded.webp",
+      "sha256": "7a9fb75f41758de44f40b08d738fb6a201eab9d5c0ce80a4a7f25466d59297c8",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b180-system-dark-compact.webp",
+      "sha256": "e2513069b49b5653b654179cb2da50ec7c44c56b48215216b1ffc9d1708e5630",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b270-system-dark-expanded.webp",
+      "sha256": "ae4d1a6a421e325f98ead79153b8e166ffb47cb97544f5121e8fe183e3e13c82",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-two-b270-system-dark-compact.webp",
+      "sha256": "d7dafb96f81c421b2da2a747aa4656266ab016bf3a0d695cf72de787c2703397",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b000-system-dark-expanded.webp",
+      "sha256": "3390f8f75aecb47c9b96a249cd2af71fc011478533677c2996a9fc9bd517158c",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b000-system-dark-compact.webp",
+      "sha256": "b5ceb4d2a4ec8837ec391e01307f82dafccac7a4da2641689f1e32cf00564d8d",
+      "sizePixels": [
+        541,
+        393
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b090-system-dark-expanded.webp",
+      "sha256": "af7270979dc184ba4f180b81b59142262c70daea1378f7027ae2a5bee6a77f8c",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b090-system-dark-compact.webp",
+      "sha256": "793470c24b64eb82838ae31c0bf053960382023cf5cd02e87968cd761fe23864",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b180-system-dark-expanded.webp",
+      "sha256": "4680932342629f92cd4bb7abe6a9d6906c2b02003d796e11601122e92e21e0f1",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b180-system-dark-compact.webp",
+      "sha256": "f2c7756d414dc32c598a191a784ea8853a9e938e35b5af7ee28db19a7d108cf1",
+      "sizePixels": [
+        541,
+        394
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b270-system-dark-expanded.webp",
+      "sha256": "fb29a2e00c746d8b75c377138d824365128dcb3e48cee342d8912bf7254a8c70",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "open-one-b270-system-dark-compact.webp",
+      "sha256": "1c73ea0e6eb635d4558a53fe19a6fa76df61b4602b1488a827f161be79e25e8a",
+      "sizePixels": [
+        394,
+        541
+      ],
+      "kind": "canvas-crop"
+    },
+    {
+      "file": "overview-closed-light.webp",
+      "sha256": "da254ef0624c0d7e688e69f996ed204e4ee5b682a6e58b6f8b65a7bf2e05c097",
+      "sizePixels": [
+        680,
+        1680
+      ],
+      "kind": "resized-contact-sheet"
+    },
+    {
+      "file": "overview-closed-dark.webp",
+      "sha256": "b1fca94206ef3bbefed2d0769b97fa3369e591276bf26ca32f9e0eac0070f270",
+      "sizePixels": [
+        680,
+        1680
+      ],
+      "kind": "resized-contact-sheet"
+    },
+    {
+      "file": "overview-open-light.webp",
+      "sha256": "0f1820305c9578e83f64bde25f9bb708ff17a6c9e0b501ca1c74e7b783861608",
+      "sizePixels": [
+        1360,
+        1680
+      ],
+      "kind": "resized-contact-sheet"
+    },
+    {
+      "file": "overview-open-dark.webp",
+      "sha256": "051bc6123980dbb873456850091da7a3dfbfe900da36a75edbeae39e08d8f73c",
+      "sizePixels": [
+        1360,
+        1680
+      ],
+      "kind": "resized-contact-sheet"
+    },
+    {
+      "file": "overview-color-triggers.webp",
+      "sha256": "3a9c158170243521e1d91667555b269a9cf5abc31bded587309c780593fa6caf",
+      "sizePixels": [
+        1360,
+        540
+      ],
+      "kind": "resized-color-comparison"
+    }
+  ],
+  "cases": [
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b000-light-compact-v2",
+      "asset": "closed-b000-light-compact-v2.webp",
+      "contentLayout": "portrait-right",
+      "layoutGroup": "closed-portrait-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "8325511e6cac50649c6935670f042aad4cf55153599bb1f2c0b9b0ebe5bf090e",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        826,
+        198,
+        1210,
+        721
+      ],
+      "capturedAt": "2026-10-22T21:02:46.150Z",
+      "viewportCssPx": {
+        "innerWidth": 382,
+        "innerHeight": 598,
+        "scrollY": 501,
+        "documentHeight": 4487,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 466,
+        "height": 678
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 394,
+            "y": 174,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 394,
+            "y": 234,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 394,
+            "y": 542,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 394,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "9701737d15c2540cc13ea4b69a3c575f79d237f99f5af4fbbaef04d72f33af6f",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b000-light-expanded-v2",
+      "asset": "closed-b000-light-expanded-v2.webp",
+      "contentLayout": "portrait-right",
+      "layoutGroup": "closed-portrait-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "0fe34e5eb51b9a3d49e10b09b303117b9e9ddaa4ed7ddab060734bbf028adb3f",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        826,
+        198,
+        1210,
+        721
+      ],
+      "capturedAt": "2026-10-22T21:02:33.883Z",
+      "viewportCssPx": {
+        "innerWidth": 382,
+        "innerHeight": 580,
+        "scrollY": 0,
+        "documentHeight": 4469,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 466,
+        "height": 678
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 394,
+            "y": 174,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 394,
+            "y": 234,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 394,
+            "y": 542,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 394,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 24,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 327.3333333333333,
+            "y": 609.6666666666666,
+            "width": 17.666666666666686,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 158,
+            "y": 610,
+            "width": 66,
+            "height": 20.33333333333337
+          }
+        }
+      ],
+      "nativeGesture": "observe",
+      "nativeReceiptSha256": "071a2c874457aeefa1af673f9be811a8b952a8bbf637837407adfc3a5536758a",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b090-light-compact",
+      "asset": "closed-b090-light-compact.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "57a31050130f06b7dc9b8e9f00bbed6894917560d2a8643734bfd7dbeb064640",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        756,
+        271,
+        1279,
+        655
+      ],
+      "capturedAt": "2026-10-22T21:04:17.060Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 528,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "a0ec79ab7608a45603ecb59fc974794963f48a55529c68537160ec68a394b8d9",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b090-light-expanded-v2",
+      "asset": "closed-b090-light-expanded-v2.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "ef8dfd7af0e5391cc22dda2098ff6aed4ad865a434035444c23e7f5e39e8c297",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        756,
+        271,
+        1279,
+        655
+      ],
+      "capturedAt": "2026-10-22T21:04:01.067Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.33333333333337,
+            "y": 397.6666666666667,
+            "width": 17.66666666666663,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 306,
+            "y": 398,
+            "width": 66,
+            "height": 20.333333333333314
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "eba7ae3eb0605b950304e4b2a28eac8f8c7beb608d042221e3f662db3a1f32dc",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b180-light-compact",
+      "asset": "closed-b180-light-compact.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 90,
+      "sourceSha256": "0964922bc9edccc37c45d9482bbbece019f90d8d90255dc6ac27f438134c36f0",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        822,
+        201,
+        1206,
+        724
+      ],
+      "capturedAt": "2026-10-22T21:04:47.180Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 531,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "d4e4cbb362dd41d470ee52b59117a4fd97b4f6934e4ec3e1fcec41df592f788c",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b180-light-expanded",
+      "asset": "closed-b180-light-expanded.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 90,
+      "sourceSha256": "a748ae7bbea915f6f92400c0dc9bc8dce24b585790153faff82d130810b95bcd",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        822,
+        201,
+        1206,
+        724
+      ],
+      "capturedAt": "2026-10-22T21:04:36.064Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.33333333333337,
+            "y": 397.6666666666667,
+            "width": 17.66666666666663,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 306,
+            "y": 398,
+            "width": 66,
+            "height": 20.333333333333314
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "8fe4c9e18161b28e3b7eca6ee96743768c30e30deda4f0a53ba362401b123692",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b270-light-compact",
+      "asset": "closed-b270-light-compact.webp",
+      "contentLayout": "landscape-left",
+      "layoutGroup": "closed-landscape-left",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "246d720e3d945e0ced6bab1bc9c04b10ab467f268ab2deff168183c5552efc80",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        753,
+        267,
+        1276,
+        651
+      ],
+      "capturedAt": "2026-10-22T21:05:25.114Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 515,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 24,
+            "y": 82,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 24,
+            "y": 142,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 24,
+            "y": 330,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 24,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "f648f3d995b1c2ad403d33faa9a908592c44df4a9c3ab9f1f2660238e3740725",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b270-light-expanded",
+      "asset": "closed-b270-light-expanded.webp",
+      "contentLayout": "landscape-left",
+      "layoutGroup": "closed-landscape-left",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "0f4e03627f6eb3106f07ef1812e0d6a84870108d478fb0191f46a96cf6c5f644",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        753,
+        267,
+        1276,
+        651
+      ],
+      "capturedAt": "2026-10-22T21:05:06.766Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 24,
+            "y": 82,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 24,
+            "y": 142,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 24,
+            "y": 330,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 24,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.3333333333333,
+            "y": 397.6666666666667,
+            "width": 17.666666666666686,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 306,
+            "y": 398,
+            "width": 66,
+            "height": 20.333333333333314
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "b77553c60d91f6b2c5f6576bac6f5c6c0f0aaf0e3d6506108afeea5624db5b56",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b000-light-compact",
+      "asset": "open-one-b000-light-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "13de36b674a47b9592152c8ccbc3ddde9b1608180c2bc40f28d2bc0674f637b8",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:21:17.337Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 493,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000016,
+            "y": 18.26666666666661,
+            "width": 464.0999999999999,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "683c108f1db33efce9a38ef807c7fbefc4a51c9e994ec75b78bc9c2fa6284572",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b000-light-expanded",
+      "asset": "open-one-b000-light-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "c262fb7486586a2dea21d5cfb8d58339f30583d9749d00d897237e7ad2a1cc6c",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:21:05.630Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 588,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 25.999999999999943,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 360,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "6a32aa4fe16efa7dc889116e6961e73ec40860c3a0cff706f31287dbfcefd0b5",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b090-light-compact",
+      "asset": "open-one-b090-light-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "7562aabf3ba7a4e1a20fceed0bffedf4e8f9f50ab748470c4530c7f56cf24829",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:21:45.330Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 493,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999986,
+            "y": 18.266666666666765,
+            "width": 266.70000000000016,
+            "height": 30.79999999999984
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "dba246480fcba011c10aba130385ddb154bf35024f91928da6539e6100cb7a1e",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b090-light-expanded",
+      "asset": "open-one-b090-light-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "36f59f870587c60d68103dde0e3b80cbbc977bf3712b76913c9d69225de092ab",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:21:33.431Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 871,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.33333333333337,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 241,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "0a3e4851422735c13428e61b16d33b3378f6b9e0007ccbbb57faa37b1bc3b3d2",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b180-light-compact",
+      "asset": "open-one-b180-light-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "15393029cb5712db1b32ab3349279ba76c53fc413b782ffe1ae70c5b88100a67",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:22:15.881Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 493,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000007,
+            "y": 18.26666666666665,
+            "width": 464.1,
+            "height": 30.800000000000068
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "49dea7e9fdcd7cd20a4f90f7858d9141f418252d764d16bcded713da0da1b278",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b180-light-expanded",
+      "asset": "open-one-b180-light-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "00a07fcd07ff3fd4b371afdc67600624b87a35ba38037d5c0f529c462fc715cd",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:22:01.634Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 589,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 360,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "921ec5439321eeaff8cb331821f87aa60b9a431bd3935a5a5d6f997e61b79288",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b270-light-compact",
+      "asset": "open-one-b270-light-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "9f1ed158dcecd969ecc8062dd0f08bbfa31dc352830a3ff552284b12b02415f9",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:23:02.791Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 533,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999998,
+            "y": 18.266666666666723,
+            "width": 266.7000000000001,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "bd26f2b2373d16e430cc29120d1e3af2f6484b170f53ad274798789b209306f6",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b270-light-expanded",
+      "asset": "open-one-b270-light-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "e7f1c9d605c48f4a0565b7b846d95905fc2804893414c50809313edd14a723ed",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:22:50.221Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 871,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.3333333333333,
+            "y": 26.000000000000057,
+            "width": 29.666666666666686,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 241,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "43796396829439f494e655c569dabce4e7c9f68619c79e9e4f428562f69e11ca",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b000-light-compact",
+      "asset": "open-two-b000-light-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "74974737101200ca7ab699990e5cfb21e908701c71ded8c0d7f524f8e9698386",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        657,
+        200,
+        1377,
+        720
+      ],
+      "capturedAt": "2026-10-22T21:06:17.812Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 447,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000016,
+            "y": 18.26666666666661,
+            "width": 464.0999999999999,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "7e0b536d862290c409ce905bc1704ea02733ceb3b2c8df089737fe716cf513c0",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b000-light-expanded",
+      "asset": "open-two-b000-light-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "c051a359dff981ccaf440134bdb4d6057a3b124202fc89047c8713fbcc8819c6",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        657,
+        200,
+        1377,
+        720
+      ],
+      "capturedAt": "2026-10-22T21:05:46.980Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 542,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 18,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 509,
+            "y": 81.99999999999994,
+            "width": 424,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 25.999999999999943,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 477,
+            "y": 81.99999999999994,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 360,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 477,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "d5ba7f74b1bdb3dad274472eecb7b421f6b125cfcd582b246daee58d5e260e65",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b090-light-compact",
+      "asset": "open-two-b090-light-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "d57c8214fab5c06a840c080f812ba61173aae3d1f2f45f8debe45c73314c1b1c",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        757,
+        103,
+        1277,
+        822
+      ],
+      "capturedAt": "2026-10-22T21:06:50.328Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 447,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999986,
+            "y": 18.266666666666765,
+            "width": 266.70000000000016,
+            "height": 30.79999999999984
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "c59e15e463d15a380629c6ab549f199a1ac275bb33cb1db6f519822690cd4a4a",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b090-light-expanded",
+      "asset": "open-two-b090-light-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "d0da4246ec219f26a0e474a6d948965594484201577f848c1447a76ccb718035",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        757,
+        103,
+        1277,
+        822
+      ],
+      "capturedAt": "2026-10-22T21:06:35.579Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 824,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 368,
+            "y": 82,
+            "width": 283,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.33333333333337,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 336,
+            "y": 82,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 241,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 336,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "447fe01540c75ceedf116475fc10211fb533a958774c91a922bdcf40cbad3bee",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b180-light-compact",
+      "asset": "open-two-b180-light-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "f9362b7d98eb137b3d88097fd23c6e4c776e23f44d65cb2896d95485fc7aa79c",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        655,
+        202,
+        1375,
+        722
+      ],
+      "capturedAt": "2026-10-22T21:07:21.582Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 447,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000007,
+            "y": 18.26666666666665,
+            "width": 464.1,
+            "height": 30.800000000000068
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "45c513bcffd181fbc2e8b4c583a36963e600857a74ac6f58e7de3ca5c03530d5",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b180-light-expanded",
+      "asset": "open-two-b180-light-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "7a3e196b4b13eeaffae9c274b7a56d203f8eff8e37cef3a12d528d231a4b2093",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        655,
+        202,
+        1375,
+        722
+      ],
+      "capturedAt": "2026-10-22T21:07:10.663Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 543,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 509,
+            "y": 82,
+            "width": 424,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 477,
+            "y": 82,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 360,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 477,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "c24b32ed7841aa6af091c0865e63c02daa10fb2eb2f15fc4fcbd477d83331ad8",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b270-light-compact",
+      "asset": "open-two-b270-light-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "1461a44708ac20c0bc7f9208ff064494de4e4cca11cc9c28e9a0e7366d2b9506",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        755,
+        100,
+        1275,
+        820
+      ],
+      "capturedAt": "2026-10-22T21:07:53.432Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 469,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999998,
+            "y": 18.266666666666723,
+            "width": 266.7000000000001,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "f2c6bb2cab6df3acd42d677ec5b5802fae46ee840e760a2e446c15d7c63e96f1",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "light",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b270-light-expanded",
+      "asset": "open-two-b270-light-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "6edf2f26a94d96cf143d411c3a7eb2553fb4953365953000de88ceb59f730c09",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        755,
+        100,
+        1275,
+        820
+      ],
+      "capturedAt": "2026-10-22T21:07:39.495Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 825,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0
+      },
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "f3ed78ec54edd2025d8b49e715a0c781a6f10e6e38989695bf8e2f3ef61fdb98",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 18,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 368,
+            "y": 82.00000000000006,
+            "width": 283,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.3333333333333,
+            "y": 26.000000000000057,
+            "width": 29.666666666666686,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 336,
+            "y": 82.00000000000006,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 241,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 336,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "b62d9cf39a7f16b74c8c251e7a26386c424b1b7d3dfb4f574e20dd79071ac03f",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b000-system-dark-expanded",
+      "asset": "closed-b000-system-dark-expanded.webp",
+      "contentLayout": "portrait-right",
+      "layoutGroup": "closed-portrait-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "c87db80eff26773435256eb9beaac85e2730fcbe0e68699047675a6b7cbd46ec",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "capturedAt": "2026-10-22T21:36:55.783Z",
+      "viewportCssPx": {
+        "innerWidth": 382,
+        "innerHeight": 580,
+        "scrollY": 0,
+        "documentHeight": 4469,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 382,
+        "visualHeight": 580,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 466,
+        "height": 678
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 394,
+            "y": 174,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 394,
+            "y": 234,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 394,
+            "y": 542,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 394,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 24,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 327.3333333333333,
+            "y": 609.6666666666666,
+            "width": 17.666666666666686,
+            "height": 21
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "db5226f818243ff3ecfbff4c9fff7a939a8f4c3e0ab40804d4b5c2113ee749e9",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b000-system-dark-compact",
+      "asset": "closed-b000-system-dark-compact.webp",
+      "contentLayout": "portrait-right",
+      "layoutGroup": "closed-portrait-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "df94ec3b10f27bd672c4a71b00360ac65f5fd138c829c0bc40f7d9f7af6580f8",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "capturedAt": "2026-10-22T21:37:19.462Z",
+      "viewportCssPx": {
+        "innerWidth": 382,
+        "innerHeight": 598,
+        "scrollY": 529,
+        "documentHeight": 4487,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 382,
+        "visualHeight": 598,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 466,
+        "height": 678
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 394,
+            "y": 174,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 394,
+            "y": 234,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 394,
+            "y": 542,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 394,
+            "y": 596,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "ad66c2f08496144e98dce42af9b53531c7eb510c62ae8cb3373865b2a9f2c341",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b090-system-dark-expanded",
+      "asset": "closed-b090-system-dark-expanded.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "1c40e6cd57ff472aeab966f23bcc3f6103d54430778b665562c83e12977d9d8d",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        819,
+        315,
+        1215,
+        607
+      ],
+      "capturedAt": "2026-10-22T21:39:33.465Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 594,
+        "visualHeight": 368,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.33333333333337,
+            "y": 397.6666666666667,
+            "width": 17.66666666666663,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 306,
+            "y": 398,
+            "width": 66,
+            "height": 20.333333333333314
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "2f3f04e04f864724715949c8fed1a1ffe1745810f6a0f5317d647d962ec2620f",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b090-system-dark-compact",
+      "asset": "closed-b090-system-dark-compact.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "5951a3d642d2538501da5189725f6f2b3fe4641bbf0144aa2b02d6b65f092f08",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        819,
+        315,
+        1215,
+        607
+      ],
+      "capturedAt": "2026-10-22T21:39:46.093Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 543,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 594,
+        "visualHeight": 386,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "3100551b9cab589aad227c41c1a500846f8e22c47599466496e4d12d61c69e9e",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b180-system-dark-expanded",
+      "asset": "closed-b180-system-dark-expanded.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 90,
+      "sourceSha256": "9e031744746013032e8e00b9125d3af69d45cc6347ff1601826208cb6333b286",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        869,
+        264,
+        1161,
+        659
+      ],
+      "capturedAt": "2026-10-22T21:40:43.509Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 594,
+        "visualHeight": 368,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.33333333333337,
+            "y": 397.6666666666667,
+            "width": 17.66666666666663,
+            "height": 21
+          }
+        },
+        {
+          "identifier": "TabBarItemTitle",
+          "framePoints": {
+            "x": 306,
+            "y": 398,
+            "width": 66,
+            "height": 20.333333333333314
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "5581c5b09635b24086ed78f44bf08f309ea24c87d173544683b53309ee1de2d3",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b180-system-dark-compact",
+      "asset": "closed-b180-system-dark-compact.webp",
+      "contentLayout": "landscape-right",
+      "layoutGroup": "closed-landscape-right",
+      "nativeSceneToCanvasClockwise": 90,
+      "sourceSha256": "df6a9c6abe8dbf4c8a13e2497a20f76bbc92f0cab9b1e5b406035a95b2b65f69",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        869,
+        264,
+        1161,
+        659
+      ],
+      "capturedAt": "2026-10-22T21:41:15.493Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 519,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 594,
+        "visualHeight": 386,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 606,
+            "y": 24,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 606,
+            "y": 84,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 606,
+            "y": 282,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 606,
+            "y": 336,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "0ef7d79375e84a9736e67c13ae16b49faecb089fb7d478d351ef3031558e89ed",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "closed-b270-system-dark-expanded",
+      "asset": "closed-b270-system-dark-expanded.webp",
+      "contentLayout": "landscape-left",
+      "layoutGroup": "closed-landscape-left",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "7f9467de4cd7eb145b87c7168a9ca46905950f0af0f0a64b3721a493d0630454",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        817,
+        313,
+        1213,
+        605
+      ],
+      "capturedAt": "2026-10-22T21:41:35.610Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 368,
+        "scrollY": 0,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 594,
+        "visualHeight": 368,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 24,
+            "y": 82,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 24,
+            "y": 142,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 24,
+            "y": 330,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 24,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 172,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 475.3333333333333,
+            "y": 397.6666666666667,
+            "width": 17.666666666666686,
+            "height": 21
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "92c9c7242a6d7b2c61d1be3dcba62f7594adeb5e62cb804d078861aeb183e892",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "closed",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "closed-b270-system-dark-compact",
+      "asset": "closed-b270-system-dark-compact.webp",
+      "contentLayout": "landscape-left",
+      "layoutGroup": "closed-landscape-left",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "1db43994875954fca59ece65602d9fce81a7e87071e110e623ad713515048b5c",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        817,
+        313,
+        1213,
+        605
+      ],
+      "capturedAt": "2026-10-22T21:41:55.526Z",
+      "viewportCssPx": {
+        "innerWidth": 594,
+        "innerHeight": 386,
+        "scrollY": 522,
+        "documentHeight": 4346,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 594,
+        "visualHeight": 386,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 678,
+        "height": 466
+      },
+      "nativeComponents": [
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 24,
+            "y": 82,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 24,
+            "y": 142,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 24,
+            "y": 330,
+            "width": 48,
+            "height": 48
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 24,
+            "y": 384,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "73b32d3b6e49ba067a165684224109a63bd1bee220279e31e66f19c831835450",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b000-system-dark-expanded",
+      "asset": "open-two-b000-system-dark-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "5a20c2c4a3a7d641bf03424b5afcd36656604f944f10782675645366888033d9",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:42:49.895Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 543,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 951,
+        "visualHeight": 543,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 50,
+            "y": 81.99999999999994,
+            "width": 424,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 477,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 25.999999999999943,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 18,
+            "y": 81.99999999999994,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 360,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 477,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 81.99999999999994,
+            "width": 456,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "c32843d5a9436a574c10481a0663cdd73a7421d1e1ca8609b646d5502a1512e9",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b000-system-dark-compact",
+      "asset": "open-two-b000-system-dark-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "e984458e6f546e5b0cd71894f455fef0b7b3dab14990ffb820da9fb47f9477f1",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:43:02.046Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 447,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 951,
+        "visualHeight": 618,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000016,
+            "y": 18.26666666666661,
+            "width": 464.0999999999999,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "68156d0c0ca0f5004599dea8de4b53b34a74232cc35907852a68347c7194dee5",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b090-system-dark-expanded",
+      "asset": "open-two-b090-system-dark-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "34e764ec045abd9bdeb86da9c93f084541d56ba66ea388062f749042cc43f713",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:43:20.009Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 825,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180,
+        "visualWidth": 669,
+        "visualHeight": 825,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 50,
+            "y": 82,
+            "width": 283,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 336,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.33333333333337,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 241,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 336,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 315,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "c621d01e82824c854d8a39a25757ff43030b54f8139a5f62e7c91b8a662f769e",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b090-system-dark-compact",
+      "asset": "open-two-b090-system-dark-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "adf4f37d81591036593c6cf63da077d4b6eb4f9d1d52af3993ea0146bb97689e",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:43:32.759Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 434,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180,
+        "visualWidth": 669,
+        "visualHeight": 900,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999986,
+            "y": 18.266666666666765,
+            "width": 266.70000000000016,
+            "height": 30.79999999999984
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "270075c97ccefefab11c9c0aec3e74da906494ca2a7783ab41eef2bb211457e4",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b180-system-dark-expanded",
+      "asset": "open-two-b180-system-dark-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "126dc51e9240bc579ae6c6a97710f4d33af264462821d659ab79fbea7b8669ef",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:44:08.302Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 542,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 951,
+        "visualHeight": 542,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 50,
+            "y": 82,
+            "width": 424,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 477,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 360,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 477,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82,
+            "width": 456,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "04164db7f4fea81908608130277cedd3d6f9003e24822255d2f11f8405ad5e4f",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b180-system-dark-compact",
+      "asset": "open-two-b180-system-dark-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "084858a8cc3bc07296d4336a01e6c4a0b1b20fc0a47c0f4a8313362ed5469be9",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:44:20.777Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 426,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 951,
+        "visualHeight": 618,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000007,
+            "y": 18.26666666666665,
+            "width": 464.1,
+            "height": 30.800000000000068
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "2179b349f8ce018db9fd0a131bbf5e67088331a091010062902a69df23821a73",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "expanded",
+      "id": "open-two-b270-system-dark-expanded",
+      "asset": "open-two-b270-system-dark-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "63027cc798cf9807aa5e0b372861b85c7508081b7ee7dac5702f9a2a7b7c3ae2",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:45:00.218Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 825,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 669,
+        "visualHeight": 825,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 50,
+            "y": 82.00000000000006,
+            "width": 283,
+            "height": 32
+          },
+          "selected": true
+        },
+        {
+          "identifier": "TabBarTab",
+          "framePoints": {
+            "x": 336,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          },
+          "selected": false
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.3333333333333,
+            "y": 26.000000000000057,
+            "width": 29.666666666666686,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "CloseTabBarItemButton",
+          "framePoints": {
+            "x": 18,
+            "y": 82.00000000000006,
+            "width": 32,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 241,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 336,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 18,
+            "y": 82.00000000000006,
+            "width": 315,
+            "height": 32
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "c9dc7ef054c00e659d3e18016b92571f03ad0e4a867b31cfee8d62f1af9545c0",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 2,
+      "chrome": "compact",
+      "id": "open-two-b270-system-dark-compact",
+      "asset": "open-two-b270-system-dark-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "50ff6e7f9bdd7ebe6a981a2b2314c9ee6b26b88ee41888d449c82264413da1c4",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:45:12.217Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 447,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 669,
+        "visualHeight": 900,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999998,
+            "y": 18.266666666666723,
+            "width": 266.7000000000001,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "963ad659268288931e2574a42a6fb0f793beee822288b44a749223f7cbe8a095",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b000-system-dark-expanded",
+      "asset": "open-one-b000-system-dark-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "35b311db64df8439259496a91e2eaf2bdd42d1e73d666c5e863157f19df5bb25",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:45:45.911Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 589,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 951,
+        "visualHeight": 589,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 25.999999999999943,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 25.999999999999943,
+            "width": 360,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "7084ea3622a8b4b25968ca3762c238703cd1e46e4367825b752cd311be2d5ca3",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 0,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b000-system-dark-compact",
+      "asset": "open-one-b000-system-dark-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "41fb795e51d2606e85e3e1edaa94155e24e989e1b55d78cc475908a26af68831",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        746,
+        263,
+        1287,
+        656
+      ],
+      "capturedAt": "2026-10-22T21:46:01.865Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 491,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-secondary",
+        "orientationAngle": 270,
+        "visualWidth": 951,
+        "visualHeight": 618,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": -5.684341886080802e-14,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000016,
+            "y": 18.26666666666661,
+            "width": 464.0999999999999,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "66f9f56bd12d16aed745109fc7e2fc23bfc1b7746d49f1fb2cf95253f9b911ca",
+      "bodyOrientation": "portrait"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b090-system-dark-expanded",
+      "asset": "open-one-b090-system-dark-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "4ac1079e6fc089ee3cda4e21c083298d92a5dd19ca7d93186bf7bb2304eadc78",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:46:46.344Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 871,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180,
+        "visualWidth": 669,
+        "visualHeight": 871,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.33333333333337,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26,
+            "width": 241,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "f6233455bb8df06b5c208fc7a0171424602a381de7098edf32cc59a796071c7c",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 90,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b090-system-dark-compact",
+      "asset": "open-one-b090-system-dark-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "150d96f37af4aaaa8d2ca728bbafb9237a9e0ea9a441bb3c5aa8ef682043743d",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        820,
+        190,
+        1214,
+        731
+      ],
+      "capturedAt": "2026-10-22T21:47:28.462Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 493,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-secondary",
+        "orientationAngle": 180,
+        "visualWidth": 669,
+        "visualHeight": 900,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999986,
+            "y": 18.266666666666765,
+            "width": 266.70000000000016,
+            "height": 30.79999999999984
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "b9826dd6708f6e169e2c0056e19d87313dd6c13ec921c6acc395e82c1e1c779a",
+      "bodyOrientation": "landscapeRight"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b180-system-dark-expanded",
+      "asset": "open-one-b180-system-dark-expanded.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "6bd2c1714db4c6b813d2a3d817e1d1e4425442cb7c60e5be7e7883e923fc3f6c",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:48:12.229Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 589,
+        "scrollY": 0,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 951,
+        "visualHeight": 589,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 719,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 763,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 616.6666666666667,
+            "y": 26,
+            "width": 29.66666666666663,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 295.33333333333337,
+            "y": 26,
+            "width": 360,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "69ea25b3a5f170ce321d66c619f26ad4d06df4517389e5770bbfb9ad9efcf72c",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 180,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b180-system-dark-compact",
+      "asset": "open-one-b180-system-dark-compact.webp",
+      "contentLayout": "landscape",
+      "layoutGroup": "open-landscape",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "fc04e96aaff6d562ac86e225e2aebeffeb7d161b0eb37c32f49262e2e4fec110",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        745,
+        264,
+        1286,
+        658
+      ],
+      "capturedAt": "2026-10-22T21:48:24.694Z",
+      "viewportCssPx": {
+        "innerWidth": 951,
+        "innerHeight": 618,
+        "scrollY": 472,
+        "documentHeight": 4367,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "landscape-primary",
+        "orientationAngle": 90,
+        "visualWidth": 951,
+        "visualHeight": 618,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 0,
+        "width": 951,
+        "height": 669
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 243.45000000000007,
+            "y": 18.26666666666665,
+            "width": 464.1,
+            "height": 30.800000000000068
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "2382fbe95ed3981909d77a5aba72ca52fde368d728256ebac76457f186a0003e",
+      "bodyOrientation": "portraitUpsideDown"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "expanded",
+      "id": "open-one-b270-system-dark-expanded",
+      "asset": "open-one-b270-system-dark-expanded.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "29ec923a53884e20fcb3509569d313eade74c42812b698b5714beafd6cebd6e2",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:49:40.328Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 870,
+        "scrollY": 0,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 669,
+        "visualHeight": 870,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "SidebarButton",
+          "framePoints": {
+            "x": 72,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "BackButton",
+          "framePoints": {
+            "x": 16,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "NewTabButton",
+          "framePoints": {
+            "x": 437,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabOverviewButton",
+          "framePoints": {
+            "x": 481,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "MoreMenuButton",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 44,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "ReloadButton",
+          "framePoints": {
+            "x": 386.3333333333333,
+            "y": 26.000000000000057,
+            "width": 29.666666666666686,
+            "height": 44
+          }
+        },
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 184,
+            "y": 26.000000000000057,
+            "width": 241,
+            "height": 44
+          }
+        }
+      ],
+      "nativeGesture": "up",
+      "nativeReceiptSha256": "03d4c1cde9f3dae23b19b3cd18f3891a4da900dfb1d3a18843313a12f8832c64",
+      "bodyOrientation": "landscapeLeft"
+    },
+    {
+      "fold": "open",
+      "bodyAngleClockwise": 270,
+      "appearance": "dark",
+      "tabCount": 1,
+      "chrome": "compact",
+      "id": "open-one-b270-system-dark-compact",
+      "asset": "open-one-b270-system-dark-compact.webp",
+      "contentLayout": "portrait",
+      "layoutGroup": "open-portrait",
+      "nativeSceneToCanvasClockwise": 0,
+      "sourceSha256": "b69faf80ba28094fe21f38a392172ff0bd9f72c8aed9f7ae98a61873dfdd039a",
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sourceCropPixels": [
+        818,
+        189,
+        1212,
+        730
+      ],
+      "capturedAt": "2026-10-22T21:49:52.478Z",
+      "viewportCssPx": {
+        "innerWidth": 669,
+        "innerHeight": 900,
+        "scrollY": 493,
+        "documentHeight": 4403,
+        "screenWidth": 466,
+        "screenHeight": 678,
+        "devicePixelRatio": 3,
+        "orientationType": "portrait-primary",
+        "orientationAngle": 0,
+        "visualWidth": 669,
+        "visualHeight": 900,
+        "visualOffsetTop": 0,
+        "visualScale": 1
+      },
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "fixtureSourceSha256": "bd4bc90d566bd2b834fdb997240f9f589815cab229f66eaae92da682d3ea1cea",
+      "nativeWebViewFramePoints": {
+        "x": 0,
+        "y": 5.684341886080802e-14,
+        "width": 669,
+        "height": 951
+      },
+      "nativeComponents": [
+        {
+          "identifier": "TabBarItemTitleContainer",
+          "framePoints": {
+            "x": 201.14999999999998,
+            "y": 18.266666666666723,
+            "width": 266.7000000000001,
+            "height": 30.799999999999997
+          }
+        }
+      ],
+      "nativeGesture": "down",
+      "nativeReceiptSha256": "053f393774307012ceac6cbffe028598ae3d2107565f2789fc19b25c50be2b0a",
+      "bodyOrientation": "landscapeLeft"
+    }
+  ],
+  "colorConditions": [
+    {
+      "id": "condition-light-page-dark-meta",
+      "systemAppearance": "light",
+      "palette": "light",
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": "#101923"
+      },
+      "sourceSha256": "b9c1bfea6013e33c5873ce743c85c4d7d168fd26b75079d90eb341d9bdcbb85e",
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sheetColumn": 0
+    },
+    {
+      "id": "condition-dark-page-light-meta",
+      "systemAppearance": "light",
+      "palette": "dark",
+      "pageColors": {
+        "colorScheme": "light",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": "#eef3f8"
+      },
+      "sourceSha256": "5bd33c44b0421394c119657fbd8d5af8bc19b89927b9a442dd95cc31ecf6bbdb",
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sheetColumn": 1
+    },
+    {
+      "id": "condition-system-dark-page-light",
+      "systemAppearance": "dark",
+      "palette": "light",
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(238, 243, 248)",
+        "themeColor": null
+      },
+      "sourceSha256": "8ff2da739cfc90d0ba5b94515ef52946664fdb752b001a612097d0d6446f70c9",
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sheetColumn": 2
+    },
+    {
+      "id": "condition-system-dark-page-auto",
+      "systemAppearance": "dark",
+      "palette": "auto",
+      "pageColors": {
+        "colorScheme": "dark",
+        "pageBackground": "rgb(16, 25, 35)",
+        "themeColor": null
+      },
+      "sourceSha256": "1fef35e80af31d6ccdab7649facaa29cb77f4adf7239a0bfc4c66e1183c4b382",
+      "sourceCropPixels": [
+        871,
+        261,
+        1163,
+        657
+      ],
+      "sourceSizePixels": [
+        1792,
+        913
+      ],
+      "sheetColumn": 3
+    }
+  ]
+}
