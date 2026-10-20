@@ -24,4 +24,6 @@ Comparison uses equal-size decoded RGBA pixels and optional explicit crops/exclu
 
 `serve` binds only to loopback and serves the fixed calibration page, JavaScript and stylesheet. `capture-macos`, `open-safari` and `safari-probe` require macOS/Xcode and an explicitly supplied simulator. The XCUITest project is `scripts/DeviceHubUITests`. Probe output must be a new directory; new sessions record tool source/lock hashes and copy fresh source snapshots without changing old captures. `validate-mask` additionally requires Poppler's `pdftoppm`, an independently verified scale and the original local PDF. `validate-video` requires an original encoded video, decoded frames and the expected source SHA-256 from the [Swift inspector](../swift/README.md); legacy metadata requires `--source-sha256`.
 
+The receiver also serves `web/document-end.html` at `/document-end.html`: a 2400-CSS-pixel striped fixture with full-width/narrow/absent fixed-footer controls, live DOM measurements and **Save observation**. Use it to compare presented windows at document end without modifying layout or scroll extents.
+
 The [archive](../archive/README.md) preserves original cohort extraction and independent geometry verifiers. Those fixed-layout programs are not maintained generic commands and are not needed to run the application from public configuration.

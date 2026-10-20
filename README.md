@@ -24,9 +24,11 @@ mise exec -- just serve
 mise exec -- just dev
 ```
 
-Select Safari/immersive, Closed/Open and **Body +90°**. **Multiple tabs** selects the Open shell variant, not real browser tabs. macOS Fit preserves CSS dimensions while scaling presentation. The app supports persisted English, 简体中文 and system-default language choices.
+Open any http/https page from the address bar: Enter navigates, and back/forward, reload/stop, loading progress and failures with **Retry** follow the active native browser. **Calibration page** opens the local receiver page, the only page that receives measurement labels. The settings sidebar groups Device (fold, **Body +90°**), Container (Safari/immersive, **Multi-tab strip**), Preview (1:1 or Fit, outline) and Appearance (language, light/dark theme); material tuning and diagnostics are collapsible. **Multi-tab strip** selects the Open shell variant, not real browser tabs. Fit scales presentation to the available preview area while preserving CSS dimensions.
 
-**Save state** writes checkout diagnostics to ignored `captures/desktop-validation/container-modes/`; installed apps use local application data under `DevDuo/captures`. `DEVDUO_OUTPUT_DIR` changes that location and `DEVDUO_URL` changes the initial URL. Original receiver measurements and desktop reproduction records remain separate.
+Host settings except the body angle persist between launches; **Reset settings** returns to Safari · Closed · body 0° · 1:1. Shortcuts: ⌘L/Ctrl+L address, ⌘R/Ctrl+R or F5 reload, ⌘[ ⌘] or Alt+←/→ history, ⌘S/Ctrl+S save state, ⌘\\/Ctrl+\\ settings. The app supports persisted English, 简体中文 and system-default language choices.
+
+**Save state** writes checkout diagnostics to ignored `captures/desktop-validation/container-modes/`; installed apps use local application data under `DevDuo/captures`. `DEVDUO_OUTPUT_DIR` changes that location and `DEVDUO_URL` overrides the remembered initial URL. Original receiver measurements and desktop reproduction records remain separate.
 
 ## Status
 

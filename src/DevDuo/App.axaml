@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:suki="https://github.com/kikipoulet/SukiUI"
+             x:Class="DevDuo.App"
+             RequestedThemeVariant="Default">
+  <!-- SukiUI supplies control themes; DevDuo styles add host tokens and classes. Neither styles the measured device scene. -->
+  <Application.Styles>
+    <suki:SukiTheme ThemeColor="Blue" />
+    <StyleInclude Source="avares://DevDuo/Styles/DevDuoStyles.axaml" />
+  </Application.Styles>
+</Application>

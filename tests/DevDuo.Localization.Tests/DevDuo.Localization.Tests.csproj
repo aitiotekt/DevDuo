@@ -8,6 +8,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/DevDuo/AppLocalization.cs" Link="AppLocalization.cs" />
+    <Compile Include="../../src/DevDuo/PreferenceStore.cs" Link="PreferenceStore.cs" />
+    <Compile Include="../../src/DevDuo/CalibrationUrl.cs" Link="CalibrationUrl.cs" />
+    <Compile Include="../../src/DevDuo/NavigationState.cs" Link="NavigationState.cs" />
     <Compile Include="../../src/DevDuo/DeviceProfile.cs" Link="DeviceProfile.cs" />
     <Compile Include="../../src/DevDuo/SafariScene.cs" Link="SafariScene.cs" />
     <Compile Include="../../src/DevDuo/SafariContainerOptions.cs" Link="SafariContainerOptions.cs" />

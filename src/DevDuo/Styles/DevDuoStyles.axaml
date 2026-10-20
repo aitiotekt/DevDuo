@@ -1,0 +1,149 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:suki="https://github.com/kikipoulet/SukiUI">
+  <!--
+    DevDuo host tokens. Values apply only to Avalonia host controls; the native device scene
+    (masks, Safari widgets, tab text, viewport reservations) is drawn by the platform renderers.
+    Text brushes are chosen for at least 4.5:1 contrast on the SukiUI card backgrounds.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="DevDuoHintBrush" Color="#555A64" />
+          <SolidColorBrush x:Key="DevDuoErrorBrush" Color="#B42318" />
+          <SolidColorBrush x:Key="DevDuoSuccessBrush" Color="#1E7034" />
+          <SolidColorBrush x:Key="DevDuoDividerBrush" Color="#E3E5EA" />
+          <SolidColorBrush x:Key="DevDuoPreviewBrush" Color="#ECEFF4" />
+          <SolidColorBrush x:Key="DevDuoChromeBrush" Color="#F8F9FB" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="DevDuoHintBrush" Color="#B4BAC4" />
+          <SolidColorBrush x:Key="DevDuoErrorBrush" Color="#FF8A80" />
+          <SolidColorBrush x:Key="DevDuoSuccessBrush" Color="#7BD88F" />
+          <SolidColorBrush x:Key="DevDuoDividerBrush" Color="#33363D" />
+          <SolidColorBrush x:Key="DevDuoPreviewBrush" Color="#16181C" />
+          <SolidColorBrush x:Key="DevDuoChromeBrush" Color="#202227" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+
+      <!-- Spacing scale: 4 / 8 / 12 / 16 / 24 device-independent pixels. -->
+      <Thickness x:Key="DevDuoGroupPadding">14,12</Thickness>
+      <Thickness x:Key="DevDuoGroupMargin">0,0,0,12</Thickness>
+      <Thickness x:Key="DevDuoToolbarPadding">12,8</Thickness>
+      <Thickness x:Key="DevDuoStatusPadding">16,6</Thickness>
+      <CornerRadius x:Key="DevDuoGroupRadius">12</CornerRadius>
+      <x:Double x:Key="DevDuoControlHeight">32</x:Double>
+      <x:Double x:Key="DevDuoIconSize">16</x:Double>
+      <x:Double x:Key="DevDuoSidebarWidth">300</x:Double>
+      <FontFamily x:Key="DevDuoMetricFont">Menlo, Consolas, Cascadia Mono, monospace</FontFamily>
+
+      <!-- First-party 24 × 24 glyphs; navigation glyphs come from SukiUI.Content.Icons. -->
+      <StreamGeometry x:Key="DevDuoIconStop">M7,7 H17 V17 H7 Z</StreamGeometry>
+      <StreamGeometry x:Key="DevDuoIconSave">M11,3 H13 V12.2 L16.6,8.6 L18,10 L12,16 L6,10 L7.4,8.6 L11,12.2 Z M5,18 H19 V20 H5 Z</StreamGeometry>
+      <StreamGeometry x:Key="DevDuoIconSidebar">F1 M3,4 H21 V20 H3 Z M5,6 V18 H9 V6 Z M11,6 V18 H19 V6 Z</StreamGeometry>
+      <StreamGeometry x:Key="DevDuoIconRotate">F1 M6,2 H14 C15.1,2 16,2.9 16,4 V11 H14 V4 H6 V20 H11 V22 H6 C4.9,22 4,21.1 4,20 V4 C4,2.9 4.9,2 6,2 Z M17,13 L21,17 L17,21 V18 H13 V16 H17 Z</StreamGeometry>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock.section-title">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="TextBlock.field-label">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Margin" Value="0,4,0,4" />
+  </Style>
+  <Style Selector="TextBlock.hint">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource DevDuoHintBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.error, SelectableTextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource DevDuoErrorBrush}" />
+  </Style>
+  <Style Selector="TextBlock.success">
+    <Setter Property="Foreground" Value="{DynamicResource DevDuoSuccessBrush}" />
+  </Style>
+  <Style Selector="SelectableTextBlock.metric, TextBlock.metric">
+    <Setter Property="FontFamily" Value="{StaticResource DevDuoMetricFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <!-- Surfaces. Host components derive from Border, so selectors use :is(Border).
+       The root is opaque: host surfaces never depend on the animated window background. -->
+  <Style Selector="Grid.host-root">
+    <Setter Property="Background" Value="{DynamicResource DevDuoChromeBrush}" />
+  </Style>
+  <Style Selector=":is(Border).toolbar">
+    <Setter Property="Padding" Value="{StaticResource DevDuoToolbarPadding}" />
+    <Setter Property="Background" Value="{DynamicResource DevDuoChromeBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DevDuoDividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector=":is(Border).status-bar">
+    <Setter Property="Padding" Value="{StaticResource DevDuoStatusPadding}" />
+    <Setter Property="Background" Value="{DynamicResource DevDuoChromeBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DevDuoDividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+  </Style>
+  <Style Selector=":is(Border).sidebar">
+    <Setter Property="Background" Value="{DynamicResource DevDuoChromeBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DevDuoDividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+  <Style Selector=":is(Border).preview-surface">
+    <Setter Property="Background" Value="{DynamicResource DevDuoPreviewBrush}" />
+  </Style>
+  <Style Selector="suki|GlassCard.setting-group">
+    <Setter Property="Padding" Value="{StaticResource DevDuoGroupPadding}" />
+    <Setter Property="Margin" Value="{StaticResource DevDuoGroupMargin}" />
+    <Setter Property="CornerRadius" Value="{StaticResource DevDuoGroupRadius}" />
+    <Setter Property="IsAnimated" Value="False" />
+  </Style>
+
+  <!-- Controls -->
+  <Style Selector="Button.toolbar">
+    <Setter Property="Width" Value="{StaticResource DevDuoControlHeight}" />
+    <Setter Property="Height" Value="{StaticResource DevDuoControlHeight}" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.toolbar PathIcon">
+    <Setter Property="Width" Value="{StaticResource DevDuoIconSize}" />
+    <Setter Property="Height" Value="{StaticResource DevDuoIconSize}" />
+  </Style>
+  <Style Selector="Button.command">
+    <Setter Property="MinHeight" Value="{StaticResource DevDuoControlHeight}" />
+    <Setter Property="Padding" Value="12,4" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <!-- Inapplicable settings must read as unavailable; the adjacent hint explains why. -->
+  <Style Selector="ToggleSwitch:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+  <Style Selector="RadioButton.Chips">
+    <Setter Property="Margin" Value="0,0,6,6" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="TextBox.address">
+    <Setter Property="MinHeight" Value="{StaticResource DevDuoControlHeight}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ProgressBar.address-progress">
+    <Setter Property="Height" Value="2" />
+    <Setter Property="MinHeight" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="Margin" Value="10,0,10,1" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+</Styles>

@@ -17,6 +17,13 @@ test-python:
 test-localization:
     dotnet run --project tests/DevDuo.Localization.Tests -p:RestoreLockedMode=true
 
+# Actual AppKit frame behavior; supplements the presented-window acceptance on macOS.
+[macos]
+test-macos:
+    mkdir -p temp/build/native-tests temp/cache/swift-tests
+    xcrun swiftc -parse-as-library src/DevDuo/macos/WebViewBridge.swift tests/macos/NativeLayoutTests.swift -module-cache-path temp/cache/swift-tests -framework AppKit -framework WebKit -framework QuartzCore -o temp/build/native-tests/native-layout-tests
+    temp/build/native-tests/native-layout-tests
+
 lint:
     pnpm lint
 

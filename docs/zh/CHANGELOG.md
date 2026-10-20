@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 恢复 macOS 文档末端原生 canvas 底色，补充实色通栏 fixed 底栏颜色延伸，并在布局后同步原生预览位置。
+- 基于 Avalonia 12 和 SukiUI 重建宿主界面：真实地址栏绑定 WKWebView/WebView2 导航状态，并提供分组设置、状态栏、明暗主题、快捷键、无障碍标签和宿主设置持久化（不含机身角度）。标定标签只附加到本地接收器页面并保留 query 与 fragment；呈现变化保留已加载页面。
 - 将 15 篇技术指南合并为 8 篇，以一份日常开发指南和按任务分组的中英文导航减少重复阅读。
 - 根据元数据生成 Checks 平台矩阵，关闭尚未验证的 Linux 检查和发布。
 - 增加 `devduo-metadata.toml` 作为发布配置来源，支持版本同步设置、递增和一致性检查。
@@ -16,6 +18,6 @@
 - 按编号整理中英文文档及 VitePress 文档站，强制相对符号链接及语言源文件配对检查。
 - 将 macOS WKWebView 桥接移入 `src/DevDuo/macos`，将 Device Hub XCUITest 探针移入 `scripts/DeviceHubUITests`。
 
-Windows 原生运行验收和宿主 UI 改进仍待完成。本节记录开发工作，不表示已经发布发行版，详见[验证记录](003-CALIBRATION-WORKFLOW.md)和[路线图](100-ROADMAP.md)。
+Windows 原生运行验收（包括新的宿主界面）仍待完成。本节记录开发工作，不表示已经发布发行版，详见[验证记录](003-CALIBRATION-WORKFLOW.md)和[路线图](100-ROADMAP.md)。
 
 [English](../../CHANGELOG.md) | [中文](CHANGELOG.md)

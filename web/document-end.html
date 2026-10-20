@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>DevDuo document-end probe</title>
+    <style>
+      * { box-sizing: border-box; }
+      html { background: #18b9a8; }
+      body { margin: 0; font: 14px monospace; }
+      #rows { height: 2400px; }
+      .row { height: 40px; padding: 10px 6px; border-bottom: 1px solid #223; background: #ffe2a8; }
+      .row:nth-child(even) { background: #cde6ff; }
+      #controls { position: fixed; z-index: 5; top: 0; left: 0; right: 0; padding: 3px; background: #fff9; }
+      button { margin: 2px; padding: 5px; font: 12px sans-serif; }
+      #status { margin: 2px; white-space: pre-wrap; font-size: 12px; }
+      #fixed { position: fixed; z-index: 4; bottom: 0; left: 0; right: 0; height: 28px; padding: 4px; color: white; background: #791ac2; }
+      #fixed.narrow { right: auto; width: 150px; }
+    </style>
+  </head>
+  <body>
+    <main id="rows"></main>
+    <nav id="controls">
+      <button data-y="0">Top</button><button data-y="1000">Middle</button>
+      <button data-y="1770">Near end</button><button id="end">End</button>
+      <button data-variant="full">Full footer</button><button data-variant="narrow">Narrow marker</button>
+      <button data-variant="none">No fixed</button><button id="save">Save observation</button>
+      <pre id="status"></pre>
+    </nav>
+    <footer id="fixed">FIXED BOTTOM purple</footer>
+    <script>
+      const rows = document.getElementById('rows');
+      const footer = document.getElementById('fixed');
+      const status = document.getElementById('status');
+      let variant = 'full';
+      for (let i = 0; i < 60; i++) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.textContent = `FLOW ${i * 40} .. ${(i + 1) * 40}`;
+        rows.append(row);
+      }
+      function setVariant(value) {
+        if (!['full', 'narrow', 'none'].includes(value)) throw new Error('Unknown footer variant');
+        variant = value;
+        footer.hidden = value === 'none';
+        footer.classList.toggle('narrow', value === 'narrow');
+        observe();
+      }
+      function observe() {
+        const rect = footer.getBoundingClientRect();
+        const doc = document.documentElement;
+        const result = {
+          schemaVersion: 1, recordType: 'document-end-fixture',
+          labels: { variant },
+          environment: { url: location.href, userAgent: navigator.userAgent },
+          viewport: { innerWidth, innerHeight, scrollY, scrollHeight: doc.scrollHeight,
+            maxScrollY: Math.max(0, doc.scrollHeight - innerHeight),
+            remaining: doc.scrollHeight - scrollY - innerHeight },
+          components: { fixed: { hidden: footer.hidden, x: rect.x, y: rect.y,
+            width: rect.width, height: rect.height, bottom: rect.bottom } },
+          desktop: window.devduoShellObservation || null,
+          container: window.devduoContainerTelemetry || null
+        };
+        const text = `Y=${scrollY} H=${innerHeight} DOC=${doc.scrollHeight} R=${result.viewport.remaining}\n`
+          + `${variant} fixed.bottom=${rect.bottom} viewport=${innerWidth}x${innerHeight}`;
+        // Avoid a mutation/report loop with the app's read-only observer.
+        if (status.textContent !== text) status.textContent = text;
+        window.devduoDocumentEndObservation = result;
+        return result;
+      }
+      function scrollEnd() { scrollTo(0, document.documentElement.scrollHeight - innerHeight); }
+      document.querySelectorAll('[data-y]').forEach(button => {
+        button.onclick = () => scrollTo(0, Number(button.dataset.y));
+      });
+      document.querySelectorAll('[data-variant]').forEach(button => {
+        button.onclick = () => setVariant(button.dataset.variant);
+      });
+      document.getElementById('end').onclick = scrollEnd;
+      document.getElementById('save').onclick = async () => {
+        const response = await fetch('/api/measurements', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(observe())
+        });
+        if (!response.ok) throw new Error(`Observation was not saved: HTTP ${response.status}`);
+      };
+      window.devduoDocumentEndProbe = { setVariant, scrollEnd, observe };
+      addEventListener('scroll', observe, { passive: true });
+      addEventListener('resize', observe);
+      setInterval(observe, 500);
+      setVariant(new URLSearchParams(location.search).get('fixed') || 'full');
+    </script>
+  </body>
+</html>

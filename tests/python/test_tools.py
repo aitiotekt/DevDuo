@@ -398,6 +398,9 @@ class ReceiverTest(unittest.TestCase):
     def test_concurrent_unicode_persistence_and_invalid_records(self):
         self.assertEqual(json.load(urllib.request.urlopen(self.url + "/health"))["status"], "ok")
         self.assertIn(b"viewport-fit=cover", urllib.request.urlopen(self.url + "/").read())
+        with urllib.request.urlopen(self.url + "/document-end.html?fixed=narrow") as response:
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(response.read(), (ROOT / "web/document-end.html").read_bytes())
 
         def post(index):
             body = json.dumps(

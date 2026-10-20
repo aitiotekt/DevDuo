@@ -16,7 +16,7 @@ public sealed class AppLocalization
     public static readonly string[] SupportedLanguages = ["en", "zh-Hans"];
     private static readonly Dictionary<string, Dictionary<string, string>> Catalogs =
         SupportedLanguages.ToDictionary(language => language, LoadCatalog);
-    public static AppLocalization Current { get; } = new();
+    public static AppLocalization Current { get; } = new(PreferenceStore.Default);
     public string Preference { get; private set; } = SystemLanguage;
     public string Language { get; private set; } = "en";
     public CultureInfo Culture => CultureInfo.GetCultureInfo(Language == "zh-Hans" ? "zh-CN" : "en-US");
@@ -26,40 +26,21 @@ public sealed class AppLocalization
     public bool PreferenceErrorOnRead { get; private set; }
 
     public AppLocalization(string? preferencePath = null, CultureInfo? systemCulture = null)
+        : this(new PreferenceStore(preferencePath ?? PreferenceStore.DefaultPath), systemCulture) { }
+
+    // The store owns the shared preferences file; host settings written elsewhere are preserved.
+    public AppLocalization(PreferenceStore store, CultureInfo? systemCulture = null)
     {
-        this.preferencePath = preferencePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevDuo", "preferences.json");
+        this.store = store;
         this.systemCulture = systemCulture ?? CultureInfo.CurrentUICulture;
-        try
-        {
-            if (File.Exists(this.preferencePath))
-            {
-                using var document = JsonDocument.Parse(File.ReadAllText(this.preferencePath));
-                var root = document.RootElement;
-                if (root.ValueKind == JsonValueKind.Object &&
-                    root.TryGetProperty("schemaVersion", out var version) &&
-                    version.ValueKind == JsonValueKind.Number &&
-                    version.TryGetInt32(out var schemaVersion) && schemaVersion == 1 &&
-                    root.TryGetProperty("language", out var value) && value.ValueKind == JsonValueKind.String)
-                {
-                    Preference = NormalizePreference(value.GetString());
-                }
-                else
-                {
-                    preferenceErrorResourceKey = "Error.Preferences";
-                    PreferenceErrorOnRead = true;
-                }
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            preferenceError = error.Message;
-            PreferenceErrorOnRead = true;
-        }
+        preferenceError = store.ReadError;
+        preferenceErrorResourceKey = store.ReadErrorResourceKey;
+        PreferenceErrorOnRead = preferenceError is not null || preferenceErrorResourceKey is not null;
+        Preference = NormalizePreference(store.Language);
         Language = ResolveLanguage(Preference, this.systemCulture);
     }
 
-    private readonly string preferencePath;
+    private readonly PreferenceStore store;
     private readonly CultureInfo systemCulture;
     public static string NormalizePreference(string? language) =>
         SupportedLanguages.Contains(language, StringComparer.Ordinal) ? language! : SystemLanguage;
@@ -79,35 +60,11 @@ public sealed class AppLocalization
     {
         Preference = NormalizePreference(language);
         Language = ResolveLanguage(Preference, systemCulture);
-        preferenceError = null;
         preferenceErrorResourceKey = null;
         PreferenceErrorOnRead = false;
-        var temporary = preferencePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(preferencePath))!);
-            File.WriteAllText(temporary, JsonSerializer.Serialize(new
-            {
-                schemaVersion = 1,
-                language = Preference
-            }));
-            File.Move(temporary, preferencePath, true);
-            return true;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            preferenceError = error.Message;
-            return false; // The current session still uses the selected language.
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(temporary))
-                    File.Delete(temporary);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        }
+        // The current session still uses the selected language when the write fails.
+        preferenceError = store.SaveLanguage(Preference) ? null : store.WriteError;
+        return preferenceError is null;
     }
 
     public string Text(string key) => Lookup(Language, key);

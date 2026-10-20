@@ -24,9 +24,11 @@ mise exec -- just serve
 mise exec -- just dev
 ```
 
-选择 Safari/沉浸、折叠/展开，使用**机身 +90°** 切换角度。**多标签页栏**表示展开外壳变体，不管理真实标签。macOS Fit 保留 CSS 尺寸并缩放呈现。应用支持持久化的 English、简体中文和系统默认语言选择。
+在地址栏打开任意 http/https 页面：按 Enter 导航，后退/前进、重新加载/停止、加载进度以及带**重试**的失败状态均跟随当前原生浏览器。**标定页**打开本地接收器页面，只有该页面会附加测量标签。设置侧栏分为设备（形态、**机身 +90°**）、容器（Safari/沉浸、**多标签页栏**）、预览（1:1 或适应、外框）和外观（语言、浅色/深色主题）；材质调节和诊断可折叠。**多标签页栏**表示展开外壳变体，不管理真实标签。适应预览按可用预览区域缩放呈现，并保留 CSS 尺寸。
 
-**保存状态**在源码检出中写入忽略的 `captures/desktop-validation/container-modes/`，独立安装使用本地应用数据的 `DevDuo/captures`。`DEVDUO_OUTPUT_DIR` 修改该位置，`DEVDUO_URL` 修改初始网址。接收器原始测量与桌面复现记录独立保留。
+除机身角度外的宿主设置会在启动之间保留；**重置设置**恢复 Safari · 折叠 · 机身 0° · 1:1。快捷键：⌘L/Ctrl+L 地址栏，⌘R/Ctrl+R 或 F5 重新加载，⌘[ ⌘] 或 Alt+←/→ 历史，⌘S/Ctrl+S 保存状态，⌘\\/Ctrl+\\ 设置。应用支持持久化的 English、简体中文和系统默认语言选择。
+
+**保存状态**在源码检出中写入忽略的 `captures/desktop-validation/container-modes/`，独立安装使用本地应用数据的 `DevDuo/captures`。`DEVDUO_OUTPUT_DIR` 修改该位置，`DEVDUO_URL` 覆盖记住的初始网址。接收器原始测量与桌面复现记录独立保留。
 
 ## 当前状态
 

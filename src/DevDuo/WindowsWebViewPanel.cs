@@ -17,14 +17,20 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     private readonly ChromeSurface address = new(), back = new(), bookmarks = new(), tabs = new(), top = new();
     private readonly System.Windows.Forms.Timer colorTimer = new() { Interval = 200 };
     private SafariContainerOptions options;
-    private string target, host = "127.0.0.1", title = "Safari approximation", tintSource = "initial fallback";
-    private bool compact, hasTheme, capturing;
+    private string? target;
+    private string host = "127.0.0.1", title = "Safari approximation", tintSource = "initial fallback";
+    private bool compact, hasTheme, capturing, loading;
+    private NavigationError? navigationError;
+    public event Action<NavigationState>? NavigationChanged;
+    public event Action<HostCommand>? CommandRequested;
     private double scrollY, actualWidth, actualHeight;
     private System.Windows.Forms.Label? initializationError;
     private string? initializationErrorDetail;
+    private string? pendingHtml;
     private string Ui(string key) => options.UiStrings.TryGetValue(key, out var value) ? value : AppLocalization.Lookup("en", key);
     private Color tintColor = Color.FromArgb(239, 243, 248);
-    public WindowsWebViewPanel(DeviceProfile geometry, string url, SafariContainerOptions configuration, string observerSource)
+    // A null URL leaves the browser blank until the host loads the color laboratory.
+    public WindowsWebViewPanel(DeviceProfile geometry, string? url, SafariContainerOptions configuration, string observerSource)
     {
         profile = geometry;
         target = url;
@@ -84,12 +90,32 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
                 {
                     compact = false;
                     ApplyLayout();
+                    loading = true;
+                    navigationError = null;
+                    ReportNavigation();
                 };
-                browser.CoreWebView2.Navigate(target);
+                browser.CoreWebView2.SourceChanged += (_, _) => ReportNavigation();
+                browser.CoreWebView2.DocumentTitleChanged += (_, _) => ReportNavigation();
+                browser.CoreWebView2.HistoryChanged += (_, _) => ReportNavigation();
+                browser.CoreWebView2.NavigationCompleted += (_, args) =>
+                {
+                    loading = false;
+                    // A superseded or stopped navigation is not a page failure.
+                    if (!args.IsSuccess && args.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
+                        navigationError = new NavigationError("WebView2:" + args.WebErrorStatus, args.WebErrorStatus.ToString());
+                    ReportNavigation();
+                };
+                if (pendingHtml is not null)
+                    browser.CoreWebView2.NavigateToString(pendingHtml);
+                else if (target is not null)
+                    browser.CoreWebView2.Navigate(target);
+                pendingHtml = null;
             }
             catch (Exception e)
             {
                 initializationErrorDetail = e.Message;
+                navigationError = new NavigationError("WebView2:Initialization", e.Message);
+                ReportNavigation();
                 initializationError = new System.Windows.Forms.Label
                 {
                     ForeColor = Color.Black,
@@ -104,6 +130,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     public void Navigate(string url)
     {
         target = url;
+        pendingHtml = null;
         compact = false;
         ApplyLayout();
         browser.CoreWebView2?.Navigate(url);
@@ -112,7 +139,51 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     {
         compact = false;
         ApplyLayout();
-        browser.CoreWebView2?.NavigateToString(html);
+        if (browser.CoreWebView2 is { } core)
+            core.NavigateToString(html);
+        else
+            pendingHtml = html; // Loaded once asynchronous initialization completes.
+    }
+    public void GoBack()
+    {
+        if (browser.CoreWebView2?.CanGoBack == true)
+            browser.CoreWebView2.GoBack();
+    }
+    public void GoForward()
+    {
+        if (browser.CoreWebView2?.CanGoForward == true)
+            browser.CoreWebView2.GoForward();
+    }
+    public void Reload() => browser.CoreWebView2?.Reload();
+    public void Stop() => browser.CoreWebView2?.Stop();
+    private void ReportNavigation()
+    {
+        if (IsDisposed)
+            return;
+        var core = browser.CoreWebView2;
+        NavigationChanged?.Invoke(new NavigationState(core?.Source ?? target, core?.DocumentTitle, loading, null,
+            core?.CanGoBack == true, core?.CanGoForward == true, navigationError));
+    }
+    // WebView2 forwards unhandled accelerator keys through the WinForms command-key chain.
+    // Runtime behavior is a Windows native acceptance item.
+    protected override bool ProcessCmdKey(ref System.Windows.Forms.Message message, System.Windows.Forms.Keys keys)
+    {
+        HostCommand? command = keys switch
+        {
+            System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.L => HostCommand.FocusAddress,
+            System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.R or System.Windows.Forms.Keys.F5 => HostCommand.Reload,
+            System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Left => HostCommand.Back,
+            System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Right => HostCommand.Forward,
+            System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.S => HostCommand.SaveState,
+            System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.OemPipe => HostCommand.ToggleSettings,
+            _ => null
+        };
+        if (command is { } value)
+        {
+            CommandRequested?.Invoke(value);
+            return true;
+        }
+        return base.ProcessCmdKey(ref message, keys);
     }
     public void Configure(SafariContainerOptions current)
     {

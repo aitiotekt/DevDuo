@@ -1,13 +1,13 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Themes.Fluent;
+using Avalonia.Markup.Xaml;
 namespace DevDuo;
-public sealed class App : Application
+public sealed partial class App : Application
 {
     public override void Initialize()
     {
         Name = "DevDuo";
-        Styles.Add(new FluentTheme());
+        AvaloniaXamlLoader.Load(this);
     }
     public override void OnFrameworkInitializationCompleted()
     {

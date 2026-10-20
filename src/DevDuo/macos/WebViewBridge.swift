@@ -105,7 +105,31 @@ final class GlassPanel:FlippedView {
     override func layout(){super.layout();surface.frame=visualRect;tint.frame=visualRect;content.frame=visualRect}
     override func mouseDown(with event:NSEvent){onClick?()}
 }
+// The view handed to Avalonia. Avalonia moves a native child but does not clip it to scrolling
+// ancestors, so the host sizes this view to the visible preview area and offsets the full-size
+// container inside it. The container's own frame, scene scale and telemetry are unchanged.
+final class ClipHostView:FlippedView {
+    weak var content:NSView?
+    var contentSize=CGSize.zero
+    var contentOffset=CGPoint.zero
+    override init(frame:NSRect){super.init(frame:frame);autoresizesSubviews=false;wantsLayer=true;layer?.masksToBounds=true}
+    required init?(coder:NSCoder){fatalError("init(coder:) not supported")}
+    override func setFrameSize(_ newSize:NSSize){
+        let changed=frame.size != newSize
+        super.setFrameSize(newSize)
+        // NativeControlHost resizes this view after Avalonia layout. AppKit may otherwise
+        // autoresize the content before our explicit full-size/offset layout runs.
+        if changed {needsLayout=true;layoutSubtreeIfNeeded()}
+    }
+    override func layout(){
+        super.layout()
+        // Before the host reports a viewport, the container fills the clip view as an unclipped child would.
+        let size=contentSize == .zero ? bounds.size:contentSize
+        content?.frame=NSRect(x:-contentOffset.x,y:-contentOffset.y,width:size.width,height:size.height)
+    }
+}
 final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigationDelegate {
+    let clipView=ClipHostView()
     var options:[String:Any]
     let web:WKWebView
     let canvas:CGSize
@@ -115,11 +139,17 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
     let titleLabel=NSTextField(labelWithString:"New tab")
     let clock=NSTextField(labelWithString:"")
     let camera=PassiveView(),wifi=NSImageView(),sideBackground=PassiveView()
+    let fixedBottomBackground=PassiveView()
     let tabStrip=TabStripView()
     var buttons:[NSButton]=[]
     var compact=false,scrollPosition:Double=0,lastHost="127.0.0.1",tintColor=NSColor(srgbRed:0.94,green:0.95,blue:0.97,alpha:1)
     var tintSource="initial fallback",snapshotWork:DispatchWorkItem?,latestObservation:[String:Any]=[:]
     var invalidated=false
+    // Host navigation binding. The callback is cleared in invalidate() before the host frees its context.
+    var navigationCallback:NavigationCallback?
+    var navigationContext:UnsafeMutableRawPointer?
+    var navigationObservations:[NSKeyValueObservation]=[]
+    var navigationError:[String:Any]?
     func d(_ key:String,_ fallback:Double)->CGFloat{CGFloat((options[key] as? NSNumber)?.doubleValue ?? fallback)}
     func ui(_ key:String,_ fallback:String)->String{(options["uiStrings"] as? [String:String])?[key] ?? fallback}
     var safari:Bool{options["mode"] as? String == "safari"}
@@ -134,11 +164,16 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
     init(url:String,svg:String,width:Double,height:Double,options:[String:Any],observer:String){
         self.options=options;canvas=CGSize(width:width,height:height);originalMask=maskPath(svg)
         let configuration=WKWebViewConfiguration();web=WKWebView(frame:.zero,configuration:configuration)
-        super.init(frame:.zero);wantsLayer=true
+        super.init(frame:.zero);autoresizesSubviews=false;wantsLayer=true
+        clipView.content=self;clipView.addSubview(self)
         configuration.userContentController.add(self,name:"devduoShell")
         configuration.userContentController.addUserScript(WKUserScript(source:observer,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
-        web.navigationDelegate=self;if #available(macOS 13.3,*){web.isInspectable=true};web.setValue(false,forKey:"drawsBackground")
-        addSubview(web);sideBackground.wantsLayer=true;addSubview(sideBackground)
+        // WebKit owns the canvas and under-page fill, including obscured insets.
+        // Making the view transparent exposes the host's neutral background at document end.
+        web.navigationDelegate=self;if #available(macOS 13.3,*){web.isInspectable=true}
+        addSubview(web)
+        fixedBottomBackground.wantsLayer=true;fixedBottomBackground.isHidden=true;addSubview(fixedBottomBackground)
+        sideBackground.wantsLayer=true;addSubview(sideBackground)
         for p in [topBackground,address,back,bookmarks,tabGroup]{addSubview(p)}
         address.onClick = { [weak self] in self?.compact=false;self?.needsLayout=true }
         addressLabel.alignment = .center;addressLabel.font = .systemFont(ofSize:17,weight:.medium);addressLabel.setAccessibilityLabel(ui("Shell.Address","Safari approximation address"))
@@ -155,9 +190,15 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         makeButton("line.3.horizontal",ui("Shell.Menu","Page menu approximation"),#selector(expand),in:address.content)
         makeButton("arrow.clockwise",ui("Shell.Reload","Reload"),#selector(reload),in:address.content)
         updateLocalizedLabels()
+        observeNavigation()
         if let target=URL(string:url){web.load(URLRequest(url:target))}
     }
     required init?(coder:NSCoder){fatalError("init(coder:) not supported")}
+    override func setFrameSize(_ newSize:NSSize){
+        let changed=frame.size != newSize
+        super.setFrameSize(newSize)
+        if changed {needsLayout=true}
+    }
     func makeButton(_ symbol:String,_ label:String,_ action:Selector,in parent:NSView){
         let b=NSButton(image:NSImage(systemSymbolName:symbol,accessibilityDescription:label) ?? NSImage(),target:self,action:action)
         b.isBordered=false;b.imagePosition = .imageOnly;b.focusRingType = .none;b.imageScaling = .scaleProportionallyDown;b.setAccessibilityLabel(label);b.toolTip=label;parent.addSubview(b);buttons.append(b)
@@ -178,8 +219,54 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
     }
     func navigate(_ url:String){compact=false;needsLayout=true;if let target=URL(string:url){web.load(URLRequest(url:target))}}
     func showHtml(_ html:String){compact=false;needsLayout=true;web.loadHTMLString(html,baseURL:URL(string:"http://devduo.local/"))}
-    func webView(_ webView:WKWebView,didStartProvisionalNavigation navigation:WKNavigation!){compact=false;needsLayout=true}
-    func invalidate(){invalidated=true;snapshotWork?.cancel();web.stopLoading();web.configuration.userContentController.removeScriptMessageHandler(forName:"devduoShell");web.navigationDelegate=nil}
+    func webView(_ webView:WKWebView,didStartProvisionalNavigation navigation:WKNavigation!){
+        compact=false;needsLayout=true
+        latestObservation=[:];fixedBottomBackground.isHidden=true
+        navigationError=nil
+        publishNavigation()
+    }
+    func webView(_ webView:WKWebView,didFinish navigation:WKNavigation!){publishNavigation()}
+    func webView(_ webView:WKWebView,didFail navigation:WKNavigation!,withError error:Error){recordNavigationFailure(error)}
+    func webView(_ webView:WKWebView,didFailProvisionalNavigation navigation:WKNavigation!,withError error:Error){recordNavigationFailure(error)}
+
+    func observeNavigation(){
+        // WebKit delivers these KVO changes on the main thread.
+        let changed:()->Void={ [weak self] in self?.publishNavigation() }
+        navigationObservations=[
+            web.observe(\.url){_,_ in changed()},
+            web.observe(\.title){_,_ in changed()},
+            web.observe(\.isLoading){_,_ in changed()},
+            web.observe(\.canGoBack){_,_ in changed()},
+            web.observe(\.canGoForward){_,_ in changed()},
+            web.observe(\.estimatedProgress){_,_ in changed()}
+        ]
+    }
+    func recordNavigationFailure(_ error:Error){
+        let failure=error as NSError
+        // A superseded or stopped navigation is not a page failure; loading state already reports it.
+        if failure.domain==NSURLErrorDomain && failure.code==NSURLErrorCancelled {publishNavigation();return}
+        navigationError=["code":"\(failure.domain):\(failure.code)","message":failure.localizedDescription]
+        publishNavigation()
+    }
+    func publishNavigation(){
+        guard !invalidated,let callback=navigationCallback else{return}
+        let payload:[String:Any]=[
+            "url":web.url?.absoluteString ?? NSNull(),
+            "title":web.title ?? NSNull(),
+            "isLoading":web.isLoading,
+            "progress":web.estimatedProgress,
+            "canGoBack":web.canGoBack,
+            "canGoForward":web.canGoForward,
+            "error":navigationError ?? NSNull()
+        ]
+        guard let data=try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]),let json=String(data:data,encoding:.utf8) else{return}
+        json.withCString{callback(navigationContext,$0)}
+    }
+    func invalidate(){
+        invalidated=true;navigationCallback=nil;navigationContext=nil
+        navigationObservations.forEach{$0.invalidate()};navigationObservations=[]
+        snapshotWork?.cancel();web.stopLoading();web.configuration.userContentController.removeScriptMessageHandler(forName:"devduoShell");web.navigationDelegate=nil
+    }
     override func layout(){
         super.layout()
         // Scale the native coordinate space, keeping CSS layout at the calibrated scene size.
@@ -276,6 +363,19 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         else {buttons[2].frame=NSRect(x:8*sx,y:9*sy,width:28*sx,height:26*sy);buttons[3].frame=NSRect(x:52*sx,y:9*sy,width:28*sx,height:26*sy)}
         updateAppearance();publishState()
     }
+    func updateFixedBottomBackground(){
+        fixedBottomBackground.isHidden=true
+        guard #available(macOS 26.0,*),safari,side,
+              let rgb=latestObservation["fixedBottomColor"] as? [NSNumber],rgb.count==3 else{return}
+        let insets=web.obscuredContentInsets
+        guard insets.bottom>0 else{return}
+        // A passive color surface outside the layout viewport; it never changes WebKit geometry.
+        fixedBottomBackground.frame=NSRect(x:insets.left,y:bounds.height-insets.bottom,
+            width:max(0,bounds.width-insets.left-insets.right),height:insets.bottom)
+        fixedBottomBackground.layer?.backgroundColor=NSColor(srgbRed:rgb[0].doubleValue/255,
+            green:rgb[1].doubleValue/255,blue:rgb[2].doubleValue/255,alpha:1).cgColor
+        fixedBottomBackground.isHidden=false
+    }
     func updateAppearance(){
         let c=tintColor.usingColorSpace(.sRGB) ?? tintColor
         let alpha=max(0,min(1,d("tintAlpha",0.32))),strength=max(0,min(1,d("glassStrength",0.92))),shadow=Float(max(0,min(1,d("shadowOpacity",0.16))))
@@ -283,6 +383,7 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         if let rgb=latestObservation["rootBackgroundColor"] as? [NSNumber],rgb.count==3 {sideBackground.layer?.backgroundColor=NSColor(srgbRed:rgb[0].doubleValue/255,green:rgb[1].doubleValue/255,blue:rgb[2].doubleValue/255,alpha:1).cgColor}
         let neutral=c.blended(withFraction:0.65,of:NSColor.windowBackgroundColor) ?? c
         layer?.backgroundColor=neutral.cgColor
+        updateFixedBottomBackground()
         let text:NSColor=(c.redComponent*0.2126+c.greenComponent*0.7152+c.blueComponent*0.0722)<0.36 ? .white:.black
         tabStrip.color=text;tabStrip.baseColor=c;tabStrip.needsDisplay=true;for b in buttons{b.contentTintColor=text};addressLabel.textColor=text;titleLabel.textColor=text;clock.textColor=text;wifi.contentTintColor=text
         addressLabel.stringValue=lastHost;titleLabel.stringValue=(latestObservation["title"] as? String) ?? ui("Shell.Title","Safari approximation")
@@ -291,7 +392,6 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
     func userContentController(_ userContentController:WKUserContentController,didReceive message:WKScriptMessage){
         guard !invalidated,let body=message.body as? [String:Any],body["type"] as? String == "devduo-shell-observation" else{return}
         latestObservation=body
-        if let rgb=body["rootBackgroundColor"] as? [NSNumber],rgb.count==3 {web.underPageBackgroundColor=NSColor(srgbRed:rgb[0].doubleValue/255,green:rgb[1].doubleValue/255,blue:rgb[2].doubleValue/255,alpha:1)}
         lastHost=(body["host"] as? String) ?? lastHost
         let y=(body["scrollY"] as? NSNumber)?.doubleValue ?? 0,delta=(body["deltaY"] as? NSNumber)?.doubleValue ?? 0;scrollPosition=y
         let next:Bool
@@ -341,10 +441,11 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
             guard let v=value as? [String:CGFloat] else{return value}
             return ["x":v["x",default:0]*scaleX,"y":v["y",default:0]*scaleY,"width":v["width",default:0]*scaleX,"height":v["height",default:0]*scaleY]
         }
-        return ["schemaVersion":2,"widgetFramesScenePoints":widgetFrames,"nativeWebViewFrameScenePoints":rect(web.frame),"addressHitFrameScenePoints":rect(address.frame),"rotationClockwiseDegrees":d("rotationClockwiseDegrees",0),"sidebarSide":safari && side ? (sidebarLeft ? "left":"right"):"absent","widgetFramesDip":widgetDip,"landscapeStatusWidgetsHidden":landscape && clock.isHidden && wifi.isHidden,"tabStripVisible":safari && !side && !compact && showTabStrip,"tabFontSizeScenePoints":d("tabFontSize",14),"tabStripGeometryScenePoints":tabStrip.isHidden ? []:tabStrip.geometry(),"tabStripRendering":"shared track; native whole-tab container including close control; original hit frames retained","referenceScene":referenceScene["id"] ?? "unmeasured","bodyRotationDegrees":referenceScene["bodyRotationDegrees"] ?? 0,"horizontalInsetFill":"document root color approximation; no duplicated page pixels","layoutCalibration":referenceScene["mappingStatus"] ?? "unmeasured","engine":"macOS system WKWebView","containerMode":safari ? "safari-approximation":"app-webview","chromeState":safari ? (compact ? "compact":"expanded"):"absent","chromeVisible":safari,"addressGeometryActive":safari,"chromeLayout":side ? "closed-side-widgets":"open-top-widgets","scrollY":scrollPosition,"nativeContainerFrameDip":["width":frame.width,"height":frame.height],"renderScale":["x":frame.width/max(1,bounds.width),"y":frame.height/max(1,bounds.height)],"coordinateSpace":"ScenePoints are unscaled screen-coordinate reference units; Dip fields are rendered host points; no physical mm","requestedSceneCssPx":["width":d("logicalWidth",466),"height":d("logicalHeight",678)],"contentRenderingStrategy":safari && side ? "full-native-view-with-obscured-insets":safari ? "reserved-frame-approximation":"full-native-view","underChromeContinuation":safari && side,"obscuredContentInsetsDip":["top":web.obscuredContentInsets.top,"left":web.obscuredContentInsets.left,"bottom":web.obscuredContentInsets.bottom,"right":web.obscuredContentInsets.right],"nativeWebViewFrameDip":dipRect(web.frame),"addressHitFrameDip":dipRect(address.frame),"addressVisualFrameDip":dipRect(NSRect(x:address.frame.minX+address.visualRect.minX,y:address.frame.minY+address.visualRect.minY,width:address.visualRect.width,height:address.visualRect.height)),"actualPageViewport":latestObservation["viewportWidth"].map{["width":$0,"height":latestObservation["viewportHeight"] ?? 0]} ?? [:],"tintSource":tintSource,"tintRgb":[Int(c.redComponent*255),Int(c.greenComponent*255),Int(c.blueComponent*255)],"materialBackend":safari ? materialBackend:"none (App WebView)","inactiveMaterialBackend":safari ? NSNull() as Any:materialBackend,"materialParameters":options,"opticalStatus":"macOS native material and measured-layout approximation; iOS optical kernel/refraction unknown","sampling":"DOM observation and native snapshot are asynchronous; not an atomic Safari sample"]
+        return ["schemaVersion":2,"widgetFramesScenePoints":widgetFrames,"nativeWebViewFrameScenePoints":rect(web.frame),"addressHitFrameScenePoints":rect(address.frame),"rotationClockwiseDegrees":d("rotationClockwiseDegrees",0),"sidebarSide":safari && side ? (sidebarLeft ? "left":"right"):"absent","widgetFramesDip":widgetDip,"landscapeStatusWidgetsHidden":landscape && clock.isHidden && wifi.isHidden,"tabStripVisible":safari && !side && !compact && showTabStrip,"tabFontSizeScenePoints":d("tabFontSize",14),"tabStripGeometryScenePoints":tabStrip.isHidden ? []:tabStrip.geometry(),"tabStripRendering":"shared track; native whole-tab container including close control; original hit frames retained","referenceScene":referenceScene["id"] ?? "unmeasured","bodyRotationDegrees":referenceScene["bodyRotationDegrees"] ?? 0,"horizontalInsetFill":"document root color approximation; no duplicated page pixels","layoutCalibration":referenceScene["mappingStatus"] ?? "unmeasured","engine":"macOS system WKWebView","containerMode":safari ? "safari-approximation":"app-webview","chromeState":safari ? (compact ? "compact":"expanded"):"absent","chromeVisible":safari,"addressGeometryActive":safari,"chromeLayout":side ? "closed-side-widgets":"open-top-widgets","scrollY":scrollPosition,"nativeContainerFrameDip":["width":frame.width,"height":frame.height],"nativeClipGeometry":["clipFrameDip":rect(clipView.frame),"clipBoundsDip":rect(clipView.bounds),"containerFrameDip":rect(frame),"containerBoundsScenePoints":rect(bounds),"contentOffsetDip":["x":clipView.contentOffset.x,"y":clipView.contentOffset.y]],"renderScale":["x":frame.width/max(1,bounds.width),"y":frame.height/max(1,bounds.height)],"coordinateSpace":"ScenePoints are unscaled screen-coordinate reference units; Dip fields are rendered host points; no physical mm","requestedSceneCssPx":["width":d("logicalWidth",466),"height":d("logicalHeight",678)],"contentRenderingStrategy":safari && side ? "full-native-view-with-obscured-insets":safari ? "reserved-frame-approximation":"full-native-view","underChromeContinuation":safari && side,"fixedBottomColorExtension":["visible": !fixedBottomBackground.isHidden,"frameScenePoints":rect(fixedBottomBackground.frame),"source":"read-only DOM solid full-width fixed footer approximation"],"obscuredContentInsetsDip":["top":web.obscuredContentInsets.top,"left":web.obscuredContentInsets.left,"bottom":web.obscuredContentInsets.bottom,"right":web.obscuredContentInsets.right],"nativeWebViewFrameDip":dipRect(web.frame),"addressHitFrameDip":dipRect(address.frame),"addressVisualFrameDip":dipRect(NSRect(x:address.frame.minX+address.visualRect.minX,y:address.frame.minY+address.visualRect.minY,width:address.visualRect.width,height:address.visualRect.height)),"actualPageViewport":latestObservation["viewportWidth"].map{["width":$0,"height":latestObservation["viewportHeight"] ?? 0]} ?? [:],"tintSource":tintSource,"tintRgb":[Int(c.redComponent*255),Int(c.greenComponent*255),Int(c.blueComponent*255)],"materialBackend":safari ? materialBackend:"none (App WebView)","inactiveMaterialBackend":safari ? NSNull() as Any:materialBackend,"materialParameters":options,"opticalStatus":"macOS native material and measured-layout approximation; iOS optical kernel/refraction unknown","sampling":"DOM observation and native snapshot are asynchronous; not an atomic Safari sample"]
     }
     func publishState(){guard !invalidated,let data=try? JSONSerialization.data(withJSONObject:state(),options:[.sortedKeys]),let json=String(data:data,encoding:.utf8) else{return};web.evaluateJavaScript("window.devduoContainerTelemetry="+json+";window.dispatchEvent(new CustomEvent('devduo:container',{detail:window.devduoContainerTelemetry}));")}
 }
+public typealias NavigationCallback=@convention(c)(UnsafeMutableRawPointer?,UnsafePointer<CChar>)->Void
 func optionsFrom(_ pointer:UnsafePointer<CChar>)->[String:Any]{(try? JSONSerialization.jsonObject(with:Data(String(cString:pointer).utf8))) as? [String:Any] ?? [:]}
 @_cdecl("devduo_create") public func create(_ url:UnsafePointer<CChar>,_ svg:UnsafePointer<CChar>,_ width:Double,_ height:Double,_ options:UnsafePointer<CChar>,_ observer:UnsafePointer<CChar>)->UnsafeMutableRawPointer? {
     let host=CalibrationContainer(url:String(cString:url),svg:String(cString:svg),width:width,height:height,options:optionsFrom(options),observer:String(cString:observer));return Unmanaged.passRetained(host).toOpaque()
@@ -354,6 +455,30 @@ func optionsFrom(_ pointer:UnsafePointer<CChar>)->[String:Any]{(try? JSONSeriali
 @_cdecl("devduo_html") public func html(_ pointer:UnsafeMutableRawPointer,_ html:UnsafePointer<CChar>){Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().showHtml(String(cString:html))}
 @_cdecl("devduo_state_json") public func stateJson(_ pointer:UnsafeMutableRawPointer)->UnsafeMutablePointer<CChar>?{let host=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue();guard let data=try? JSONSerialization.data(withJSONObject:host.state(),options:[.sortedKeys]),let json=String(data:data,encoding:.utf8) else{return nil};return strdup(json)}
 @_cdecl("devduo_free") public func freeString(_ pointer:UnsafeMutableRawPointer){free(pointer)}
-@_cdecl("devduo_destroy") public func destroy(_ pointer:UnsafeMutableRawPointer){let host=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeRetainedValue();host.invalidate();host.removeFromSuperview()}
+@_cdecl("devduo_destroy") public func destroy(_ pointer:UnsafeMutableRawPointer){
+    let host=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeRetainedValue()
+    host.invalidate();host.clipView.removeFromSuperview();host.removeFromSuperview()
+}
+// The clip view is owned by its container; Avalonia only parents it.
+@_cdecl("devduo_clip_view") public func clipView(_ pointer:UnsafeMutableRawPointer)->UnsafeMutableRawPointer{
+    Unmanaged.passUnretained(Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().clipView).toOpaque()
+}
+@_cdecl("devduo_set_viewport") public func setViewport(_ pointer:UnsafeMutableRawPointer,_ width:Double,_ height:Double,_ offsetX:Double,_ offsetY:Double){
+    let clip=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().clipView
+    clip.contentSize=CGSize(width:width,height:height);clip.contentOffset=CGPoint(x:offsetX,y:offsetY)
+    clip.needsLayout=true;clip.layoutSubtreeIfNeeded()
+}
 
+@_cdecl("devduo_set_navigation_callback") public func setNavigationCallback(_ pointer:UnsafeMutableRawPointer,_ callback:NavigationCallback?,_ context:UnsafeMutableRawPointer?){
+    let host=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue()
+    host.navigationCallback=callback;host.navigationContext=context
+    host.publishNavigation()
+}
+@_cdecl("devduo_go_back") public func goBack(_ pointer:UnsafeMutableRawPointer){Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().goBack()}
+@_cdecl("devduo_go_forward") public func goForward(_ pointer:UnsafeMutableRawPointer){
+    let web=Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().web
+    if web.canGoForward{web.goForward()}
+}
+@_cdecl("devduo_reload") public func reload(_ pointer:UnsafeMutableRawPointer){Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().web.reload()}
+@_cdecl("devduo_stop") public func stop(_ pointer:UnsafeMutableRawPointer){Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().web.stopLoading()}
 @_cdecl("devduo_evaluate") public func evaluate(_ pointer:UnsafeMutableRawPointer,_ script:UnsafePointer<CChar>){Unmanaged<CalibrationContainer>.fromOpaque(pointer).takeUnretainedValue().web.evaluateJavaScript(String(cString:script))}
