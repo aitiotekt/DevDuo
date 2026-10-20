@@ -72,4 +72,6 @@ mise exec -- uv run --locked python scripts/archive/2026-10-21/verify_desktop_sc
 
 输出应使用原始证据之外的新位置，替换配置前先比较。本次整理在本地从原证据重现出语义一致的设备/Safari 配置；保留的几何验证器通过了 24 个桌面状态和四个选中标签角度。这些结果复用历史采集，不建立新的平台、运行时或光学验证结论。
 
+维护的发布入口是 `scripts/release.mts`（版本/ref 策略、清单和发布验证）及 `scripts/package-release.mts`（原生自包含包、签名和压缩）。流程编排仍归 just 和 GitHub Actions，详见[发布说明](013-RELEASE.md)。
+
 [English](../en/012-SCRIPT-INVENTORY.md) | [中文](012-SCRIPT-INVENTORY.md)

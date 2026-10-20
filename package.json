@@ -1,6 +1,6 @@
 {
   "name": "devduo",
-  "version": "0.1.0-dev",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "description": "Pesudo iPhone Duo Viewport Simulator for Web Developers",
@@ -22,6 +22,10 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "26.4.0",
-    "typescript": "7.0.2"
+    "@types/semver": "7.8.0",
+    "semver": "7.8.5",
+    "smol-toml": "1.9.1",
+    "typescript": "7.0.2",
+    "yaml": "2.9.1"
   }
 }

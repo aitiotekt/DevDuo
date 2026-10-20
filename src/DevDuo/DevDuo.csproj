@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <Product>DevDuo</Product>
     <Description>Pesudo iPhone Duo Viewport Simulator for Web Developers</Description>
-    <Version>0.1.0-dev</Version>
+    <Version>0.1.0-alpha.1</Version>
     <RepositoryUrl>https://github.com/aitiotekt/DevDuo</RepositoryUrl>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -13,6 +13,7 @@
     <UseWindowsForms Condition="'$(TargetFramework)' == 'net10.0-windows'">true</UseWindowsForms>
     <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
     <NuGetLockFilePath>packages.$(TargetFramework).lock.json</NuGetLockFilePath>
+    <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' != ''">packages.$(TargetFramework).$(RuntimeIdentifier).lock.json</NuGetLockFilePath>
     <DevDuoNativeDirectory>$(MSBuildProjectDirectory)/obj/native</DevDuoNativeDirectory>
   </PropertyGroup>
   <ItemGroup>

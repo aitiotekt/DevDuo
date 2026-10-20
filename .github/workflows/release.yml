@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  push:
+    branches: [release]
+    tags: [v*]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize versions as well as retries so publication and tag creation cannot race.
+concurrency:
+  group: devduo-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      display_name: ${{ steps.plan.outputs.displayName }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+        with:
+          docs-only: 'true'
+      - name: Validate version and exact triggering ref
+        id: plan
+        run: mise exec node pnpm just -- node scripts/release.mts plan
+
+  checks:
+    name: Verification
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    uses: ./.github/workflows/checks.yml
+
+  stable-approval:
+    needs: [plan, checks]
+    if: needs.plan.outputs.prerelease == 'false'
+    runs-on: ubuntu-24.04
+    environment: stable-release
+    steps:
+      - run: echo "Stable release approved."
+
+  macos:
+    needs: [plan, checks, stable-approval]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
+      (needs.plan.outputs.prerelease == 'true' || needs.stable-approval.result == 'success')
+    runs-on: xcode-27
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+      - name: Build self-contained application
+        run: mise exec -- just package-release-macos
+      - name: Import Developer ID certificate
+        uses: Apple-Actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      - name: Sign, notarize, staple and assess application
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: mise exec -- just sign-release-macos
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-osx-arm64
+          path: temp/release/platform/
+          if-no-files-found: error
+          overwrite: true
+
+  windows:
+    needs: [plan, checks, stable-approval]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
+      (needs.plan.outputs.prerelease == 'true' || needs.stable-approval.result == 'success')
+    runs-on: windows-2025
+    steps:
+      - name: Require real symlinks before checkout
+        shell: pwsh
+        run: git config --global core.symlinks true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+      - name: Package unsigned self-contained Windows application
+        run: mise exec -- just package-release-windows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-win-x64
+          path: temp/release/platform/
+          if-no-files-found: error
+          overwrite: true
+
+  assemble:
+    needs: [macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+        with:
+          docs-only: 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-@(osx-arm64|win-x64)
+          path: temp/release/downloads
+          merge-multiple: false
+      - name: Assemble and verify complete artifact set
+        run: mise exec node pnpm just -- node scripts/release.mts assemble
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            temp/release/final/*.zip
+            temp/release/final/SHA256SUMS
+            temp/release/final/release-manifest.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-final
+          path: temp/release/final/
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: [plan, assemble]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+        with:
+          docs-only: 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-final
+          path: temp/release/final/
+      - name: Revalidate artifacts and create or verify exact tag
+        run: |
+          mise exec node pnpm just -- node scripts/release.mts verify
+          mise exec node pnpm just -- node scripts/release.mts ensure-tag
+      - name: Publish without overwriting existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          DISPLAY_NAME: ${{ needs.plan.outputs.display_name }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Listing must succeed: authentication/network failures are not an absent release.
+          existing="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq ".[] | select(.tag_name == \"${TAG}\") | .id")"
+          if [[ -n "${existing}" ]]; then
+            mkdir -p temp/release/existing
+            gh release download "${TAG}" --dir temp/release/existing
+            mise exec node pnpm just -- node scripts/release.mts verify-published
+          else
+            gh release create "${TAG}" temp/release/final/* --verify-tag --draft --title "${DISPLAY_NAME} ${TAG}" --prerelease="${PRERELEASE}" --notes-file .github/release-notes.md
+            mkdir -p temp/release/existing
+            gh release download "${TAG}" --dir temp/release/existing
+            mise exec node pnpm just -- node scripts/release.mts verify-published
+          fi
+          is_draft="$(gh release view "${TAG}" --json isDraft --jq .isDraft)"
+          if [[ "${is_draft}" == "true" ]]; then
+            gh release edit "${TAG}" --draft=false --prerelease="${PRERELEASE}" --latest="$([[ "${PRERELEASE}" == "false" ]] && echo true || echo false)"
+          fi
+
+  release-report:
+    if: always()
+    needs: [plan, checks, assemble, publish]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require completed release or an explicit development skip
+        env:
+          PLAN: ${{ needs.plan.result }}
+          PUBLISH_ENABLED: ${{ needs.plan.outputs.publish }}
+          ASSEMBLE: ${{ needs.assemble.result }}
+          PUBLISH: ${{ needs.publish.result }}
+        run: |
+          test "${PLAN}" = success
+          if [[ "${PUBLISH_ENABLED}" == "false" ]]; then
+            echo "Development version: no release published." >> "$GITHUB_STEP_SUMMARY"
+          else
+            test "${ASSEMBLE}" = success
+            test "${PUBLISH}" = success
+          fi

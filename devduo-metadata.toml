@@ -1,0 +1,30 @@
+schema_version = 1
+
+[project]
+version = "0.1.0-alpha.1"
+display_name = "DevDuo"
+binary_name = "DevDuo"
+identifier = "local.DevDuo.Calibration"
+repository_url = "https://github.com/aitiotekt/DevDuo"
+docs_url = "https://dev-duo.aitiotekt.com/"
+
+[macos]
+minimum_system_version = "27.0"
+
+[release]
+branch = "release"
+tag_prefix = "v"
+
+[release.signing]
+# Every macOS release requires signing and notarization.
+macos = "signed"
+
+[[release.artifact]]
+platform = "macos"
+target = "osx-arm64"
+extension = "zip"
+
+[[release.artifact]]
+platform = "windows"
+target = "win-x64"
+extension = "zip"

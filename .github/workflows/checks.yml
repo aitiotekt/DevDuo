@@ -4,13 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.ref }}
+  group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [ubuntu-24.04, windows-2025, xcode-27]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Require real Windows symlinks before checkout
@@ -32,6 +33,21 @@ jobs:
         run: mise exec -- just check
       - run: mise exec -- just lint
       - run: mise exec -- just typecheck
-      - name: Compile Windows target
-        if: runner.os == 'Windows'
+      - run: mise exec -- just release-check
+      - name: Build documentation
+        if: runner.os == 'Linux'
+        run: mise exec -- just build-docs
+      - name: Compile native target
+        if: runner.os != 'Linux'
         run: mise exec -- just build
+
+  report:
+    name: Checks report
+    if: always()
+    needs: portable
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every platform check
+        env:
+          RESULT: ${{ needs.portable.result }}
+        run: test "${RESULT}" = success

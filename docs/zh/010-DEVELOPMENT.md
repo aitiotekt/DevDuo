@@ -51,6 +51,8 @@ macOS 视频诊断使用 `swift run --package-path scripts/swift --scratch-path 
 | `just docs` / `just docs-preview` | 文档开发服务 / 上次构建的预览 |
 | `just docs-sync` / `just docs-check` | 同步 / 验证规范源相对符号链接与双语清单 |
 | `just build-docs` | 严格构建至被忽略的 `temp/build/docsite/` |
+| `just set-version VERSION` / `just bump-version LEVEL` | 同步元数据和各清单；指定完整版本或按 SemVer 递增 |
+| `just sync-version` / `just check-version` | 从 `devduo-metadata.toml` 同步版本 / 检查版本一致性 |
 | `just format` | 格式化维护中的 JS/TS 与 Python，完成后检查差异 |
 | `just clean` | 清理声明的构建输出和缓存，保留证据、已安装依赖及打包应用 |
 
@@ -75,5 +77,7 @@ macOS 视频诊断使用 `swift run --package-path scripts/swift --scratch-path 
 根目录英文规范文档是主源。`docs/en` 包含其符号链接别名和编号技术文档；`docs/zh` 包含对应中文源。`docsite` 直接链接这些源，不复制内容。同步更新两种语言、清单与语言切换页脚。
 
 所有贡献者都必须支持真实的相对文件和目录符号链接，Windows 也一样。克隆前启用适当权限并配置 `core.symlinks=true`。`doctor` 实际测试链接创建，同步过程拒绝覆盖普通文件。参见[贡献指南](CONTRIBUTING.md)与 [Windows 交接](009-WINDOWS-HANDOFF.md)。
+
+发布打包、版本命令、签名要求和独立运行时锁文件见[发布说明](013-RELEASE.md)。
 
 [English](../en/010-DEVELOPMENT.md) | [中文](010-DEVELOPMENT.md)

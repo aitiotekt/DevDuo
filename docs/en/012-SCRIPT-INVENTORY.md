@@ -72,4 +72,6 @@ mise exec -- uv run --locked python scripts/archive/2026-10-21/verify_desktop_sc
 
 Use fresh outputs outside the source evidence and compare regenerated configuration before replacement. During organization, local reproduction produced semantically identical device/Safari configuration; the preserved geometry verifiers passed all 24 desktop states and four selected-tab angles. These results reuse historical captures and do not establish new platform/runtime or optical validation.
 
+The maintained release entry points are `scripts/release.mts` (version/ref policy, manifests and publication verification) and `scripts/package-release.mts` (native self-contained bundles, signing and archives). Workflow composition stays in just and GitHub Actions; see [Releases](013-RELEASE.md).
+
 [English](012-SCRIPT-INVENTORY.md) | [中文](../zh/012-SCRIPT-INVENTORY.md)

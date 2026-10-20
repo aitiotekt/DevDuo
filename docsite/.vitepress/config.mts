@@ -1,7 +1,10 @@
 import { join } from "node:path";
 import { defineConfig } from "vitepress";
 import { manifest, siteHref } from "../../scripts/lib/docs.mts";
+import { loadMetadata } from "../../scripts/lib/metadata.mts";
 import { repoRoot } from "../../scripts/lib/paths.mts";
+
+const metadata = loadMetadata();
 
 function sidebar(prefix: string, language: "en" | "zh") {
   return [
@@ -16,9 +19,9 @@ function sidebar(prefix: string, language: "en" | "zh") {
 }
 
 export default defineConfig({
-  title: "DevDuo",
+  title: metadata.project.displayName,
   description: "Pesudo iPhone Duo Viewport Simulator for Web Developers",
-  base: "/DevDuo/",
+  base: new URL(metadata.project.docsUrl).pathname,
   cleanUrls: true,
   outDir: join(repoRoot, "temp/build/docsite"),
   cacheDir: join(repoRoot, "temp/cache/vitepress"),
@@ -56,9 +59,7 @@ export default defineConfig({
   },
   themeConfig: {
     search: { provider: "local" },
-    socialLinks: [
-      { icon: "github", link: "https://github.com/aitiotekt/DevDuo" },
-    ],
+    socialLinks: [{ icon: "github", link: metadata.project.repositoryUrl }],
     footer: {
       message:
         "Independent project · first-party code: MIT · simulator artwork: see third-party notices",

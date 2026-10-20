@@ -51,6 +51,8 @@ macOS video diagnostics use `swift run --package-path scripts/swift --scratch-pa
 | `just docs` / `just docs-preview` | Documentation dev server / preview of the last build |
 | `just docs-sync` / `just docs-check` | Synchronize / validate canonical-source relative symlinks and bilingual inventory |
 | `just build-docs` | Strict VitePress build into ignored `temp/build/docsite/` |
+| `just set-version VERSION` / `just bump-version LEVEL` | Update metadata and all managed manifests; choose an explicit version or SemVer increment |
+| `just sync-version` / `just check-version` | Synchronize from `devduo-metadata.toml` / reject version drift |
 | `just format` | Format maintained JS/TS and Python; inspect the resulting diff |
 | `just clean` | Remove declared build outputs and caches; retain evidence, installed dependencies and packaged apps |
 
@@ -75,5 +77,7 @@ For root JS tooling run `mise exec -- pnpm install` after editing `package.json`
 Root English convention documents are canonical. `docs/en` contains symlink aliases and numbered technical sources; `docs/zh` contains paired Chinese sources. `docsite` links those sources without copying them. Update both languages, the manifest and language footers together.
 
 Every contributor must support actual relative file and directory symlinks, including Windows. Enable appropriate privileges and use `core.symlinks=true` before cloning. `doctor` tests actual link creation; synchronization refuses to overwrite ordinary files. See [Contributing](../../CONTRIBUTING.md) and the [Windows handoff](009-WINDOWS-HANDOFF.md).
+
+Release packaging, version commands, signing requirements and separate runtime locks are described in [Releases](013-RELEASE.md).
 
 [English](010-DEVELOPMENT.md) | [中文](../zh/010-DEVELOPMENT.md)

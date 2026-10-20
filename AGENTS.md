@@ -43,6 +43,8 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 
 ## Documentation and publication
 
+- `devduo-metadata.toml` owns release versions, application identity, URLs and artifact policy. Use `just set-version VERSION` or `just bump-version LEVEL`; `just sync-version` propagates a direct metadata version edit. Keep `just release-check` passing and update both changelogs separately.
+
 - Canonical English convention documents live at the root without a language suffix. `docs/en` contains relative symlink aliases to those documents and numbered technical sources. `docs/zh` contains matching Chinese sources. Keep filenames, coverage, navigation and `scripts/docs-manifest.json` synchronized.
 - `docsite/` is an independent VitePress package linked to the canonical sources. Do not maintain copied website pages or a generated source staging tree. Edit the source, then run `just docs-check` and `just build-docs`.
 - Real relative file **and directory** symbolic links are required on every contributor platform, including Windows. Require a supporting filesystem, symlink privileges and `core.symlinks=true`. Copies, junctions and regular-file substitutes are unsupported. Do not overwrite a regular file during synchronization.

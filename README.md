@@ -69,12 +69,13 @@ Choose Safari/immersive, Closed/Open and **Body +90°**. The **Multiple tabs** s
 
 ## Documentation
 
-English convention documents live at the root and are linked into `docs/en`. Chinese convention documents and translated technical pages live in `docs/zh`. Numbered English technical pages live in `docs/en`. The independent VitePress workspace in `docsite/` links to those same sources, provides English/中文 navigation and local search, and builds for the `/DevDuo/` base path. There is no separate manually edited website copy or configured production deployment.
+English convention documents live at the root and are linked into `docs/en`. Chinese convention documents and translated technical pages live in `docs/zh`. Numbered English technical pages live in `docs/en`. The independent VitePress workspace in `docsite/` links to those same sources, provides English/中文 navigation and local search, and builds for the root of `https://dev-duo.aitiotekt.com/`. The Documentation workflow deploys only `main` through GitHub Pages after infrastructure configuration is applied. There is no separate manually edited website copy.
 
 - [Overview](docs/en/000-OVERVIEW.md) · [Architecture](docs/en/001-ARCHITECTURE.md)
 - [Measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) · [Calibration workflow](docs/en/003-CALIBRATION-WORKFLOW.md)
 - [Safari scenes](docs/en/005-SAFARI-SCENES.md) · [Validation](docs/en/008-VALIDATION.md)
 - [Development toolchain](docs/en/010-DEVELOPMENT.md) · [Localization](docs/en/011-LOCALIZATION.md) · [Script inventory](docs/en/012-SCRIPT-INVENTORY.md)
+- [Releases and repository administration](docs/en/013-RELEASE.md)
 - [Windows handoff](docs/en/009-WINDOWS-HANDOFF.md) · [Host UI roadmap](docs/en/100-ROADMAP.md)
 - [Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 

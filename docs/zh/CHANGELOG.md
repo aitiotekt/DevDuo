@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 增加 `devduo-metadata.toml` 作为发布配置来源，支持版本同步设置、递增和一致性检查。
+- 增加带检查门禁的 macOS/Windows 发布打包、macOS 签名公证、产物完整性与来源验证，以及仅 main 的 Pages 部署。
 - 建立 Avalonia 桌面视口工作台，macOS 使用 WKWebView，Windows 使用 WebView2。
 - 添加独立屏幕/外壳几何、Safari 与沉浸模式、八个机身/折叠映射、初始/滚动态及展开单/多标签页变体。
 - 修正选中标签页可见边界及文案居中，物理硬件未知量保留 null。

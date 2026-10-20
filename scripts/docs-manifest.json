@@ -74,6 +74,11 @@
       "zh": "脚本审查清单"
     },
     {
+      "name": "013-RELEASE.md",
+      "en": "Releases and administration",
+      "zh": "发布与仓库管理"
+    },
+    {
       "name": "100-ROADMAP.md",
       "en": "Host UI roadmap",
       "zh": "宿主 UI 路线图"

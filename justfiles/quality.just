@@ -33,7 +33,7 @@ docs-sync:
 docs-check:
     node scripts/docs.mts check
 
-verify: check lint typecheck build-docs build
+verify: check lint typecheck release-check build-docs build
 
 # Generated outputs only; evidence, dependencies and packaged apps are retained.
 _clean_paths := "temp/cache temp/build .ruff_cache scripts/swift/.build scripts/python/devduo_tools/__pycache__ tests/python/__pycache__ scripts/archive/2026-10-21/__pycache__ src/DevDuo/bin src/DevDuo/obj tests/DevDuo.Localization.Tests/bin tests/DevDuo.Localization.Tests/obj docsite/.vitepress/cache docsite/.vitepress/dist"
@@ -45,3 +45,6 @@ clean:
 [windows]
 clean:
     foreach ($path in '{{_clean_paths}}'.Split(' ')) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop } }
+
+release-check:
+    node scripts/release.mts check

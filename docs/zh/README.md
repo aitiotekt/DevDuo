@@ -69,12 +69,13 @@ App 支持 **English**、**简体中文**和系统默认，并保存语言偏好
 
 ## 文档结构
 
-根目录约定文档是英文源文件，并链接到 `docs/en`；中文约定文档及技术译文位于 `docs/zh`；英文编号技术文档位于 `docs/en`。独立的 `docsite/` VitePress 工作区通过相对符号链接复用这些源文件，提供英文/中文导航、本地搜索和 `/DevDuo/` 基础路径。没有独立手工维护的网站副本，也没有配置生产部署。
+根目录约定文档是英文源文件，并链接到 `docs/en`；中文约定文档及技术译文位于 `docs/zh`；英文编号技术文档位于 `docs/en`。独立的 `docsite/` VitePress 工作区通过相对符号链接复用这些源文件，提供英文/中文导航和本地搜索，并使用 `https://dev-duo.aitiotekt.com/` 根路径。应用基础设施配置后，Documentation 工作流仅部署 `main` 到 GitHub Pages。没有独立手工维护的网站副本。
 
 - [项目概览](000-OVERVIEW.md) · [架构](001-ARCHITECTURE.md)
 - [测量约定](002-MEASUREMENT-CONTRACT.md) · [标定流程](003-CALIBRATION-WORKFLOW.md)
 - [Safari 场景](005-SAFARI-SCENES.md) · [验证记录](008-VALIDATION.md)
 - [开发工具链](010-DEVELOPMENT.md) · [本地化](011-LOCALIZATION.md) · [脚本清单](012-SCRIPT-INVENTORY.md)
+- [发布与仓库管理](013-RELEASE.md)
 - [Windows 交接](009-WINDOWS-HANDOFF.md) · [宿主 UI 路线图](100-ROADMAP.md)
 - [安全](SECURITY.md) · [隐私](PRIVACY.md) · [贡献](CONTRIBUTING.md) · [变更日志](CHANGELOG.md)
 

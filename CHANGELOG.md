@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `devduo-metadata.toml` as the release source of truth with synchronized version setting, incrementing and drift checks.
+- Added gated macOS/Windows release packaging, signed and notarized macOS releases, artifact integrity/provenance checks and main-only Pages deployment.
 - Established DevDuo as an Avalonia desktop viewport workbench using WKWebView on macOS and WebView2 on Windows.
 - Added independent screen/exterior geometry, Safari and immersive containers, eight body/fold mappings, initial/scrolled scenes and Open single/multiple-tab variants.
 - Corrected selected-tab visible bounds and centered titles; preserved unknown hardware dimensions as null.
