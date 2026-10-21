@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Product>DevDuo</Product>
+    <Description>Pesudo iPhone Duo Viewport Simulator for Web Developers</Description>
+    <Version>0.1.0-dev</Version>
+    <RepositoryUrl>https://github.com/aitiotekt/DevDuo</RepositoryUrl>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TargetFramework Condition="($([MSBuild]::IsOSPlatform('Windows')) Or '$(DevDuoWindows)' == 'true')">net10.0-windows</TargetFramework>
+    <UseWindowsForms Condition="'$(TargetFramework)' == 'net10.0-windows'">true</UseWindowsForms>
+    <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
+    <NuGetLockFilePath>packages.$(TargetFramework).lock.json</NuGetLockFilePath>
+    <DevDuoNativeDirectory>$(MSBuildProjectDirectory)/obj/native</DevDuoNativeDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Localization/*.json" />
+    <None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Condition="'$(TargetFramework)' == 'net10.0'" Include="$(DevDuoNativeDirectory)/libDevDuoWebView.dylib" Link="libDevDuoWebView.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RemoveUnusedWebViewWpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="BuildMacWebView" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DevDuoWindows)' != 'true'">
+    <MakeDir Directories="$(DevDuoNativeDirectory)" />
+    <Exec Command="xcrun swiftc &quot;$(ProjectDir)macos/WebViewBridge.swift&quot; -emit-library -o &quot;$(DevDuoNativeDirectory)/libDevDuoWebView.dylib&quot; -module-name DevDuoWebView -module-cache-path &quot;$(DevDuoNativeDirectory)/swift-cache&quot; -framework AppKit -framework WebKit -framework QuartzCore" />
+  </Target>
+</Project>

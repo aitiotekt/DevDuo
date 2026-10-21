@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Device Hub calibration</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <div id="safe-probe" aria-hidden="true"></div>
+  <div id="viewport-grid" aria-hidden="true"></div>
+  <header id="top-marker" data-measure><span class="eyebrow">DEVICE HUB • CALIBRATION V1</span>
+    <h1>Measure the viewport.</h1>
+    <p>Native Safari chrome stays native. This page measures the content area; the dotted grid is 40 CSS px.</p>
+  </header>
+  <main>
+    <section id="controls" data-measure><label>State <select id="state">
+          <option>initial</option>
+          <option>scroll-down</option>
+          <option>scroll-up</option>
+          <option>keyboard</option>
+          <option>custom</option>
+        </select></label><button id="capture" type="button">Record now</button><output id="status">Waiting for
+        measurement…</output>
+      <p id="labels"></p>
+    </section>
+    <section id="reference-card" class="card" data-measure><span class="eyebrow">REFERENCE CARD</span>
+      <h2>Geometry and color</h2>
+      <p>Compare fixed markers, CSS viewport and actual screenshots from the same pose and scroll state.</p>
+      <div class="ruler" id="ruler" data-measure>200 × 40 CSS px</div>
+      <div class="swatches"><i></i><i></i><i></i><i></i></div>
+    </section>
+    <section class="card" id="metrics" data-measure>
+      <h2>Live measurements</h2>
+      <pre id="readout"></pre>
+    </section>
+    <section class="card gradient" id="color-field" data-measure>
+      <h2>Scroll slowly</h2>
+      <p>This color field helps observe real Safari material changes as content moves behind browser chrome.</p>
+      <p>Appearance must be captured in Safari. This gradient does not emulate Liquid Glass.</p>
+    </section>
+    <section class="card" id="keyboard-card" data-measure>
+      <h2>Keyboard state</h2><label>Focus for viewport measurement<input id="keyboard-input"
+          placeholder="Type here to show the keyboard"></label>
+    </section>
+    <section class="card" id="bottom-marker" data-measure>
+      <h2>Bottom marker</h2>
+      <p>At page bottom, record the expanded or collapsed toolbar state in notes.</p>
+    </section>
+  </main>
+  <div id="fixed-marker" data-measure>FIXED · SAFE BOTTOM</div>
+  <script src="/calibration.js"></script>
+</body>
+
+</html>

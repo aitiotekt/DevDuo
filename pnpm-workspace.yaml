@@ -1,0 +1,5 @@
+# Documentation has an independent lockfile, matching the other workspaces.
+packages: []
+
+# Dependency installation belongs to explicit frozen setup commands.
+verifyDepsBeforeRun: error

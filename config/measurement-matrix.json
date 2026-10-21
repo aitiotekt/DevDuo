@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "device": "iPhone Duo",
+  "poses": [
+    "closed",
+    "partially-open",
+    "open"
+  ],
+  "rotationsClockwiseDegrees": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "states": [
+    "initial",
+    "scroll-down",
+    "scroll-up",
+    "keyboard"
+  ],
+  "displaySelection": {
+    "closed": {
+      "display": 1,
+      "status": "observed in local Device Hub"
+    },
+    "partially-open": {
+      "display": 3,
+      "status": "observed local Device Hub on 2026-10-21; app uses 951x669 landscape scene in device portrait"
+    },
+    "open": {
+      "display": 3,
+      "status": "profile association; confirm against capture"
+    }
+  },
+  "requireForEachCapture": [
+    "pose",
+    "rotation",
+    "display",
+    "state",
+    "observedState",
+    "measurementRecordId",
+    "screenshot",
+    "actualScrollY",
+    "browserChromeVisibleState",
+    "sourceTimestamp"
+  ],
+  "unknownPhysicalFields": {
+    "physicalWidthMm": null,
+    "physicalHeightMm": null,
+    "hardwareCornerRadiusMm": null,
+    "hingeAngleDegrees": null,
+    "liquidGlassMaterialParameters": null
+  },
+  "status": "Coverage must be reported from actual capture artifacts. This plan does not assert every matrix cell was measured.",
+  "coverageSource": "measurements/session-2026-10-21/coverage.json",
+  "coordinatePolicy": "Machine orientation from devicectl get, XCTest applicationFramePoints, screenshot pixels and browser screen.orientation may differ; preserve all values and do not equate them."
+}

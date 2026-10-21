@@ -1,0 +1,194 @@
+{
+  "conventions": [
+    "README.md",
+    "SECURITY.md",
+    "PRIVACY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "documents": [
+    {
+      "name": "000-OVERVIEW.md",
+      "en": "Overview",
+      "zh": "项目概览"
+    },
+    {
+      "name": "001-ARCHITECTURE.md",
+      "en": "Architecture",
+      "zh": "架构"
+    },
+    {
+      "name": "002-MEASUREMENT-CONTRACT.md",
+      "en": "Measurement contract",
+      "zh": "测量约定"
+    },
+    {
+      "name": "003-CALIBRATION-WORKFLOW.md",
+      "en": "Calibration workflow",
+      "zh": "标定流程"
+    },
+    {
+      "name": "004-CONTAINER-MODES.md",
+      "en": "Container modes",
+      "zh": "容器模式"
+    },
+    {
+      "name": "005-SAFARI-SCENES.md",
+      "en": "Safari scenes",
+      "zh": "Safari 场景"
+    },
+    {
+      "name": "006-UNDER-CHROME-RENDERING.md",
+      "en": "Under-chrome rendering",
+      "zh": "浮动组件下的绘制"
+    },
+    {
+      "name": "007-REFERENCE-DATA.md",
+      "en": "Reference data",
+      "zh": "参考数据"
+    },
+    {
+      "name": "008-VALIDATION.md",
+      "en": "Validation",
+      "zh": "验证记录"
+    },
+    {
+      "name": "009-WINDOWS-HANDOFF.md",
+      "en": "Windows handoff",
+      "zh": "Windows 交接"
+    },
+    {
+      "name": "010-DEVELOPMENT.md",
+      "en": "Development toolchain",
+      "zh": "开发工具链"
+    },
+    {
+      "name": "011-LOCALIZATION.md",
+      "en": "Application localization",
+      "zh": "应用本地化"
+    },
+    {
+      "name": "012-SCRIPT-INVENTORY.md",
+      "en": "Script review inventory",
+      "zh": "脚本审查清单"
+    },
+    {
+      "name": "100-ROADMAP.md",
+      "en": "Host UI roadmap",
+      "zh": "宿主 UI 路线图"
+    }
+  ],
+  "links": [
+    {
+      "link": "docs/en/README.md",
+      "target": "README.md",
+      "type": "file"
+    },
+    {
+      "link": "docs/en/SECURITY.md",
+      "target": "SECURITY.md",
+      "type": "file"
+    },
+    {
+      "link": "docs/en/PRIVACY.md",
+      "target": "PRIVACY.md",
+      "type": "file"
+    },
+    {
+      "link": "docs/en/CONTRIBUTING.md",
+      "target": "CONTRIBUTING.md",
+      "type": "file"
+    },
+    {
+      "link": "docs/en/CHANGELOG.md",
+      "target": "CHANGELOG.md",
+      "type": "file"
+    },
+    {
+      "link": "docs/en/THIRD_PARTY_NOTICES.md",
+      "target": "THIRD_PARTY_NOTICES.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/index.md",
+      "target": "README.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/security.md",
+      "target": "SECURITY.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/privacy.md",
+      "target": "PRIVACY.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/contributing.md",
+      "target": "CONTRIBUTING.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/changelog.md",
+      "target": "CHANGELOG.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/third-party-notices.md",
+      "target": "THIRD_PARTY_NOTICES.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/license.md",
+      "target": "docs/shared/LICENSE.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/docs",
+      "target": "docs/en",
+      "type": "dir"
+    },
+    {
+      "link": "docsite/zh/index.md",
+      "target": "docs/zh/README.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/security.md",
+      "target": "docs/zh/SECURITY.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/privacy.md",
+      "target": "docs/zh/PRIVACY.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/contributing.md",
+      "target": "docs/zh/CONTRIBUTING.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/changelog.md",
+      "target": "docs/zh/CHANGELOG.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/third-party-notices.md",
+      "target": "docs/zh/THIRD_PARTY_NOTICES.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/license.md",
+      "target": "docs/shared/LICENSE.md",
+      "type": "file"
+    },
+    {
+      "link": "docsite/zh/docs",
+      "target": "docs/zh",
+      "type": "dir"
+    }
+  ]
+}

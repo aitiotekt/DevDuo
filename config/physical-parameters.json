@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "device": "iPhone Duo",
+  "status": "unknown; independent physical measurement or authoritative hardware specification required",
+  "bodyWidthMm": null,
+  "bodyHeightMm": null,
+  "bodyThicknessMm": null,
+  "activeDisplayWidthMm": null,
+  "activeDisplayHeightMm": null,
+  "hardwareOuterCornerRadiusMm": null,
+  "hardwareScreenCornerRadiusMm": null,
+  "hingeAngleDegreesByPose": {"closed": null, "partially-open": null, "open": null},
+  "evidenceUrlOrMeasurementMethod": null,
+  "inferencePolicy": "No conversion from screenshot pixels or profile hdpi/vdpi460 to certified mm. UI uses vector canvas units and actual browser-reported CSS aspect independently. These nullable fields may be filled only with independent evidence."
+}

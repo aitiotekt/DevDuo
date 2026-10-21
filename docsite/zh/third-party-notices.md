@@ -1,0 +1,1 @@
+../../docs/zh/THIRD_PARTY_NOTICES.md

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["uv_build>=0.9,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "devduo-tools"
+version = "0.1.0.dev0"
+description = "Calibration capture and image evidence utilities for DevDuo"
+requires-python = ">=3.12"
+dependencies = ["Pillow>=10.1,<13"]
+
+[project.scripts]
+devduo-tools = "devduo_tools.cli:main"
+
+[dependency-groups]
+dev = ["ruff>=0.13,<0.16"]
+
+[tool.uv]
+python-downloads = "never"
+
+[tool.uv.build-backend]
+module-root = "scripts/python"
+module-name = "devduo_tools"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+cache-dir = "temp/cache/ruff"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP"]

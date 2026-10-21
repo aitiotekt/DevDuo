@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "cohort": "Device Hub / iOS 27.1 / 2026-10-21",
+  "scripts": [
+    {
+      "original": "tools/build-macos.sh",
+      "originalSha256": "1e117da675ba673f1cbba1358c0ba054fb58693fc1f5b4df92cbe462a3698a09",
+      "status": "remove",
+      "destination": null,
+      "reason": "Four-line zsh forwarding wrapper duplicates canonical just build ecosystem recipe, obstructs portable ownership and adds no behavior."
+    },
+    {
+      "original": "tools/calibration_server.py",
+      "originalSha256": "554d772d1da12f676bb00840c4fbf31e7d86bc3baec02b908f9c690717538043",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/calibration_server.py",
+      "reason": "Loopback HTTP ingestion and fixed web assets are reusable; retain persistence and schema checks with concurrency tests."
+    },
+    {
+      "original": "tools/capture_macos.py",
+      "originalSha256": "cc81472483c8ac75a905bb0277d2879c09ed39bebdc0e0bbf7fb12368a2d9cc7",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/capture_macos.py",
+      "reason": "Explicit-display capture preserves original bytes, telemetry association and SHA256, rejects black images, and labels operator state honestly."
+    },
+    {
+      "original": "tools/check_repository.py",
+      "originalSha256": "0f59a42acee159b614d5172dcbe99c3e639623844777961349e63ae6ce4d0859",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/check_repository.py",
+      "reason": "Read-only public worktree audit remains useful; adapt discovery for moved/deleted user-staged initial files without index mutation."
+    },
+    {
+      "original": "tools/extract_geometry.py",
+      "originalSha256": "39db4d2f28f75137a018e534647be0aac11881eb64db6a298a4c94ed54a324ec",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/extract_geometry.py",
+      "reason": "Specific artwork filenames, hardcoded canvas transforms and exact PDF path substring identify original Device Hub cohort; retain extraction algorithm, do not advertise generic extractor."
+    },
+    {
+      "original": "tools/extract_safari_scenes.py",
+      "originalSha256": "bacbe32656110b55e1eb7b3b809b91660ad0c7ab309c1e639df59902f998dcc1",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/extract_safari_scenes.py",
+      "reason": "Specific date directory, clockwise closed180 mapping, 3x scale, address334 fallback and verified single-tab selection belong to canonical cohort; preserve derivation and hashes."
+    },
+    {
+      "original": "tools/inspect_video.swift",
+      "originalSha256": "44d73831d54eab82a2f933df4b7ba48eb67d599aff00c66d965ba6e686d31f66",
+      "status": "retain",
+      "destination": "scripts/swift/Sources/InspectVideo/main.swift",
+      "reason": "AVFoundation actual-time frame decoding is reusable and macOS-specific; give it a SwiftPM executable with explicit source hash and fresh output directory."
+    },
+    {
+      "original": "tools/open_safari.py",
+      "originalSha256": "a3088ea4eb8ba2d8b3d3af41118df93533a1615635d01a35c416c393b24c6a2f",
+      "status": "merge",
+      "destination": "scripts/python/devduo_tools/capture_macos.py:open_safari",
+      "reason": "Three-line wrapper duplicated simulator command concerns; retain useful labeled URL behavior as open-safari, with URL/query and argv handling."
+    },
+    {
+      "original": "tools/package-macos.sh",
+      "originalSha256": "63e7572e22716559a03f1271ef0a84ec78bf9797ab1e343804fecad9d91b0823",
+      "status": "remove",
+      "destination": null,
+      "reason": "Four-line zsh forwarding wrapper duplicates canonical just package-macos / Node macOS artifact packaging and adds no behavior."
+    },
+    {
+      "original": "tools/png_compare.py",
+      "originalSha256": "136146dd364286dc13862566617c5cb175ecbc3a8af7193468bdf2e032b13088",
+      "status": "refactor",
+      "destination": "scripts/python/devduo_tools/png_compare.py",
+      "reason": "Exact-size RGBA diff/crops/exclusions useful. Replace incomplete handwritten decoder (no CRC/palette handling) with locked Pillow; keep no alignment/resizing/color management."
+    },
+    {
+      "original": "tools/run_safari_probe.py",
+      "originalSha256": "e7c0bcec53ed59630690ffd3f801ca70ba705b90f29c9ebc63ee91eed55d3bc7",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/run_safari_probe.py",
+      "reason": "Active DeviceHubUITests integration captures new sessions. Keep private capability-token broker, stage/session matching, explicit-display PNGs, source snapshots and original encoded video. Native probe sources remain active and untouched."
+    },
+    {
+      "original": "tools/sample_appearance.py",
+      "originalSha256": "e9f81892e04624c38a2a5caa0ac406925d5fad6c77b4a58aa6b1c893f510788c",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/sample_appearance.py",
+      "reason": "Explicit named image-pixel region statistics are portable; retain encoded-color and no physical/material-inference limits."
+    },
+    {
+      "original": "tools/scene_contact_sheet.py",
+      "originalSha256": "de03879f49dc49f25e22a6aa1434939a486ec441a1b4b907ea8eff276b10aa2f",
+      "status": "archive + replace generic capability",
+      "destination": "scripts/archive/2026-10-21/scene_contact_sheet.py; scripts/python/devduo_tools/contact_sheet.py",
+      "reason": "Original fixed scene/state matrix and dark<45/top420 window crop were cohort presentation heuristics. Archive original for reproduction; maintained contact-sheet accepts explicit image pairs and labels without hidden crop."
+    },
+    {
+      "original": "tools/self_test.py",
+      "originalSha256": "e17778284acbe3d40e278a53062b55c3705666e3eac5154e7b34492e693ebd50",
+      "status": "refactor",
+      "destination": "scripts/python/devduo_tools/self_test.py + tests/python",
+      "reason": "Replace opaque assert-only smoke script with unittest service/PNG/config/CLI/provenance regression checks, including Unicode paths and errors."
+    },
+    {
+      "original": "tools/summarize_safari_session.py",
+      "originalSha256": "679eb736edfe60cd86d22bada795561b5f3853cf075ac5d770bfa89c03bda07a",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/summarize_safari_session.py",
+      "reason": "Joining session receipts is valuable provenance, but fixed 12-pose fold/orientation matrix and current calibration IDs are cohort expectations, not future general acceptance criteria."
+    },
+    {
+      "original": "tools/validate_framebuffer_mask.py",
+      "originalSha256": "df1a69c88f7775a647f3d5c35f1f2c0a5beb549dd0361cf21495825810e2d10b",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/validate_framebuffer_mask.py",
+      "reason": "Local PDF vs framebuffer binary-mask overlap is reusable with explicit positive scale and no resampling; Poppler optional prerequisite."
+    },
+    {
+      "original": "tools/validate_video_evidence.py",
+      "originalSha256": "f0d58106d851826908de0ce9576ac8cd5a94c80d8b8d581da981ce9b258f27d6",
+      "status": "retain",
+      "destination": "scripts/python/devduo_tools/validate_video_evidence.py",
+      "reason": "Useful companion to decoded video inspector. Strengthen original source hash check and reject insufficient/mismatched frames; does not certify compositor timing."
+    },
+    {
+      "original": "tools/verify_desktop_scenes.py",
+      "originalSha256": "3e869bfe9ba864070f0bd213b651e392fb92996ec2661adc77e34c8c39a8c40e",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/verify_desktop_scenes.py",
+      "reason": "Independent canonical source/hash comparison remains strong evidence; hardcoded 16/24 states and screenshot names tie acceptance to this cohort. Never weaken into fabricated fresh-clone passes."
+    },
+    {
+      "original": "tools/verify_tab_strip.py",
+      "originalSha256": "04d3bb95c9dbd48f8042a8ecabe041d555ab8b8877c15ac7ac8ab2ce7f24d76e",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/verify_tab_strip.py",
+      "reason": "Four body-angle whole-tab containers, 32-point title container filter and 3-point exposure gap are capture-specific; retain independent native geometry verification."
+    },
+    {
+      "original": "tools/viewport_insets_probe.swift",
+      "originalSha256": "6e23ab548863763f5d042a065d35888c94e43c96c78a29e8fa47e5f71d11a998",
+      "status": "archive",
+      "destination": "scripts/archive/2026-10-21/viewport_insets_probe.swift",
+      "reason": "One-off macOS27 public WK inset experiment uses fixed 466x678 and calibrated98/84 values; keep reproduction recipe, do not expose as routine supported workflow."
+    }
+  ]
+}

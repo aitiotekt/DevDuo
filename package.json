@@ -1,0 +1,27 @@
+{
+  "name": "devduo",
+  "version": "0.1.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "Pesudo iPhone Duo Viewport Simulator for Web Developers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:aitiotekt/DevDuo.git"
+  },
+  "engines": {
+    "node": ">=26 <27",
+    "pnpm": ">=12 <13"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc -p tsconfig.scripts.json --noEmit",
+    "test": "node --test scripts/__tests__/*.test.mts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "26.4.0",
+    "typescript": "7.0.2"
+  }
+}

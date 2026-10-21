@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: devduo-check
+        name: Documentation, public files and tooling checks
+        entry: mise exec -- just check
+        language: system
+        pass_filenames: false
+      - id: biome
+        name: JavaScript tooling format and lint
+        entry: mise exec -- pnpm lint
+        language: system
+        pass_filenames: false
+      - id: typecheck
+        name: JavaScript tooling type check
+        entry: mise exec -- pnpm typecheck
+        language: system
+        pass_filenames: false

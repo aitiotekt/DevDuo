@@ -1,0 +1,25 @@
+name: Setup workspace
+description: Install mise tools and a locked workspace or independent documentation dependencies.
+
+inputs:
+  docs-only:
+    description: Install only the JavaScript tooling and documentation workspace.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Install project tools
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      with:
+        install: true
+        install_args: ${{ inputs.docs-only == 'true' && 'node pnpm just' || '' }}
+        cache: true
+    - name: Setup locked workspace and check symlink privileges
+      if: inputs.docs-only != 'true'
+      shell: bash
+      run: mise exec -- just setup
+    - name: Setup independent documentation workspace
+      if: inputs.docs-only == 'true'
+      shell: bash
+      run: mise exec node pnpm just -- just setup-docs

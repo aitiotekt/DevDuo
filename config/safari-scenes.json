@@ -1,0 +1,1416 @@
+[
+  {
+    "id": "closed-portrait",
+    "fold": "closed",
+    "bodyRotationDegrees": 0,
+    "sceneRotationDegrees": 0,
+    "width": 466.0,
+    "height": 678.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 174
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 234
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 542
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 596
+          },
+          "address": {
+            "height": 48,
+            "width": 334,
+            "x": 24,
+            "y": 596
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 382,
+        "viewportHeight": 580,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-portrait/closed-portrait-initial-components.json",
+        "nativeSha256": "5a0d29bf851f4cd7256df989a5bd78e0355a7b5bc29f263c4ed4a89ba4c121ca",
+        "image": "captures/safari/2026-10-21/closed-portrait/closed-portrait-initial.png",
+        "imageSha256": "4a3d428ca5d1a9f3d442429c2515a32e640d4fa023c9d8480083943c35f823fd"
+      },
+      "scrolled": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 174
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 234
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 542
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 394,
+            "y": 596
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 382,
+        "viewportHeight": 598,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-portrait/closed-portrait-scrolled-components.json",
+        "nativeSha256": "b897aab08cc2c6d98885fabda604dea7ca681d3339c0770d3f7bea5b5e190cf7",
+        "image": "captures/safari/2026-10-21/closed-portrait/closed-portrait-scrolled.png",
+        "imageSha256": "30ed703e2377bff3a8fdac506ca38635a3af17772652160968451fecdaa0622e"
+      }
+    }
+  },
+  {
+    "id": "closed-landscapeRight",
+    "fold": "closed",
+    "bodyRotationDegrees": 90,
+    "sceneRotationDegrees": 90,
+    "width": 678.0,
+    "height": 466.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 24
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 84
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 282
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 336
+          },
+          "address": {
+            "height": 48,
+            "width": 334,
+            "x": 172,
+            "y": 384
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 368,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-landscapeRight/closed-landscapeRight-initial-components.json",
+        "nativeSha256": "244d62cb9fce135e720da12c1afbee526f5b6ba3e170aeeaac056d44195ff048",
+        "image": "captures/safari/2026-10-21/closed-landscapeRight/closed-landscapeRight-initial.png",
+        "imageSha256": "ff25e243564666f6026cbbde414492e23e2bff824a7972a22fdb9a8f5a6b39d5"
+      },
+      "scrolled": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 24
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 84
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 282
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 336
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 386,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-landscapeRight/closed-landscapeRight-scrolled-components.json",
+        "nativeSha256": "59e70393b0a3d05684d3521d979e2e00c73a935891ec962387e657af2e096573",
+        "image": "captures/safari/2026-10-21/closed-landscapeRight/closed-landscapeRight-scrolled.png",
+        "imageSha256": "e38061465431b1f568dcf71a2a239fe48e2be9f87ab7485fe2cac30285fc186e"
+      }
+    }
+  },
+  {
+    "id": "closed-portraitUpsideDown",
+    "fold": "closed",
+    "bodyRotationDegrees": 180,
+    "sceneRotationDegrees": 90,
+    "width": 678.0,
+    "height": 466.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 24
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 84
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 282
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 336
+          },
+          "address": {
+            "height": 48,
+            "width": 334,
+            "x": 172,
+            "y": 384
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 368,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-portraitUpsideDown/closed-portraitUpsideDown-initial-components.json",
+        "nativeSha256": "499214c9f5c17feac827e529688af0ba4fb98b455ddfa83171100cca99138436",
+        "image": "captures/safari/2026-10-21/closed-portraitUpsideDown/closed-portraitUpsideDown-initial.png",
+        "imageSha256": "b323d8dcd6cc9aa11a594001b43e7556f4226ba7113c5ad987438eef8b2d1606"
+      },
+      "scrolled": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 24
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 84
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 282
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 606,
+            "y": 336
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 386,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-portraitUpsideDown/closed-portraitUpsideDown-scrolled-components.json",
+        "nativeSha256": "a4d981ea15e0dc855bce3f7fd3b181cf715d935c85a91aeb1858e28722a14004",
+        "image": "captures/safari/2026-10-21/closed-portraitUpsideDown/closed-portraitUpsideDown-scrolled.png",
+        "imageSha256": "7cf23cc8ae81325728aaaedf9efafa9133488824226c3323900416a908008ec7"
+      }
+    }
+  },
+  {
+    "id": "closed-landscapeLeft",
+    "fold": "closed",
+    "bodyRotationDegrees": 270,
+    "sceneRotationDegrees": 270,
+    "width": 678.0,
+    "height": 466.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 82
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 142
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 330
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 384
+          },
+          "address": {
+            "height": 48,
+            "width": 334,
+            "x": 172,
+            "y": 384
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 368,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-landscapeLeft/closed-landscapeLeft-initial-components.json",
+        "nativeSha256": "36c60aa64f09bbf7a9ae590114792d63548ff1f77200a0a78a5108ea1a63e87e",
+        "image": "captures/safari/2026-10-21/closed-landscapeLeft/closed-landscapeLeft-initial.png",
+        "imageSha256": "597b967b409403d21d6f75beac29a801d16b417bfc41065188c5164f81f9c216"
+      },
+      "scrolled": {
+        "frames": {
+          "BackButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 82
+          },
+          "SidebarButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 142
+          },
+          "NewTabButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 330
+          },
+          "TabOverviewButton": {
+            "height": 48,
+            "width": 48,
+            "x": 24,
+            "y": 384
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 594,
+        "viewportHeight": 386,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/closed-landscapeLeft/closed-landscapeLeft-scrolled-components.json",
+        "nativeSha256": "15077e45fc07b8ac21652c1a2189451b969c195d086b749b928c055ea28629e1",
+        "image": "captures/safari/2026-10-21/closed-landscapeLeft/closed-landscapeLeft-scrolled.png",
+        "imageSha256": "62f8bba3c67b68e29f64d0defd9a8b94e5ad683c438c6e43b5086f11802ace8d"
+      }
+    }
+  },
+  {
+    "id": "open-portrait",
+    "fold": "open",
+    "bodyRotationDegrees": 0,
+    "sceneRotationDegrees": 90,
+    "width": 951.0,
+    "height": 669.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 25.999999999999943
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 25.999999999999943
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 719,
+            "y": 25.999999999999943
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 763,
+            "y": 25.999999999999943
+          },
+          "address": {
+            "height": 44,
+            "width": 360,
+            "x": 295.33333333333337,
+            "y": 25.999999999999943
+          }
+        },
+        "tabs": [
+          {
+            "frame": {
+              "height": 32,
+              "width": 226.33333333333337,
+              "x": 18,
+              "y": 81.99999999999994
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 226.33333333333337,
+              "x": 18,
+              "y": 81.99999999999994
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 226.66666666666663,
+              "x": 247.33333333333337,
+              "y": 81.99999999999994
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 226.66666666666663,
+              "x": 247.33333333333337,
+              "y": 81.99999999999994
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 226.33333333333343,
+              "x": 477.00000000000006,
+              "y": 81.99999999999994
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 226.33333333333343,
+              "x": 477.00000000000006,
+              "y": 81.99999999999994
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 194.66666666666663,
+              "x": 738.3333333333335,
+              "y": 81.99999999999994
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 226.66666666666663,
+              "x": 706.3333333333335,
+              "y": 81.99999999999994
+            },
+            "active": true,
+            "closeFrame": {
+              "height": 32,
+              "width": 32,
+              "x": 706.3333333333335,
+              "y": 81.99999999999994
+            },
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          }
+        ],
+        "viewportWidth": 951,
+        "viewportHeight": 543,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-portrait/open-portrait-initial-components.json",
+        "nativeSha256": "dfc7ce3234efdb52ad49316d459790b38de1a434c8b2833979270a1f2c7d11e1",
+        "image": "captures/safari/2026-10-21/open-portrait/open-portrait-initial.png",
+        "imageSha256": "b4886be6137b79bd8c91351fb31a559f623fc370b17c49df734138aead31453e"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.799999999999997,
+            "width": 252.0000000000001,
+            "x": 349.4333333333333,
+            "y": 18.26666666666661
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 618,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-portrait/open-portrait-scrolled-components.json",
+        "nativeSha256": "8b1f629559ddb30c782072c493cdc79103141fab04c4a3c47896254ca931fb44",
+        "image": "captures/safari/2026-10-21/open-portrait/open-portrait-scrolled.png",
+        "imageSha256": "3028b6ded07a03a43ab21ee7ab89cf2bf37a5e0346d3c23320dd9888cc78158f"
+      }
+    },
+    "singleStates": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 25.999999999999943
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 25.999999999999943
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 719,
+            "y": 25.999999999999943
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 763,
+            "y": 25.999999999999943
+          },
+          "address": {
+            "height": 44,
+            "width": 360,
+            "x": 295.33333333333337,
+            "y": 25.999999999999943
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 589,
+        "safeArea": {
+          "top": 2,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "11294ea7-f4f4-4e6c-96a8-9d2e2923fb4b",
+        "nativeSource": "captures/safari/2026-10-21/open-single-portrait/verified/open-single-portrait-initial-components.json",
+        "nativeSha256": "cbb9d727aa25f5e210c0cc7cd3373dcf84f84c6a2c6401903af97ae7e9d0be55",
+        "image": "captures/safari/2026-10-21/open-single-portrait/verified/open-single-portrait-initial.png",
+        "imageSha256": "56020898f5c1d99c11c3d554383b2af57207f405755d650db28badb548f5b6f9"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.799999999999997,
+            "width": 252.0000000000001,
+            "x": 349.4333333333333,
+            "y": 18.26666666666661
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 618,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "483801e6-e053-4765-b4e9-517f0709e85e",
+        "nativeSource": "captures/safari/2026-10-21/open-single-portrait/verified/open-single-portrait-scrolled-components.json",
+        "nativeSha256": "a79ac819e8517d271e8d4d5ee7fb84ae4f33f196b2e364d342667f31d89a123d",
+        "image": "captures/safari/2026-10-21/open-single-portrait/verified/open-single-portrait-scrolled.png",
+        "imageSha256": "82661c6d11f90543f5208d44058adbc704151a9de9fe11fa378a05fb1428e51d"
+      }
+    }
+  },
+  {
+    "id": "open-landscapeRight",
+    "fold": "open",
+    "bodyRotationDegrees": 90,
+    "sceneRotationDegrees": 0,
+    "width": 669.0,
+    "height": 951.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 437,
+            "y": 26
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 481,
+            "y": 26
+          },
+          "address": {
+            "height": 44,
+            "width": 241,
+            "x": 184,
+            "y": 26
+          }
+        },
+        "tabs": [
+          {
+            "frame": {
+              "height": 32,
+              "width": 124,
+              "x": 18,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 124,
+              "x": 18,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 124.33333333333331,
+              "x": 145,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 124.33333333333331,
+              "x": 145,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 123.99999999999994,
+              "x": 272.3333333333333,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 123.99999999999994,
+              "x": 272.3333333333333,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 124.33333333333343,
+              "x": 399.3333333333333,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 124.33333333333343,
+              "x": 399.3333333333333,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 92.33333333333326,
+              "x": 558.6666666666667,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 124.33333333333326,
+              "x": 526.6666666666667,
+              "y": 82
+            },
+            "active": true,
+            "closeFrame": {
+              "height": 32,
+              "width": 32,
+              "x": 526.6666666666667,
+              "y": 82
+            },
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          }
+        ],
+        "viewportWidth": 669,
+        "viewportHeight": 825,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-landscapeRight/open-landscapeRight-initial-components.json",
+        "nativeSha256": "42477bdf83042dd504c2b57691f21f26647d6bfec0a57d551e0d5e19d8ade7d0",
+        "image": "captures/safari/2026-10-21/open-landscapeRight/open-landscapeRight-initial.png",
+        "imageSha256": "67b145abe59b464615a98e8d4951a83022d9699d8bfe6c196f3c9403d609ae2d"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.79999999999984,
+            "width": 168.7,
+            "x": 229.2,
+            "y": 18.266666666666765
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 900,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-landscapeRight/open-landscapeRight-scrolled-components.json",
+        "nativeSha256": "63f7ba82c23f04cd4c242672608c1348bdc3e003bdda5dd1d4c72ac33ef16fd6",
+        "image": "captures/safari/2026-10-21/open-landscapeRight/open-landscapeRight-scrolled.png",
+        "imageSha256": "f3ca27d367d1f35b675e6c053f3627c4df154dc5243b2ba10ddef7896a0bcdf5"
+      }
+    },
+    "singleStates": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 437,
+            "y": 26
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 481,
+            "y": 26
+          },
+          "address": {
+            "height": 44,
+            "width": 241,
+            "x": 184,
+            "y": 26
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 871,
+        "safeArea": {
+          "top": 2,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "d14d4416-1b0e-4640-9325-197b2ddd5fd3",
+        "nativeSource": "captures/safari/2026-10-21/open-single-landscapeRight/verified/open-single-landscapeRight-initial-components.json",
+        "nativeSha256": "0cd7b1c0325fe9b939a945294b4eb5ca589260751bd7e7dfad018a19d4fcc7d7",
+        "image": "captures/safari/2026-10-21/open-single-landscapeRight/verified/open-single-landscapeRight-initial.png",
+        "imageSha256": "61c0fcbca8cf1e8abb07f6219cb24ce78efadee75cac8290234677022bbb4190"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.79999999999984,
+            "width": 168.7,
+            "x": 229.2,
+            "y": 18.266666666666765
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 900,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "bbc1ab08-6ad7-4f9c-97c3-71217eed11c8",
+        "nativeSource": "captures/safari/2026-10-21/open-single-landscapeRight/verified/open-single-landscapeRight-scrolled-components.json",
+        "nativeSha256": "d91e0b491bafcf809fcdd832926723bdafa33db80f29c6b0b0644548e3790af8",
+        "image": "captures/safari/2026-10-21/open-single-landscapeRight/verified/open-single-landscapeRight-scrolled.png",
+        "imageSha256": "035304b61b74b1a6ba93f8ff41eda6c8428d149417d7aabdb1602839388729f9"
+      }
+    }
+  },
+  {
+    "id": "open-portraitUpsideDown",
+    "fold": "open",
+    "bodyRotationDegrees": 180,
+    "sceneRotationDegrees": 270,
+    "width": 951.0,
+    "height": 669.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 719,
+            "y": 26
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 763,
+            "y": 26
+          },
+          "address": {
+            "height": 44,
+            "width": 360,
+            "x": 295.33333333333337,
+            "y": 26
+          }
+        },
+        "tabs": [
+          {
+            "frame": {
+              "height": 32,
+              "width": 150,
+              "x": 18,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 18,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 150,
+              "x": 171,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 171,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 150,
+              "x": 324,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 324,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 150,
+              "x": 477,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 477,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 150,
+              "x": 630,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 630,
+              "y": 82
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 118,
+              "x": 815,
+              "y": 82
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 150,
+              "x": 783,
+              "y": 82
+            },
+            "active": true,
+            "closeFrame": {
+              "height": 32,
+              "width": 32,
+              "x": 783,
+              "y": 82
+            },
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          }
+        ],
+        "viewportWidth": 951,
+        "viewportHeight": 543,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-portraitUpsideDown/open-portraitUpsideDown-initial-components.json",
+        "nativeSha256": "c0b7ed53dacb87e6f9950596e0e5658445f365fd6544fb9194db704b263d5b15",
+        "image": "captures/safari/2026-10-21/open-portraitUpsideDown/open-portraitUpsideDown-initial.png",
+        "imageSha256": "c62b3287094a6c39ebfdd730fa06cdd68f2a787afe6e49ca6b54c7b0b230c0d6"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.800000000000068,
+            "width": 252.00000000000006,
+            "x": 349.43333333333334,
+            "y": 18.26666666666665
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 618,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-portraitUpsideDown/open-portraitUpsideDown-scrolled-components.json",
+        "nativeSha256": "89d587d1865fc2dde57c3255ce6127ce57b5824a12279098e17c8cfc9fa0e370",
+        "image": "captures/safari/2026-10-21/open-portraitUpsideDown/open-portraitUpsideDown-scrolled.png",
+        "imageSha256": "7fc89f5ba04c6aad7190b10d48d202fa21648860b175f76f244335bf988c9364"
+      }
+    },
+    "singleStates": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 719,
+            "y": 26
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 763,
+            "y": 26
+          },
+          "address": {
+            "height": 44,
+            "width": 360,
+            "x": 295.33333333333337,
+            "y": 26
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 589,
+        "safeArea": {
+          "top": 2,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "35636c26-977b-4942-9325-e22f30e88b82",
+        "nativeSource": "captures/safari/2026-10-21/open-single-portraitUpsideDown/verified/open-single-portraitUpsideDown-initial-components.json",
+        "nativeSha256": "c147e5e25ed4414bcc1f3fc7bd3ecc1206ba287736abcd95ff3d4d4e52c08e77",
+        "image": "captures/safari/2026-10-21/open-single-portraitUpsideDown/verified/open-single-portraitUpsideDown-initial.png",
+        "imageSha256": "dc9ba4fd72e6d1d8c0318da116287bfbec981602e2f10b80ddf579f7fcf0fc40"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.800000000000068,
+            "width": 252.00000000000006,
+            "x": 349.43333333333334,
+            "y": 18.26666666666665
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 951,
+        "viewportHeight": 618,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "2eb5d50e-e9d6-42b2-9532-bc048e55c9ed",
+        "nativeSource": "captures/safari/2026-10-21/open-single-portraitUpsideDown/verified/open-single-portraitUpsideDown-scrolled-components.json",
+        "nativeSha256": "d29c53f867c794b522a8aba0e2b83432b3df8dfe47f2daf77b671f7d23b4c03b",
+        "image": "captures/safari/2026-10-21/open-single-portraitUpsideDown/verified/open-single-portraitUpsideDown-scrolled.png",
+        "imageSha256": "19bdb7e48f23cefbb59da3cf63c28a2f3e701983878e8f76723ce3ab5afcd1a8"
+      }
+    }
+  },
+  {
+    "id": "open-landscapeLeft",
+    "fold": "open",
+    "bodyRotationDegrees": 270,
+    "sceneRotationDegrees": 180,
+    "width": 669.0,
+    "height": 951.0,
+    "mappingStatus": "Observed framebuffer scene. Closed upside-down retains the preceding landscapeRight scene in this clockwise capture sequence; orientation history matters. Symmetric open mask rotation signs are a representation, not hardware evidence.",
+    "states": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26.000000000000057
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26.000000000000057
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 437,
+            "y": 26.000000000000057
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 481,
+            "y": 26.000000000000057
+          },
+          "address": {
+            "height": 44,
+            "width": 241,
+            "x": 184,
+            "y": 26.000000000000057
+          }
+        },
+        "tabs": [
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 18,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 18,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 45,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 45,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 139,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 139,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 242,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 242,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 345,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 345,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 100,
+              "x": 448,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 448,
+              "y": 82.00000000000006
+            },
+            "active": false,
+            "closeFrame": null,
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          },
+          {
+            "frame": {
+              "height": 32,
+              "width": 68,
+              "x": 583,
+              "y": 82.00000000000006
+            },
+            "visualFrame": {
+              "height": 32,
+              "width": 100,
+              "x": 551,
+              "y": 82.00000000000006
+            },
+            "active": true,
+            "closeFrame": {
+              "height": 32,
+              "width": 32,
+              "x": 551,
+              "y": 82.00000000000006
+            },
+            "visualFrameSource": "native TabBarItemTitleContainer; original TabBarTab hit frame retained separately"
+          }
+        ],
+        "viewportWidth": 669,
+        "viewportHeight": 825,
+        "safeArea": {
+          "top": 0,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-landscapeLeft/open-landscapeLeft-initial-components.json",
+        "nativeSha256": "87cca20182c481f5f00722d53e7b41a717d7fad71ac520d3a150e358b32a9b45",
+        "image": "captures/safari/2026-10-21/open-landscapeLeft/open-landscapeLeft-initial.png",
+        "imageSha256": "435f40e10744b9ea8a4968aa90e3a237abc30fcb5603a78196b0794cd6cf5bd7"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.799999999999997,
+            "width": 168.69999999999996,
+            "x": 229.19999999999996,
+            "y": 18.266666666666723
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 900,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "nativeSource": "captures/safari/2026-10-21/open-landscapeLeft/open-landscapeLeft-scrolled-components.json",
+        "nativeSha256": "9e560afa9d300cbd5fd05012f60dfd1655c215e4b23bcf163b15cd8c6910ddfe",
+        "image": "captures/safari/2026-10-21/open-landscapeLeft/open-landscapeLeft-scrolled.png",
+        "imageSha256": "1ce0fb5c0fa6a0d650a4bcae3df968a85006255b92ff56be848dac43af85fbe0"
+      }
+    },
+    "singleStates": {
+      "initial": {
+        "frames": {
+          "SidebarButton": {
+            "height": 44,
+            "width": 44,
+            "x": 72,
+            "y": 26.000000000000057
+          },
+          "BackButton": {
+            "height": 44,
+            "width": 44,
+            "x": 16,
+            "y": 26.000000000000057
+          },
+          "NewTabButton": {
+            "height": 44,
+            "width": 44,
+            "x": 437,
+            "y": 26.000000000000057
+          },
+          "TabOverviewButton": {
+            "height": 44,
+            "width": 44,
+            "x": 481,
+            "y": 26.000000000000057
+          },
+          "address": {
+            "height": 44,
+            "width": 241,
+            "x": 184,
+            "y": 26.000000000000057
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 871,
+        "safeArea": {
+          "top": 2,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "5f62ebf0-db12-47e4-b7f6-60d0357e0972",
+        "nativeSource": "captures/safari/2026-10-21/open-single-landscapeLeft/verified/open-single-landscapeLeft-initial-components.json",
+        "nativeSha256": "008e2f2c136263e94f9f8888fd33a95ebcbfb9e8879522ffe63cba5201fb760e",
+        "image": "captures/safari/2026-10-21/open-single-landscapeLeft/verified/open-single-landscapeLeft-initial.png",
+        "imageSha256": "1da7dfff3523cfc2a6c21be378be0a3abfc3d98145ed27b74d2129dba08609ad"
+      },
+      "scrolled": {
+        "frames": {
+          "address": {
+            "height": 30.799999999999997,
+            "width": 168.69999999999996,
+            "x": 229.19999999999996,
+            "y": 18.266666666666723
+          }
+        },
+        "tabs": [],
+        "viewportWidth": 669,
+        "viewportHeight": 900,
+        "safeArea": {
+          "top": 31,
+          "right": 0,
+          "bottom": 34,
+          "left": 0
+        },
+        "browserRecordId": "981ff454-995e-4dc2-b961-8eb2f3a06b55",
+        "nativeSource": "captures/safari/2026-10-21/open-single-landscapeLeft/verified/open-single-landscapeLeft-scrolled-components.json",
+        "nativeSha256": "76e20657173acfabdaa9515d093b8623fb4d9c0c6eb19b43ecd5e2bb13093049",
+        "image": "captures/safari/2026-10-21/open-single-landscapeLeft/verified/open-single-landscapeLeft-scrolled.png",
+        "imageSha256": "5e81da74cef3f03205c845dca1d7a592c9004cab7a48d934325bcaa26bc5bd9d"
+      }
+    }
+  }
+]

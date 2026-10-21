@@ -1,0 +1,9 @@
+packages: []
+allowBuilds:
+  esbuild: true
+
+# Keep Markdown symlinks while allowing VitePress to resolve nested optimizer dependencies.
+nodeLinker: hoisted
+
+# Dependency installation belongs to explicit frozen setup commands.
+verifyDepsBeforeRun: error
