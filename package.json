@@ -20,7 +20,7 @@
     "test": "node --test scripts/__tests__/*.test.mts"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@types/node": "26.4.0",
     "typescript": "7.0.2"
   }
