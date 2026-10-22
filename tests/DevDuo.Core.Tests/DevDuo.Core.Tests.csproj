@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/DevDuo/Host/AppLocalization.cs" Link="AppLocalization.cs" />
+    <Compile Include="../../src/DevDuo/Host/PreferenceStore.cs" Link="PreferenceStore.cs" />
+    <Compile Include="../../src/DevDuo/Browser/CalibrationUrl.cs" Link="CalibrationUrl.cs" />
+    <Compile Include="../../src/DevDuo/Browser/NavigationState.cs" Link="NavigationState.cs" />
+    <Compile Include="../../src/DevDuo/Device/DeviceProfile.cs" Link="DeviceProfile.cs" />
+    <Compile Include="../../src/DevDuo/Device/DevicePose.cs" Link="DevicePose.cs" />
+    <Compile Include="../../src/DevDuo/Device/QuarterTurn.cs" Link="QuarterTurn.cs" />
+    <Compile Include="../../src/DevDuo/Device/SafariScene.cs" Link="SafariScene.cs" />
+    <Compile Include="../../src/DevDuo/Device/SafariContainerOptions.cs" Link="SafariContainerOptions.cs" />
+    <Compile Include="../../src/DevDuo/Browser/BrowserIdentity.cs" Link="BrowserIdentity.cs" />
+    <Compile Include="../../src/DevDuo/Browser/BuiltinPages.cs" Link="BuiltinPages.cs" />
+    <Compile Include="../../src/DevDuo/Browser/PageTitleState.cs" Link="PageTitleState.cs" />
+    <Compile Include="../../src/DevDuo/Browser/SafariChromeState.cs" Link="SafariChromeState.cs" />
+    <Compile Include="../../src/DevDuo/Browser/ScrollIndicatorState.cs" Link="ScrollIndicatorState.cs" />
+    <EmbeddedResource Include="../../src/DevDuo/Localization/*.json" LogicalName="DevDuo.Localization.%(Filename).json" />
+    <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/shared/safari-reference/manifest.json" Link="reference-manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -15,7 +15,7 @@
 | `environment` | 真实 UA、平台、URL、偏好、语言和时区 |
 | `unknown` | 未有独立可靠来源时，硬件毫米/半径和 Liquid Glass 参数保持 null |
 
-标定页不绘制 Safari 组件。桌面记录保留 `macOS-WKWebView` / `Windows-WebView2` 和 `safari-shell-approx` / `app-webview` 标签；screen API、DPR 和 safe area 均为原生桌面值，不得标成真实 iPhone Safari。桌面专用 `window.devduoContainerTelemetry` 与**保存状态**记录请求场景、真实视口/原生框、滚动/chrome 状态、独立可见/点击边界、取色来源及材质参数。DOM 观察和原生快照异步，不是原子采样。绘制及输出行为见[架构](001-ARCHITECTURE.md)。
+标定页不绘制 Safari 组件。桌面记录保留 `macOS-WKWebView` 或 `Windows-WebKit`（旧记录保留原始引擎标签），以及 `safari-shell-approx` / `app-webview` 标签；screen API、DPR 和 safe area 均为原生桌面值，不得标成真实 iPhone Safari。桌面专用 `window.devduoContainerTelemetry` 与**保存状态**记录请求场景、真实视口/原生框、滚动/chrome 状态、独立可见/点击边界、取色来源及材质参数。DOM 观察和原生快照异步，不是原子采样。绘制及输出行为见[架构](001-ARCHITECTURE.md)。
 
 ## 坐标、曲线与物理未知值
 

@@ -5,6 +5,15 @@ inputs:
   docs-only:
     description: Install only the JavaScript tooling and documentation workspace.
     default: 'false'
+  tooling-only:
+    description: Install only the release tooling, without docs, Python or the native SDK.
+    default: 'false'
+  portable-only:
+    description: Install portable check dependencies without restoring the application.
+    default: 'false'
+  native-only:
+    description: Install application compilation dependencies without Python or documentation.
+    default: 'false'
 
 runs:
   using: composite
@@ -13,13 +22,25 @@ runs:
       uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
       with:
         install: true
-        install_args: ${{ inputs.docs-only == 'true' && 'node pnpm just' || '' }}
+        install_args: ${{ inputs.native-only == 'true' && 'node pnpm just gh dotnet' || (inputs.docs-only == 'true' || inputs.tooling-only == 'true') && 'node pnpm just gh' || '' }}
         cache: true
     - name: Setup locked workspace and check symlink privileges
-      if: inputs.docs-only != 'true'
+      if: inputs.docs-only != 'true' && inputs.tooling-only != 'true' && inputs.portable-only != 'true' && inputs.native-only != 'true'
       shell: bash
       run: mise exec -- just setup
     - name: Setup independent documentation workspace
       if: inputs.docs-only == 'true'
       shell: bash
       run: mise exec node pnpm just -- just setup-docs
+    - name: Setup locked release tooling
+      if: inputs.tooling-only == 'true'
+      shell: bash
+      run: mise exec node pnpm just -- just setup-release-tools
+    - name: Setup portable checks without an application backend
+      if: inputs.portable-only == 'true'
+      shell: bash
+      run: mise exec -- just setup-ci
+    - name: Setup native compilation dependencies
+      if: inputs.native-only == 'true'
+      shell: bash
+      run: mise exec node pnpm just dotnet -- just setup-native

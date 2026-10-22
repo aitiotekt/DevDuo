@@ -68,9 +68,9 @@ test("the matrix CLI exports the enabled platforms to GitHub Actions", () => {
     const workflow = parseYaml(
       readFileSync(join(repoRoot, ".github/workflows/checks.yml"), "utf8"),
     );
-    assert.equal(workflow.jobs.portable.needs, "plan");
+    assert.equal(workflow.jobs.native.needs, "plan");
     assert.equal(
-      workflow.jobs.portable.strategy.matrix,
+      workflow.jobs.native.strategy.matrix,
       `\${{ fromJSON(needs.plan.outputs.matrix) }}`,
     );
     assert.match(
@@ -79,7 +79,11 @@ test("the matrix CLI exports the enabled platforms to GitHub Actions", () => {
       ).run,
       /scripts\/release\.mts checks-matrix/,
     );
-    assert.deepEqual(workflow.jobs.report.needs, ["plan", "portable"]);
+    assert.deepEqual(workflow.jobs.report.needs, [
+      "plan",
+      "portable",
+      "native",
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -92,21 +96,28 @@ test("Checks report fails when either matrix planning or platform validation fai
     readFileSync(join(repoRoot, ".github/workflows/checks.yml"), "utf8"),
   );
   const script = workflow.jobs.report.steps[0].run;
-  for (const [plan, platform] of [
-    ["success", "success"],
-    ["failure", "success"],
-    ["success", "failure"],
-    ["failure", "skipped"],
+  for (const [plan, platform, required, native, success] of [
+    ["success", "success", "true", "success", true],
+    ["success", "success", "false", "skipped", true],
+    ["failure", "success", "true", "success", false],
+    ["success", "failure", "true", "success", false],
+    ["failure", "skipped", "true", "skipped", false],
+    ["success", "success", "true", "failure", false],
+    ["success", "success", "true", "skipped", false],
+    ["success", "success", "false", "failure", false],
+    ["success", "success", "", "skipped", false],
   ]) {
     const result = spawnSync("bash", ["-e", "-c", script], {
       encoding: "utf8",
-      env: { ...process.env, PLAN_RESULT: plan, RESULT: platform },
+      env: {
+        ...process.env,
+        PLAN_RESULT: String(plan),
+        RESULT: String(platform),
+        NATIVE_REQUIRED: String(required),
+        NATIVE_RESULT: String(native),
+      },
     });
     assert.ifError(result.error);
-    assert.equal(
-      result.status === 0,
-      plan === "success" && platform === "success",
-      result.stderr,
-    );
+    assert.equal(result.status === 0, success, result.stderr);
   }
 });

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { macosBundlePlist } from "./lib/macos-bundle.mts";
 import { loadMetadata } from "./lib/metadata.mts";
 import { repoRoot } from "./lib/paths.mts";
-import { artifactRecord } from "./lib/release-artifacts.mts";
+import { artifactRecord, windowsRuntime } from "./lib/release-artifacts.mts";
 import {
   artifactName,
   currentVersion,
@@ -19,6 +19,7 @@ import {
   targets,
 } from "./lib/release-policy.mts";
 import { run } from "./lib/release-process.mts";
+import { validateRuntime } from "./lib/webkit-release.mts";
 
 try {
   const command = process.argv[2],
@@ -27,7 +28,8 @@ try {
   if (
     (target === "osx-arm64" &&
       (process.platform !== "darwin" || process.arch !== "arm64")) ||
-    (target === "win-x64" && process.platform !== "win32")
+    (target === "win-x64" &&
+      (process.platform !== "win32" || process.arch !== "x64"))
   )
     throw new Error("Release packaging must run on its native platform.");
   const metadata = loadMetadata(),
@@ -37,7 +39,34 @@ try {
   const app = join(stage, target === "osx-arm64" ? `${name}.app` : name);
   const output = join(repoRoot, "temp/release/platform");
   const archive = join(output, artifactName(version, target));
-  if (command === "prepare") {
+  if (command === "preflight" && target === "osx-arm64") {
+    for (const key of [
+      "APPLE_CERTIFICATE",
+      "APPLE_CERTIFICATE_PASSWORD",
+      "APPLE_SIGNING_IDENTITY",
+      "APPLE_ID",
+      "APPLE_PASSWORD",
+      "APPLE_TEAM_ID",
+    ])
+      if (!process.env[key]?.trim())
+        throw new Error(`Missing ${key} in the release-signing environment.`);
+    if (
+      !process.env.APPLE_SIGNING_IDENTITY?.startsWith(
+        "Developer ID Application:",
+      )
+    )
+      throw new Error("A Developer ID Application identity is required.");
+    const sdk = run("xcrun", ["--sdk", "macosx", "--show-sdk-version"], true);
+    if (
+      !/^\d+\.\d+(?:\.\d+)?$/.test(sdk) ||
+      Number(sdk.split(".")[0]) <
+        Number(metadata.macos.minimumSystemVersion.split(".")[0])
+    )
+      throw new Error("The runner does not provide the required macOS SDK.");
+    console.log(
+      "Signing inputs and the macOS SDK are available; credentials have not been imported or used.",
+    );
+  } else if (command === "prepare") {
     rmSync(stage, { recursive: true, force: true });
     rmSync(output, { recursive: true, force: true });
     mkdirSync(stage, { recursive: true });
@@ -49,6 +78,14 @@ try {
     );
     if (
       !existsSync(executable) ||
+      !existsSync(
+        join(
+          payload,
+          target === "osx-arm64"
+            ? "libDevDuoWebView.dylib"
+            : "DevDuo.Windows.Compositor.dll",
+        ),
+      ) ||
       !existsSync(
         join(
           payload,
@@ -164,14 +201,17 @@ try {
       run("xcrun", ["stapler", "validate", app]);
       run("spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
       run("ditto", ["-c", "-k", "--keepParent", app, archive]);
-    } else run("tar", ["-a", "-c", "-f", archive, "-C", stage, name]);
+    } else {
+      validateRuntime(join(app, "webkit"));
+      run("tar", ["-a", "-c", "-f", archive, "-C", stage, name]);
+    }
     const sourceSha =
       process.env.GITHUB_SHA ?? run("git", ["rev-parse", "HEAD"], true);
     writeFileSync(
       join(output, "report.json"),
-      `${JSON.stringify({ sourceSha, artifact: artifactRecord(output, version, target) }, null, 2)}\n`,
+      `${JSON.stringify({ sourceSha, artifact: artifactRecord(output, version, target), ...(target === "win-x64" ? { windowsWebKit: windowsRuntime(metadata) } : {}) }, null, 2)}\n`,
     );
-  } else throw new Error("Use prepare, bundle, sign or archive.");
+  } else throw new Error("Use preflight, prepare, bundle, sign or archive.");
 } catch (error) {
   console.error(
     error instanceof Error ? error.message : "Release packaging failed.",

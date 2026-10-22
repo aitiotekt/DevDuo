@@ -12,7 +12,13 @@ test("footer color extension requires a visible opaque full-width fixed edge and
     clear: [0, 0, 0, 0],
     translucent: [121, 26, 194, 128],
   };
-  const root = { backgroundColor: "teal" };
+  const root = {
+    backgroundColor: "teal",
+    scrollHeight: 2400,
+    scrollWidth: 382,
+    clientWidth: 382,
+    clientHeight: 580,
+  };
   const style = {
     position: "fixed",
     visibility: "visible",
@@ -29,6 +35,7 @@ test("footer color extension requires a visible opaque full-width fixed edge and
   const document = {
     readyState: "complete",
     documentElement: root,
+    scrollingElement: root,
     body: root,
     head: {},
     title: "Probe",
@@ -47,11 +54,18 @@ test("footer color extension requires a visible opaque full-width fixed edge and
     }),
   };
   const window: Record<string, unknown> = { addEventListener: () => {} };
+  window.top = window;
   const context = {
     ...frame,
+    scrollX: 0,
+    devicePixelRatio: 2,
+    visualViewport: { width: 382, height: 580, scale: 1 },
+    crypto: { randomUUID: () => "test-document" },
+    performance: { now: () => 0 },
     document,
     window,
     location: { hostname: "localhost" },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
     CSS: { supports: (_property: string, value: string) => value in colors },
     getComputedStyle: (element: unknown) => (element === footer ? style : root),
     requestAnimationFrame: (callback: () => void) => {
@@ -63,7 +77,7 @@ test("footer color extension requires a visible opaque full-width fixed edge and
   };
   runInNewContext(
     readFileSync(
-      join(repoRoot, "src/DevDuo/Fixtures/browser-observer.js"),
+      join(repoRoot, "src/DevDuo/WebAssets/Scripts/browser-observer.js"),
       "utf8",
     ),
     context,
@@ -79,6 +93,64 @@ test("footer color extension requires a visible opaque full-width fixed edge and
       : Array.from(observation.fixedBottomColor);
   }
   assert.deepEqual(observedColor(), colors.purple.slice(0, 3));
+  const initial = window.devduoShellObservation as {
+    documentHeight: number;
+    documentWidth: number;
+    underPageBackgroundFallback: number[];
+    documentId: string;
+  };
+  assert.equal(initial.documentHeight, 2400);
+  assert.equal(initial.documentWidth, 382);
+  assert.deepEqual(
+    Array.from(initial.underPageBackgroundFallback),
+    [24, 185, 168],
+  );
+  assert.equal(initial.documentId, "test-document");
+  let jsonMessage = "";
+  window.webkit = {
+    messageHandlers: {
+      devduoShellJSON: {
+        postMessage: (value: string) => {
+          jsonMessage = value;
+        },
+      },
+    },
+  };
+  observedColor();
+  assert.equal(JSON.parse(jsonMessage).themeColor, null);
+  visible = false;
+  observedColor();
+  assert.equal(
+    JSON.parse(jsonMessage).fixedBottomColor,
+    null,
+    "The Windows JSON transport preserves null fields omitted by WebKit's C dictionary conversion",
+  );
+  visible = true;
+  delete window.webkit;
+  root.scrollHeight = 3200;
+  observedColor();
+  assert.equal(
+    (window.devduoShellObservation as { documentHeight: number })
+      .documentHeight,
+    3200,
+  );
+  document.scrollingElement = {
+    ...root,
+    scrollHeight: 1800,
+    scrollWidth: 1600,
+  };
+  observedColor();
+  assert.equal(
+    (window.devduoShellObservation as { documentHeight: number })
+      .documentHeight,
+    1800,
+    "Quirks pages report the actual body scrolling element",
+  );
+  assert.equal(
+    (window.devduoShellObservation as { documentWidth: number }).documentWidth,
+    1600,
+    "Horizontal continuation uses the actual document extent",
+  );
   rect.right = 150;
   assert.equal(
     observedColor(),

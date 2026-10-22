@@ -7,15 +7,19 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../src/DevDuo/AppLocalization.cs" Link="AppLocalization.cs" />
-    <Compile Include="../../src/DevDuo/PreferenceStore.cs" Link="PreferenceStore.cs" />
-    <Compile Include="../../src/DevDuo/CalibrationUrl.cs" Link="CalibrationUrl.cs" />
-    <Compile Include="../../src/DevDuo/NavigationState.cs" Link="NavigationState.cs" />
-    <Compile Include="../../src/DevDuo/DeviceProfile.cs" Link="DeviceProfile.cs" />
-    <Compile Include="../../src/DevDuo/SafariScene.cs" Link="SafariScene.cs" />
-    <Compile Include="../../src/DevDuo/SafariContainerOptions.cs" Link="SafariContainerOptions.cs" />
+    <Compile Include="../../src/DevDuo/Host/AppLocalization.cs" Link="AppLocalization.cs" />
+    <Compile Include="../../src/DevDuo/Host/PreferenceStore.cs" Link="PreferenceStore.cs" />
+    <Compile Include="../../src/DevDuo/Browser/CalibrationUrl.cs" Link="CalibrationUrl.cs" />
+    <Compile Include="../../src/DevDuo/Device/DeviceProfile.cs" Link="DeviceProfile.cs" />
+    <Compile Include="../../src/DevDuo/Device/SafariScene.cs" Link="SafariScene.cs" />
+    <Compile Include="../../src/DevDuo/Device/SafariContainerOptions.cs" Link="SafariContainerOptions.cs" />
+    <Compile Include="../../src/DevDuo/Browser/BrowserIdentity.cs" Link="BrowserIdentity.cs" />
+    <Compile Include="../../src/DevDuo/Browser/BuiltinPages.cs" Link="BuiltinPages.cs" />
+    <Compile Include="../../src/DevDuo/Browser/WelcomePage.cs" Link="WelcomePage.cs" />
+    <Compile Include="../../src/DevDuo/ProjectLinks.cs" Link="ProjectLinks.cs" />
     <EmbeddedResource Include="../../src/DevDuo/Localization/*.json" LogicalName="DevDuo.Localization.%(Filename).json" />
     <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../src/DevDuo/Fixtures/color-scroll.html" Link="color-scroll.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/DevDuo/WebAssets/Pages/color-scroll.html" Link="WebAssets/Pages/color-scroll.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/DevDuo/WebAssets/Pages/welcome.html" Link="WebAssets/Pages/welcome.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

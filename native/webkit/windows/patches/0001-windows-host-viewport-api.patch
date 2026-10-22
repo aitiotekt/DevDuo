@@ -1,0 +1,1081 @@
+diff --git a/Source/WebCore/Headers.cmake b/Source/WebCore/Headers.cmake
+index cafc06b..6550eda 100644
+--- a/Source/WebCore/Headers.cmake
++++ b/Source/WebCore/Headers.cmake
+@@ -2227,6 +2227,7 @@ set(WebCore_PRIVATE_FRAMEWORK_HEADERS
+     platform/ScreenOrientationManager.h
+     platform/ScreenProperties.h
+     platform/ScriptExecutionContextIdentifier.h
++    platform/HostScrollIndicator.h
+     platform/ScrollAlignment.h
+     platform/ScrollAnimation.h
+     platform/ScrollAnimationMomentum.h
+diff --git a/Source/WebCore/Sources.txt b/Source/WebCore/Sources.txt
+index 6525ec0..8cd0f99 100644
+--- a/Source/WebCore/Sources.txt
++++ b/Source/WebCore/Sources.txt
+@@ -2507,6 +2507,7 @@ platform/ReferrerPolicy.cpp
+ platform/RemoteCommandListener.cpp
+ platform/RunLoopObserver.cpp
+ platform/ScreenOrientationManager.cpp
++platform/HostScrollIndicator.cpp
+ platform/ScrollAlignment.cpp
+ platform/ScrollAnimation.cpp
+ platform/ScrollAnimationKeyboard.cpp
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+index 6072240..6530162 100644
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -72,6 +72,7 @@
+ #include "HTMLHtmlElement.h"
+ #include "HTMLIFrameElement.h"
+ #include "HTMLNames.h"
++#include "HostScrollIndicator.h"
+ #include "HTMLObjectElement.h"
+ #include "HTMLPlugInElement.h"
+ #include "HighlightRegistry.h"
+@@ -133,6 +134,7 @@
+ #include "ShadowRoot.h"
+ #include "SimpleRange.h"
+ #include "StyleComputedStyle+SettersInlines.h"
++#include "StylePrimitiveNumericTypes+EvaluationMinimum.h"
+ #include "StyleDocumentScope.h"
+ #include "StyleResolver.h"
+ #include "TextIndicator.h"
+@@ -1705,7 +1707,27 @@ bool LocalFrameView::styleHidesScrollbarWithOrientation(ScrollbarOrientation ori
+     scrollbarState.scrollbarPart = ScrollbarBGPart;
+     scrollbarState.orientation = orientation;
+     auto scrollbarStyle = renderer->resolvePseudoElementStyle({ PseudoElementType::WebKitScrollbar, scrollbarState }, protect(renderer->style()).ptr());
+-    return scrollbarStyle && scrollbarStyle->display() == Style::DisplayType::None;
++    if (!scrollbarStyle)
++        return false;
++    if (scrollbarStyle->display() == Style::DisplayType::None)
++        return true;
++#if PLATFORM(WIN)
++    if (orientation == ScrollbarOrientation::Vertical && suppressHostVerticalScrollbar(*this)) {
++        // A root scrollbar created before a dynamic pseudo-style match can still
++        // be a native object. Resolve its current author style even in that case.
++        // Use the same thickness/min/max/zoom rules as RenderScrollbarPart.
++        auto zoom = scrollbarStyle->usedZoomForLength();
++        int fallback = ScrollbarTheme::theme().scrollbarThickness();
++        auto width = scrollbarStyle->width().isFixed()
++            ? Style::evaluateMinimum<LayoutUnit>(scrollbarStyle->width(), 0_lu, zoom).toInt() : fallback;
++        auto minimum = scrollbarStyle->minWidth().isFixed() || scrollbarStyle->minWidth().isAuto()
++            ? Style::evaluateMinimum<LayoutUnit>(scrollbarStyle->minWidth(), 0_lu, zoom).toInt() : fallback;
++        auto maximum = scrollbarStyle->maxWidth().isNone() ? width : scrollbarStyle->maxWidth().isFixed()
++            ? Style::evaluateMinimum<LayoutUnit>(scrollbarStyle->maxWidth(), 0_lu, zoom).toInt() : fallback;
++        return std::max(minimum, std::min(maximum, width)) <= 0;
++    }
++#endif
++    return false;
+ }
+ 
+ NativeScrollbarVisibility LocalFrameView::horizontalNativeScrollbarVisibility() const
+@@ -1720,6 +1742,10 @@ NativeScrollbarVisibility LocalFrameView::horizontalNativeScrollbarVisibility()
+ 
+ NativeScrollbarVisibility LocalFrameView::verticalNativeScrollbarVisibility() const
+ {
++#if PLATFORM(WIN)
++    if (suppressHostVerticalScrollbar(*this) && styleHidesScrollbarWithOrientation(ScrollbarOrientation::Vertical))
++        return NativeScrollbarVisibility::HiddenByStyle;
++#endif
+     if (managesScrollbars()) {
+         RefPtr scrollbar = verticalScrollbar();
+         return Scrollbar::nativeScrollbarVisibility(scrollbar.get());
+@@ -2465,7 +2491,16 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         if (compareWithViewportSize(side, renderer) == ViewportComparison::Smaller)
+             return { };
+ 
+-        return protect(renderer.style())->visitedDependentUsedBackgroundColorApplyingColorFilter();
++        auto color = protect(renderer.style())->visitedDependentUsedBackgroundColorApplyingColorFilter();
++#if PLATFORM(WIN)
++        // Correct edge-color metadata only; actual page painting is unchanged.
++        // The background's alpha does not include its renderer's own opacity.
++        // Preserve the native dimming/backdrop path and let it blend this color
++        // against the page background. Ancestor group opacity is not inferred.
++        if (renderer.opacity() < 1)
++            return color.colorWithAlphaMultipliedBy(renderer.opacity());
++#endif
++        return color;
+     };
+ 
+     enum class ContainerEdgeCandidateResult : uint8_t {
+@@ -3416,6 +3451,9 @@ void LocalFrameView::setScrollOffsetWithOptions(std::optional<int> x, std::optio
+ 
+ void LocalFrameView::setScrollOffsetWithOptions(const ScrollOffset& scrollOffset, const ScrollPositionChangeOptions& options)
+ {
++#if PLATFORM(WIN)
++    if (options.type == ScrollType::Programmatic) hostScrollIndicatorProgrammaticIntent(*this);
++#endif
+     LOG_WITH_STREAM(Scrolling, stream << "LocalFrameView::setScrollOffset " << scrollOffset << " animated " << (options.animated == ScrollIsAnimated::Yes) << ", clearing anchor");
+ 
+     auto scrollTypeScope = ScrollTypeScope(*this, options.type);
+diff --git a/Source/WebCore/platform/HostScrollIndicator.cpp b/Source/WebCore/platform/HostScrollIndicator.cpp
+new file mode 100644
+index 0000000..1786d48
+--- /dev/null
++++ b/Source/WebCore/platform/HostScrollIndicator.cpp
+@@ -0,0 +1,115 @@
++#include "config.h"
++#include "HostScrollIndicator.h"
++
++#if PLATFORM(WIN)
++#include "Document.h"
++#include "DocumentPage.h"
++#include "LocalFrame.h"
++#include "LocalFrameInlines.h"
++#include "LocalFrameView.h"
++#include "Page.h"
++#include "ScrollableArea.h"
++#include "Scrollbar.h"
++#include <wtf/MonotonicTime.h>
++#include <wtf/NeverDestroyed.h>
++#include <wtf/WeakHashMap.h>
++
++namespace WebCore {
++namespace {
++struct State {
++    bool enabled { false }, userIntent { false };
++    WeakPtr<Document, WeakPtrImplWithEventTargetData> document;
++    uint64_t epoch { 0 }, sequence { 0 };
++    MonotonicTime lastMotion;
++    IntSize viewport;
++    int range { 0 };
++};
++// There is exactly one store in WebCore, shared through the exported API.
++auto& states()
++{
++    static NeverDestroyed<WeakHashMap<Page, State>> storage;
++    return storage.get();
++}
++LocalFrameView* rootView(const ScrollableArea& area)
++{
++    if (!is<ScrollView>(area)) return nullptr;
++    auto* view = dynamicDowncast<LocalFrameView>(downcast<ScrollView>(area));
++    return view && view->frame().isMainFrame() ? const_cast<LocalFrameView*>(view) : nullptr;
++}
++State* stateFor(LocalFrameView& view)
++{
++    auto* page = view.frame().page();
++    if (!page) return nullptr;
++    auto iterator = states().find(page);
++    if (iterator == states().end() || !iterator->value.enabled) return nullptr;
++    auto& state = iterator->value;
++    if (state.document.get() != view.frame().document()) {
++        state.document = view.frame().document();
++        ++state.epoch;
++        state.sequence = 0;
++        state.userIntent = false;
++        state.viewport = { };
++        state.range = 0;
++    }
++    return &state;
++}
++}
++void setHostScrollIndicatorEnabled(Page& page, bool enabled)
++{
++    states().ensure(page, [] { return State { }; }).iterator->value.enabled = enabled;
++}
++bool suppressHostVerticalScrollbar(const ScrollableArea& area)
++{
++    auto* view = rootView(area);
++    return view && stateFor(*view);
++}
++void hostScrollIndicatorUserIntent(ScrollableArea& area)
++{
++    auto* view = rootView(area);
++    auto* state = view ? stateFor(*view) : nullptr;
++    if (!state || area.currentScrollType() != ScrollType::User) return;
++    state->userIntent = true;
++    state->lastMotion = MonotonicTime::now();
++}
++void hostScrollIndicatorProgrammaticIntent(ScrollableArea& area)
++{
++    auto* view = rootView(area);
++    if (auto* state = view ? stateFor(*view) : nullptr) state->userIntent = false;
++}
++void hostScrollIndicatorDidScroll(ScrollableArea& area, int deltaY)
++{
++    auto* view = rootView(area);
++    auto* state = view ? stateFor(*view) : nullptr;
++    if (!state || !deltaY) return;
++    auto range = view->maximumScrollPosition().y() - view->minimumScrollPosition().y();
++    auto viewport = view->visibleContentRect().size();
++    // Layout clamps and anchoring must not borrow a nearby user-input epoch.
++    if (state->range != range || state->viewport != viewport) {
++        state->range = range;
++        state->viewport = viewport;
++        state->userIntent = false;
++        return;
++    }
++    auto now = MonotonicTime::now();
++    if (state->userIntent && now - state->lastMotion < 1_s && area.currentScrollType() == ScrollType::User) {
++        ++state->sequence;
++        state->lastMotion = now;
++    }
++}
++HostScrollIndicatorState hostScrollIndicatorState(LocalFrameView& view)
++{
++    auto* state = stateFor(view);
++    if (!state) return { };
++    state->range = view.maximumScrollPosition().y() - view.minimumScrollPosition().y();
++    state->viewport = view.visibleContentRect().size();
++    RefPtr scrollbar = view.verticalScrollbar();
++    bool nativeVisibilityHidden = static_cast<ScrollableArea&>(view).verticalNativeScrollbarVisibility() == NativeScrollbarVisibility::HiddenByStyle;
++    bool suppressed = view.scrollbarWidthStyle() == ScrollbarWidth::None
++        || nativeVisibilityHidden
++        || (scrollbar && (scrollbar->isHiddenByStyle() || scrollbar->width() <= 0));
++    return { true, suppressed, nativeVisibilityHidden, state->epoch, state->sequence,
++        static_cast<double>(view.scrollPosition().y() - view.minimumScrollPosition().y()),
++        static_cast<double>(state->range), static_cast<double>(state->viewport.height()) };
++}
++}
++#endif
+diff --git a/Source/WebCore/platform/HostScrollIndicator.h b/Source/WebCore/platform/HostScrollIndicator.h
+new file mode 100644
+index 0000000..2d61e96
+--- /dev/null
++++ b/Source/WebCore/platform/HostScrollIndicator.h
+@@ -0,0 +1,26 @@
++// Host presentation policy; this API never changes layout or scroll extents.
++#pragma once
++
++#if PLATFORM(WIN)
++#include <cstdint>
++
++namespace WebCore {
++class Page;
++class LocalFrameView;
++class ScrollableArea;
++struct HostScrollIndicatorState {
++    bool enabled { false };
++    bool cssSuppressed { false };
++    bool nativeVisibilityHidden { false };
++    uint64_t documentEpoch { 0 };
++    uint64_t userMotionSequence { 0 };
++    double position { 0 }, range { 0 }, viewportHeight { 0 };
++};
++WEBCORE_EXPORT void setHostScrollIndicatorEnabled(Page&, bool);
++WEBCORE_EXPORT HostScrollIndicatorState hostScrollIndicatorState(LocalFrameView&);
++bool suppressHostVerticalScrollbar(const ScrollableArea&);
++void hostScrollIndicatorUserIntent(ScrollableArea&);
++void hostScrollIndicatorProgrammaticIntent(ScrollableArea&);
++void hostScrollIndicatorDidScroll(ScrollableArea&, int deltaY);
++}
++#endif
+diff --git a/Source/WebCore/platform/ScrollAnimator.cpp b/Source/WebCore/platform/ScrollAnimator.cpp
+index 1eca370..7fe89ec 100644
+--- a/Source/WebCore/platform/ScrollAnimator.cpp
++++ b/Source/WebCore/platform/ScrollAnimator.cpp
+@@ -33,6 +33,7 @@
+ #include "ScrollAnimator.h"
+ 
+ #include "FloatPoint.h"
++#include "HostScrollIndicator.h"
+ #include "KeyboardScrollingAnimator.h"
+ #include "LayoutSize.h"
+ #include "Logging.h"
+@@ -69,6 +70,9 @@ ScrollAnimator::~ScrollAnimator()
+ 
+ bool ScrollAnimator::singleAxisScroll(ScrollEventAxis axis, float scrollDelta, EnumSet<ScrollBehavior> behavior)
+ {
++#if PLATFORM(WIN)
++    if (axis == ScrollEventAxis::Vertical && scrollDelta) hostScrollIndicatorUserIntent(scrollableArea());
++#endif
+     CheckedRef scrollableArea = m_scrollableArea;
+     scrollableArea->scrollbarsController().setScrollbarAnimationsUnsuspendedByUserInteraction(true);
+ 
+@@ -171,6 +175,9 @@ void ScrollAnimator::resnapAfterLayout()
+ 
+ bool ScrollAnimator::handleWheelEvent(const PlatformWheelEvent& wheelEvent)
+ {
++#if PLATFORM(WIN)
++    if (wheelEvent.deltaY()) hostScrollIndicatorUserIntent(scrollableArea());
++#endif
+ #if !PLATFORM(MAC)
+     m_scrollController.updateGestureInProgressState(wheelEvent);
+ #endif
+diff --git a/Source/WebCore/platform/ScrollableArea.cpp b/Source/WebCore/platform/ScrollableArea.cpp
+index 00e5715..06dbf60 100644
+--- a/Source/WebCore/platform/ScrollableArea.cpp
++++ b/Source/WebCore/platform/ScrollableArea.cpp
+@@ -37,6 +37,7 @@
+ #include "FloatPoint.h"
+ #include "GraphicsContext.h"
+ #include "GraphicsLayer.h"
++#include "HostScrollIndicator.h"
+ #include "LayoutRect.h"
+ #include "Logging.h"
+ #include "PlatformWheelEvent.h"
+@@ -276,6 +277,9 @@ void ScrollableArea::scrollPositionChanged(const ScrollPosition& position)
+     }
+ 
+     if (scrollPosition() != oldPosition) {
++#if PLATFORM(WIN)
++        hostScrollIndicatorDidScroll(*this, scrollPosition().y() - oldPosition.y());
++#endif
+         scrollbarsController().notifyContentAreaScrolled(scrollPosition() - oldPosition);
+ 
+         if (CheckedPtr controller = scrollAnchoringController())
+diff --git a/Source/WebCore/platform/Scrollbar.cpp b/Source/WebCore/platform/Scrollbar.cpp
+index 4b538ae..1e09398 100644
+--- a/Source/WebCore/platform/Scrollbar.cpp
++++ b/Source/WebCore/platform/Scrollbar.cpp
+@@ -29,6 +29,7 @@
+ #include "DeprecatedGlobalSettings.h"
+ #include "GraphicsContext.h"
+ #include "LocalFrameView.h"
++#include "HostScrollIndicator.h"
+ #include "PlatformMouseEvent.h"
+ #include "RegionContext.h"
+ #include "ScrollAnimator.h"
+@@ -178,6 +179,9 @@ void Scrollbar::setFrameRect(const IntRect& rect)
+ 
+ void Scrollbar::paint(GraphicsContext& context, const IntRect& damageRect, Widget::SecurityOriginPaintPolicy, RegionContext*)
+ {
++#if PLATFORM(WIN)
++    if (orientation() == ScrollbarOrientation::Vertical && suppressHostVerticalScrollbar(scrollableArea())) return;
++#endif
+     if (context.invalidatingControlTints() && theme().supportsControlTints()) {
+         invalidate();
+         return;
+@@ -484,6 +488,9 @@ bool Scrollbar::isMockScrollbar() const
+ 
+ bool Scrollbar::shouldParticipateInHitTesting()
+ {
++#if PLATFORM(WIN)
++    if (orientation() == ScrollbarOrientation::Vertical && suppressHostVerticalScrollbar(scrollableArea())) return false;
++#endif
+     // Non-overlay scrollbars should always participate in hit testing.
+     if (!isOverlayScrollbar())
+         return true;
+diff --git a/Source/WebKit/Shared/WebPageCreationParameters.h b/Source/WebKit/Shared/WebPageCreationParameters.h
+index 44a2c00..d30b3b1 100644
+--- a/Source/WebKit/Shared/WebPageCreationParameters.h
++++ b/Source/WebKit/Shared/WebPageCreationParameters.h
+@@ -127,6 +127,9 @@ struct WebPageCreationParameters {
+     WebPageGroupData pageGroupData;
+ 
+     bool isEditable { false };
++#if PLATFORM(WIN)
++    bool hostScrollIndicatorEnabled { false };
++#endif
+ 
+     WebCore::Color underlayColor { };
+ 
+diff --git a/Source/WebKit/Shared/WebPageCreationParameters.serialization.in b/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
+index f07aac2..a7443ac 100644
+--- a/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
++++ b/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
+@@ -38,6 +38,9 @@ enum class WebCore::UserInterfaceLayoutDirection : bool;
+     WebKit::WebPageGroupData pageGroupData;
+ 
+     bool isEditable;
++#if PLATFORM(WIN)
++    bool hostScrollIndicatorEnabled;
++#endif
+ 
+     WebCore::Color underlayColor;
+ 
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+index 13788d7..9a88128 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -28,8 +28,14 @@
+ #include "WKView.h"
+ 
+ #include "APIPageConfiguration.h"
++#include "ImageOptions.h"
+ #include "WKAPICast.h"
++#include "WebPageProxy.h"
+ #include "WebView.h"
++#include <WebCore/ShareableBitmap.h>
++#include <algorithm>
++#include <cmath>
++#include <limits>
+ 
+ using namespace WebKit;
+ 
+@@ -72,3 +78,205 @@ void WKViewSetScrollOffsetOnNextResize(WKViewRef viewRef, WKSize scrollOffset)
+ {
+     toImpl(viewRef)->setScrollOffsetOnNextResize(toIntSize(scrollOffset));
+ }
++
++unsigned WKViewGetViewportHostAPIVersion(void)
++{
++    return 2;
++}
++
++unsigned WKViewGetHostAppearanceAPIVersion(void)
++{
++    return 1;
++}
++
++bool WKViewSetHostDarkAppearance(WKViewRef viewRef, bool dark)
++{
++    if (!viewRef || !toImpl(viewRef)->page() || toImpl(viewRef)->page()->isClosed())
++        return false;
++    toImpl(viewRef)->setHostDarkAppearance(dark);
++    return true;
++}
++
++bool WKViewSetHostUnderPageBackgroundColor(WKViewRef viewRef, unsigned rgb)
++{
++    if (!viewRef || rgb > 0xffffff)
++        return false;
++    auto* view = toImpl(viewRef);
++    auto* page = view->page();
++    if (!page || page->isClosed())
++        return false;
++    WebCore::Color color { WebCore::SRGBA<uint8_t> { static_cast<uint8_t>(rgb >> 16), static_cast<uint8_t>(rgb >> 8), static_cast<uint8_t>(rgb), 255 } };
++    if (page->underPageBackgroundColorOverride() != color) {
++        page->setUnderPageBackgroundColorOverride(WTF::move(color));
++        // Event-driven canvas-color damage, never a forced repaint loop.
++        ::InvalidateRect(view->window(), nullptr, false);
++    }
++    return true;
++}
++
++unsigned WKViewGetHostScrollIndicatorAPIVersion(void) { return 1; }
++void WKViewSetHostScrollIndicatorEnabled(WKViewRef viewRef, bool enabled)
++{
++    if (viewRef) toImpl(viewRef)->page()->setHostScrollIndicatorEnabled(enabled);
++}
++void WKViewRequestHostScrollIndicatorState(WKViewRef viewRef, unsigned long long requestID, const void* context, WKHostScrollIndicatorCallback callback)
++{
++    if (!callback) return;
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    if (!page || page->isClosed()) { callback(requestID, 1, 0, 0, 0, 0, 0, 0, context); return; }
++    page->getHostScrollIndicatorState([requestID, context, callback](uint32_t status, uint32_t flags, uint64_t epoch, uint64_t sequence, double position, double range, double height) {
++        callback(requestID, status, flags, epoch, sequence, position, range, height, context);
++    });
++}
++unsigned WKViewGetFixedContainerColorAPIVersion(void)
++{
++    return 1;
++}
++
++void WKViewRequestFixedContainerColors(WKViewRef viewRef, unsigned long long requestID, const void* context, WKFixedContainerColorCallback callback)
++{
++    if (!callback)
++        return;
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    if (!page || page->isClosed()) {
++        callback(requestID, 1, 0, 0, 0, 0, 0, context);
++        return;
++    }
++    page->getHostFixedContainerColors(
++        [requestID, context, callback](uint32_t status, uint32_t states, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left) {
++            callback(requestID, status, states, top, right, bottom, left, context);
++        });
++}
++
++unsigned WKViewGetContentColorAPIVersion(void)
++{
++    return 1;
++}
++
++void WKViewRequestContentEdgeColor(WKViewRef viewRef, int x, int y, int width, int height,
++    unsigned long long requestID, const void* context, WKContentColorCallback callback)
++{
++    if (!callback)
++        return;
++    if (!viewRef || x < 0 || y < 0 || width < 1 || height < 1 || width > 32767 || height > 18) {
++        callback(requestID, 1, 0, context);
++        return;
++    }
++    auto* view = toImpl(viewRef);
++    auto* page = view->page();
++    auto size = view->viewSize();
++    if (!page || page->isClosed() || x > size.width() - width || y > size.height() - height) {
++        callback(requestID, 1, 0, context);
++        return;
++    }
++    WebCore::IntRect rect { x, y, width, height };
++    // Snapshot painting uses a uniform scale and can crop a rounded thumbnail
++    // size. Read the complete small strip, then area-resample it internally.
++    page->takeSnapshotLegacy(rect, rect.size(), { SnapshotOption::InViewCoordinates, SnapshotOption::ExcludeDeviceScaleFactor, SnapshotOption::Shareable, SnapshotOption::ExcludeSelectionHighlighting },
++        [requestID, context, callback](std::optional<WebCore::ShareableBitmap::Handle>&& handle) {
++            if (!handle) {
++                callback(requestID, 2, 0, context);
++                return;
++            }
++            auto bitmap = WebCore::ShareableBitmap::create(WTF::move(*handle), WebCore::SharedMemory::Protection::ReadOnly);
++            if (!bitmap || bitmap->size().isEmpty()) {
++                callback(requestID, 2, 0, context);
++                return;
++            }
++            auto format = bitmap->pixelFormat();
++            bool bgra = format == WebCore::PixelFormat::BGRA8 || format == WebCore::PixelFormat::BGRX8;
++            bool opaque = format == WebCore::PixelFormat::BGRX8 || format == WebCore::PixelFormat::RGBX8;
++            if (!bgra && format != WebCore::PixelFormat::RGBA8 && format != WebCore::PixelFormat::RGBX8) {
++                callback(requestID, 3, 0, context);
++                return;
++            }
++            auto bytes = bitmap->span();
++            const int sourceWidth = bitmap->size().width(), sourceHeight = bitmap->size().height();
++            const int outputHeight = std::max(1, static_cast<int>(std::lround(64.0 * sourceHeight / sourceWidth)));
++            double red = 0, green = 0, blue = 0;
++            unsigned count = 0;
++            for (int row = 0; row < outputHeight; ++row) {
++                const double top = static_cast<double>(row) * sourceHeight / outputHeight;
++                const double bottom = static_cast<double>(row + 1) * sourceHeight / outputHeight;
++                for (int column = 0; column < 64; ++column) {
++                    const double left = static_cast<double>(column) * sourceWidth / 64;
++                    const double right = static_cast<double>(column + 1) * sourceWidth / 64;
++                    double alpha = 0, r = 0, g = 0, b = 0;
++                    for (int y = static_cast<int>(top); y < std::min(sourceHeight, static_cast<int>(std::ceil(bottom))); ++y) {
++                        for (int x = static_cast<int>(left); x < std::min(sourceWidth, static_cast<int>(std::ceil(right))); ++x) {
++                            const double weight = (std::min(bottom, y + 1.0) - std::max(top, static_cast<double>(y)))
++                                * (std::min(right, x + 1.0) - std::max(left, static_cast<double>(x)));
++                            const auto offset = y * bitmap->bytesPerRow() + x * 4;
++                            alpha += (opaque ? 255 : bytes[offset + 3]) * weight;
++                            r += bytes[offset + (bgra ? 2 : 0)] * weight;
++                            g += bytes[offset + 1] * weight;
++                            b += bytes[offset + (bgra ? 0 : 2)] * weight;
++                        }
++                    }
++                    if (alpha <= 25.5 * (bottom - top) * (right - left))
++                        continue;
++                    red += std::min(255.0, r * 255.0 / alpha);
++                    green += std::min(255.0, g * 255.0 / alpha);
++                    blue += std::min(255.0, b * 255.0 / alpha);
++                    ++count;
++                }
++            }
++            if (!count) {
++                callback(requestID, 2, 0, context);
++                return;
++            }
++            auto rgb = (static_cast<unsigned>(std::lround(red / count)) << 16)
++                | (static_cast<unsigned>(std::lround(green / count)) << 8)
++                | static_cast<unsigned>(std::lround(blue / count));
++            callback(requestID, 0, rgb, context);
++        });
++}
++
++bool WKViewSetHostPresentationGeometry(WKViewRef viewRef, WKSize logicalSize, float backingScaleFactor)
++{
++    if (!viewRef || !std::isfinite(logicalSize.width) || !std::isfinite(logicalSize.height) || !std::isfinite(backingScaleFactor))
++        return false;
++    bool clearsGeometry = !logicalSize.width && !logicalSize.height && !backingScaleFactor;
++    if (!clearsGeometry && (logicalSize.width < 1 || logicalSize.height < 1 || logicalSize.width > 32767 || logicalSize.height > 32767 || std::floor(logicalSize.width) != logicalSize.width || std::floor(logicalSize.height) != logicalSize.height || backingScaleFactor <= 0 || backingScaleFactor > 16))
++        return false;
++    auto* view = toImpl(viewRef);
++    if (!view->page() || view->page()->isClosed())
++        return false;
++    view->setHostPresentationGeometry(toIntSize(logicalSize), backingScaleFactor);
++    return true;
++}
++
++bool WKViewSetObscuredContentInsets(WKViewRef viewRef, float top, float right, float bottom, float left)
++{
++    if (!viewRef || !std::isfinite(top) || !std::isfinite(right) || !std::isfinite(bottom) || !std::isfinite(left)
++        || top < 0 || right < 0 || bottom < 0 || left < 0)
++        return false;
++    auto* view = toImpl(viewRef);
++    auto* page = view->page();
++    auto size = view->viewSize();
++    if (!page || page->isClosed() || left + right >= size.width() || top + bottom >= size.height())
++        return false;
++    page->setObscuredContentInsets({ top, right, bottom, left });
++    return true;
++}
++
++bool WKViewSetUnobscuredSizeRange(WKViewRef viewRef, WKSize minimum, WKSize maximum)
++{
++    if (!viewRef || !std::isfinite(minimum.width) || !std::isfinite(minimum.height)
++        || !std::isfinite(maximum.width) || !std::isfinite(maximum.height)
++        || minimum.width < 0 || minimum.height < 0 || maximum.width < minimum.width || maximum.height < minimum.height
++        || maximum.width > std::numeric_limits<float>::max() || maximum.height > std::numeric_limits<float>::max())
++        return false;
++    bool clearsRange = !minimum.width && !minimum.height && !maximum.width && !maximum.height;
++    if (!clearsRange && (!minimum.width || !minimum.height))
++        return false;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed())
++        return false;
++    WebCore::FloatSize minimumSize { static_cast<float>(minimum.width), static_cast<float>(minimum.height) };
++    WebCore::FloatSize maximumSize { static_cast<float>(maximum.width), static_cast<float>(maximum.height) };
++    page->setDefaultUnobscuredSize(maximumSize);
++    page->setMinimumUnobscuredSize(minimumSize);
++    page->setMaximumUnobscuredSize(maximumSize);
++    return true;
++}
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+index a59a8a2..4c08391 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -44,6 +44,44 @@ WK_EXPORT void WKViewSetIsInWindow(WKViewRef view, bool isInWindow);
+ WK_EXPORT void WKViewSetUsesOffscreenRendering(WKViewRef view, bool enabled);
+ WK_EXPORT void WKViewSetScrollOffsetOnNextResize(WKViewRef view, WKSize scrollOffset);
+ 
++// Host viewport API v2. Insets are logical view coordinates, independent of DPI.
++// Call on the view's UI thread. These setters use ordinary WebPage IPC and do not require test-only IPC.
++WK_EXPORT unsigned WKViewGetViewportHostAPIVersion(void);
++// Appearance API v1: ordinary PageClient appearance, retained across navigation.
++WK_EXPORT unsigned WKViewGetHostAppearanceAPIVersion(void);
++WK_EXPORT bool WKViewSetHostDarkAppearance(WKViewRef view, bool dark);
++WK_EXPORT bool WKViewSetObscuredContentInsets(WKViewRef view, float top, float right, float bottom, float left);
++// Sizes describe logical viewport-unit bounds before page zoom. Four zeros clear the range.
++WK_EXPORT bool WKViewSetUnobscuredSizeRange(WKViewRef view, WKSize minimum, WKSize maximum);
++// Logical scene size and physical pixels per logical unit, independent of HWND rounding.
++// Rendering, mouse and wheel input share this backing scale. Three zeros restore native DPI sizing.
++WK_EXPORT bool WKViewSetHostPresentationGeometry(WKViewRef view, WKSize logicalSize, float backingScaleFactor);
++
++// Content painting v2. Opaque under-page fallback for flattening the native GDI
++// output; RGB is 0xRRGGBB. Does not affect CSS, viewport geometry or scroll state.
++WK_EXPORT bool WKViewSetHostUnderPageBackgroundColor(WKViewRef view, unsigned rgb);
++
++// Fixed-container color API v1. Status 0 succeeds, 1 is unavailable.
++// Each edge uses two state bits (top/right/bottom/left): 0 none, 1 opaque RGB,
++// 2 unsupported/multiple/translucent. Colors come from WebCore fixedContainerEdges.
++typedef void (*WKFixedContainerColorCallback)(unsigned long long requestID, unsigned status, unsigned states,
++    unsigned top, unsigned right, unsigned bottom, unsigned left, const void* context);
++WK_EXPORT unsigned WKViewGetHostScrollIndicatorAPIVersion(void);
++WK_EXPORT void WKViewSetHostScrollIndicatorEnabled(WKViewRef, bool enabled);
++typedef void (*WKHostScrollIndicatorCallback)(unsigned long long requestID, unsigned status, unsigned flags,
++    unsigned long long epoch, unsigned long long userSequence, double position, double range, double viewportHeight, const void* context);
++WK_EXPORT void WKViewRequestHostScrollIndicatorState(WKViewRef, unsigned long long requestID, const void* context, WKHostScrollIndicatorCallback);
++WK_EXPORT unsigned WKViewGetFixedContainerColorAPIVersion(void);
++WK_EXPORT void WKViewRequestFixedContainerColors(WKViewRef view, unsigned long long requestID,
++    const void* context, WKFixedContainerColorCallback callback);
++
++// Content color API v1. UI-thread callback: status 0 succeeds, RGB is 0xRRGGBB.
++// Samples metadata only; no image is exported or used for page presentation.
++typedef void (*WKContentColorCallback)(unsigned long long requestID, unsigned status, unsigned rgb, const void* context);
++WK_EXPORT unsigned WKViewGetContentColorAPIVersion(void);
++WK_EXPORT void WKViewRequestContentEdgeColor(WKViewRef view, int x, int y, int width, int height,
++    unsigned long long requestID, const void* context, WKContentColorCallback callback);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.cpp b/Source/WebKit/UIProcess/WebPageProxy.cpp
+index 27f444c..a0068ba 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.cpp
++++ b/Source/WebKit/UIProcess/WebPageProxy.cpp
+@@ -8407,6 +8407,22 @@ void WebPageProxy::getSourceForFrame(WebFrameProxy* frame, CompletionHandler<voi
+     sendWithAsyncReply(Messages::WebPage::GetSourceForFrame(frame->frameID()), WTF::move(callback));
+ }
+ 
++#if PLATFORM(WIN)
++void WebPageProxy::setHostScrollIndicatorEnabled(bool enabled)
++{
++    m_hostScrollIndicatorEnabled = enabled;
++    if (hasRunningProcess()) send(Messages::WebPage::SetHostScrollIndicatorEnabled(enabled));
++}
++void WebPageProxy::getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&& callback)
++{
++    sendWithAsyncReply(Messages::WebPage::GetHostScrollIndicatorState(), WTF::move(callback));
++}
++void WebPageProxy::getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
++{
++    sendWithAsyncReply(Messages::WebPage::GetHostFixedContainerColors(), WTF::move(callback));
++}
++#endif
++
+ void WebPageProxy::getContentsAsString(ContentAsStringIncludesChildFrames includesChildFrames, CompletionHandler<void(const String&)>&& callback)
+ {
+     sendWithAsyncReply(Messages::WebPage::GetContentsAsString(includesChildFrames), WTF::move(callback));
+@@ -15808,6 +15824,9 @@ WebPageCreationParameters WebPageProxy::creationParameters(WebProcessProxy& proc
+ #endif
+     parameters.store = preferencesStore();
+     parameters.isEditable = m_isEditable;
++#if PLATFORM(WIN)
++    parameters.hostScrollIndicatorEnabled = m_hostScrollIndicatorEnabled;
++#endif
+     parameters.underlayColor = internals().underlayColor;
+     parameters.useFixedLayout = m_useFixedLayout;
+     parameters.fixedLayoutSize = internals().fixedLayoutSize;
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.h b/Source/WebKit/UIProcess/WebPageProxy.h
+index b228dc1..f736bb2 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.h
++++ b/Source/WebKit/UIProcess/WebPageProxy.h
+@@ -1841,6 +1841,11 @@ public:
+     void removeLayerForFindOverlay(CompletionHandler<void()>&&);
+ 
+     void getContentsAsString(ContentAsStringIncludesChildFrames, CompletionHandler<void(const String&)>&&);
++#if PLATFORM(WIN)
++    void setHostScrollIndicatorEnabled(bool);
++    void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
++    void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
++#endif
+ #if PLATFORM(COCOA)
+     void getContentsAsAttributedString(CompletionHandler<void(const WebCore::AttributedString&)>&&);
+     void getAttributedStringsForRemoteFrames(IPC::Connection&, WebCore::FrameIdentifier rootFrameIdentifier, const Vector<WebCore::FrameIdentifier>&, CompletionHandler<void(HashMap<WebCore::FrameIdentifier, WebCore::AttributedString>&&)>&&);
+@@ -4174,6 +4179,9 @@ private:
+ #endif
+ 
+     bool m_isEditable { false };
++#if PLATFORM(WIN)
++    bool m_hostScrollIndicatorEnabled { false };
++#endif
+ 
+ #if ENABLE(ACCESSIBILITY_LOCAL_FRAME)
+     MonotonicTime m_lastAccessibilityFrameGeometryUpdate;
+diff --git a/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp b/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp
+index 05e0e9a..0c91fd8 100644
+--- a/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp
++++ b/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp
+@@ -39,8 +39,12 @@ BackingStore::BackingStore(const WebCore::IntSize& size, float deviceScaleFactor
+     : m_size(size)
+     , m_deviceScaleFactor(deviceScaleFactor)
+ {
++#if PLATFORM(WIN)
++    WebCore::IntSize scaledSize = WebCore::expandedIntSize(size * deviceScaleFactor);
++#else
+     WebCore::IntSize scaledSize(size);
+     scaledSize.scale(deviceScaleFactor);
++#endif
+     auto info = SkImageInfo::MakeN32Premul(scaledSize.width(), scaledSize.height(), SkColorSpace::MakeSRGB());
+     m_surface = SkSurfaces::Raster(info);
+     RELEASE_ASSERT(m_surface);
+@@ -52,8 +56,15 @@ void BackingStore::paint(PlatformPaintContextPtr cr, const WebCore::IntRect& rec
+ {
+     cr->save();
+     cr->scale(1 / m_deviceScaleFactor, 1 / m_deviceScaleFactor);
++#if PLATFORM(WIN)
++    // Cover every device pixel touched by the logical damage rectangle.
++    WebCore::FloatRect scaledDamage(rect);
++    scaledDamage.scale(m_deviceScaleFactor);
++    auto scaledRect = WebCore::enclosingIntRect(scaledDamage);
++#else
+     WebCore::IntRect scaledRect { rect };
+     scaledRect.scale(m_deviceScaleFactor);
++#endif
+     cr->clipIRect(scaledRect);
+     SkSamplingOptions option { SkFilterMode::kLinear };
+     m_surface->draw(cr, 0, 0, option, nullptr);
+diff --git a/Source/WebKit/UIProcess/win/PageClientImpl.cpp b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+index 0ec4f66..accf06c 100644
+--- a/Source/WebKit/UIProcess/win/PageClientImpl.cpp
++++ b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+@@ -79,6 +79,11 @@ WebCore::FloatPoint PageClientImpl::viewScrollPosition()
+     return { };
+ }
+ 
++bool PageClientImpl::effectiveAppearanceIsDark() const
++{
++    return m_view.hostDarkAppearance();
++}
++
+ WebCore::IntSize PageClientImpl::viewSize()
+ {
+     return m_view.viewSize();
+diff --git a/Source/WebKit/UIProcess/win/PageClientImpl.h b/Source/WebKit/UIProcess/win/PageClientImpl.h
+index 85b82ed..7485de5 100644
+--- a/Source/WebKit/UIProcess/win/PageClientImpl.h
++++ b/Source/WebKit/UIProcess/win/PageClientImpl.h
+@@ -68,6 +68,7 @@ private:
+     void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, WebCore::ScrollIsAnimated, WebCore::InterruptScrollAnimation) override;
+     WebCore::FloatPoint viewScrollPosition() override;
+     WebCore::IntSize viewSize() override;
++    bool effectiveAppearanceIsDark() const override;
+     bool isViewWindowActive() override;
+     bool isViewFocused() override;
+     bool isActiveViewVisible() override;
+diff --git a/Source/WebKit/UIProcess/win/WebView.cpp b/Source/WebKit/UIProcess/win/WebView.cpp
+index 2957c75..d7bfd76 100644
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -481,9 +481,9 @@ static void drawPageBackground(HDC dc, const WebPageProxy* page, const IntRect&
+     if (!backgroundColor || backgroundColor.value().isVisible())
+         return;
+ 
+-    auto scaledRect = rect;
++    FloatRect scaledRect(rect);
+     scaledRect.scale(page->intrinsicDeviceScaleFactor());
+-    RECT viewRect = scaledRect;
++    RECT viewRect = enclosingIntRect(scaledRect);
+     ::FillRect(dc, &viewRect, reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1));
+ }
+ 
+@@ -507,16 +507,29 @@ void WebView::paint(HDC hdc, const IntRect& dirtyRect)
+             cairo_destroy(context);
+             cairo_surface_destroy(surface);
+ #elif USE(SKIA)
+-            WebCore::IntRect scaledRect = dirtyRect;
+-            scaledRect.scale(intrinsicDeviceScaleFactor);
++            // Damage is conservative in device pixels. Truncating each size
++            // leaves the last row/column stale at fractional presentation scales.
++            FloatRect scaledDirtyRect(dirtyRect);
++            scaledDirtyRect.scale(intrinsicDeviceScaleFactor);
++            auto scaledRect = enclosingIntRect(scaledDirtyRect);
+             auto info = SkImageInfo::MakeN32Premul(scaledRect.width(), scaledRect.height(), SkColorSpace::MakeSRGB());
+             auto surface = SkSurfaces::Raster(info);
+             auto canvas = surface->getCanvas();
++            canvas->translate(-scaledRect.x(), -scaledRect.y());
+             canvas->scale(intrinsicDeviceScaleFactor, intrinsicDeviceScaleFactor);
+-            canvas->translate(-dirtyRect.x(), -dirtyRect.y());
+ 
+             drawingArea->paint(canvas, dirtyRect, unpaintedRegion);
+ 
++            // GDI discards alpha. Composite transparent canvas and fractional
++            // backing-store edge pixels over the engine's under-page color
++            // before uploading, rather than exposing premultiplied black.
++            auto background = m_page->underPageBackgroundColor();
++            if (background.isValid()) {
++                auto rgba = background.toColorTypeLossy<SRGBA<float>>().resolved();
++                canvas->drawColor(SkColor4f { rgba.red, rgba.green, rgba.blue, rgba.alpha }, SkBlendMode::kDstOver);
++            }
++            canvas->drawColor(SK_ColorWHITE, SkBlendMode::kDstOver);
++
+             SkPixmap pixmap;
+             if (surface->peekPixels(&pixmap)) {
+                 auto bitmapInfo = WebCore::BitmapInfo::createBottomUp({ pixmap.width(), pixmap.height() });
+@@ -560,18 +573,34 @@ LRESULT WebView::onPrintClientEvent(HWND hWnd, UINT, WPARAM wParam, LPARAM, bool
+     RECT winRect;
+     ::GetClientRect(hWnd, &winRect);
+ 
+-    paint(hdc, winRect);
++    // WM_PRINTCLIENT supplies a device-pixel DC, just like WM_PAINT. The
++    // painter consumes logical damage and applies the backing scale itself.
++    FloatRect dirtyRect(winRect);
++    dirtyRect.scale(1 / m_page->intrinsicDeviceScaleFactor());
++    paint(hdc, enclosingIntRect(dirtyRect));
+ 
+     handled = true;
+     return 0;
+ }
+ 
++void WebView::setHostPresentationGeometry(const IntSize& size, float backingScaleFactor)
++{
++    // The host owns the logical scene independently of rounded HWND pixels.
++    // The same backing scale is used by rendering and native input conversion.
++    m_hostViewSize = size;
++    m_hostBackingScaleFactor = backingScaleFactor;
++    RECT rect;
++    GetClientRect(m_window, &rect);
++    bool handled;
++    onSizeEvent(m_window, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom), handled);
++}
++
+ LRESULT WebView::onSizeEvent(HWND hwnd, UINT, WPARAM, LPARAM lParam, bool& handled)
+ {
+-    float intrinsicDeviceScaleFactor = deviceScaleFactorForWindow(hwnd);
++    float intrinsicDeviceScaleFactor = m_hostBackingScaleFactor ? m_hostBackingScaleFactor : deviceScaleFactorForWindow(hwnd);
+     if (m_page)
+         m_page->setIntrinsicDeviceScaleFactor(intrinsicDeviceScaleFactor);
+-    m_viewSize = expandedIntSize(FloatSize(LOWORD(lParam), HIWORD(lParam)) / intrinsicDeviceScaleFactor);
++    m_viewSize = m_hostViewSize.isEmpty() ? expandedIntSize(FloatSize(LOWORD(lParam), HIWORD(lParam)) / intrinsicDeviceScaleFactor) : m_hostViewSize;
+ 
+     if (m_page && m_page->drawingArea()) {
+         // FIXME specify correctly layerPosition.
+@@ -882,9 +911,9 @@ void WebView::setScrollOffsetOnNextResize(const IntSize& scrollOffset)
+ 
+ void WebView::setViewNeedsDisplay(const WebCore::Region& region)
+ {
+-    auto rect = region.bounds();
++    FloatRect rect(region.bounds());
+     rect.scale(m_page->intrinsicDeviceScaleFactor());
+-    const RECT viewRect(rect);
++    const RECT viewRect(enclosingIntRect(rect));
+     ::InvalidateRect(m_window, &viewRect, true);
+ }
+ 
+@@ -959,6 +988,14 @@ void WebView::setToolTip(const String& toolTip)
+     ::SendMessage(m_toolTipWindow, TTM_ACTIVATE, !toolTip.isEmpty(), 0);
+ }
+ 
++void WebView::setHostDarkAppearance(bool dark)
++{
++    if (m_hostDarkAppearance == dark)
++        return;
++    m_hostDarkAppearance = dark;
++    m_page->effectiveAppearanceDidChange();
++}
++
+ void WebView::setUsesOffscreenRendering(bool enabled)
+ {
+     m_usesOffscreenRendering = enabled;
+diff --git a/Source/WebKit/UIProcess/win/WebView.h b/Source/WebKit/UIProcess/win/WebView.h
+index c1f10eb..f07f33f 100644
+--- a/Source/WebKit/UIProcess/win/WebView.h
++++ b/Source/WebKit/UIProcess/win/WebView.h
+@@ -59,6 +59,7 @@ public:
+     void setParentWindow(HWND);
+     void windowAncestryDidChange();
+     WebCore::IntSize viewSize() { return m_viewSize; }
++    void setHostPresentationGeometry(const WebCore::IntSize&, float backingScaleFactor);
+     void setIsInWindow(bool);
+     void setIsVisible(bool);
+     bool isWindowActive();
+@@ -72,6 +73,8 @@ public:
+     void setToolTip(const String&);
+     void setUsesOffscreenRendering(bool);
+     bool usesOffscreenRendering() const;
++    bool hostDarkAppearance() const { return m_hostDarkAppearance; }
++    void setHostDarkAppearance(bool);
+ 
+     void setViewNeedsDisplay(const WebCore::Region&);
+ 
+@@ -149,6 +152,7 @@ private:
+     HCURSOR m_overrideCursor { nullptr };
+ 
+     bool m_isInWindow { false };
++    bool m_hostDarkAppearance { false };
+     bool m_isVisible { false };
+     bool m_wasActivatedByMouseEvent { false };
+     bool m_trackingMouseLeave { false };
+@@ -158,6 +162,8 @@ private:
+     const std::unique_ptr<WebKit::PageClientImpl> m_pageClient;
+     const RefPtr<WebPageProxy> m_page;
+     WebCore::IntSize m_viewSize;
++    WebCore::IntSize m_hostViewSize;
++    float m_hostBackingScaleFactor { 0 };
+ };
+ 
+ } // namespace WebKit
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.cpp b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+index 99a822d..0c22246 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -279,6 +279,9 @@
+ #include <WebCore/LocalDOMWindow.h>
+ #include <WebCore/LocalFrameInlines.h>
+ #include <WebCore/LocalFrameView.h>
++#include <WebCore/HostScrollIndicator.h>
++#include <WebCore/Scrollbar.h>
++#include <WebCore/FixedContainerEdges.h>
+ #include <WebCore/LocalizedStrings.h>
+ #include <WebCore/LoginStatus.h>
+ #include <WebCore/MIMETypeRegistry.h>
+@@ -947,6 +950,9 @@ WebPage::WebPage(PageIdentifier pageID, WebPageCreationParameters&& parameters)
+ 
+     Ref page = Page::create(WTF::move(pageConfiguration));
+     m_page = page.copyRef();
++#if PLATFORM(WIN)
++    WebCore::setHostScrollIndicatorEnabled(page, parameters.hostScrollIndicatorEnabled);
++#endif
+     m_mainFrameOpenerURL = parameters.mainFrameOpenerURL;
+ 
+     updateAfterDrawingAreaCreation(parameters);
+@@ -5350,6 +5356,61 @@ void WebPage::clearContentWorld(ContentWorldIdentifier worldIdentifier, Completi
+     completionHandler();
+ }
+ 
++#if PLATFORM(WIN)
++void WebPage::setHostScrollIndicatorEnabled(bool enabled)
++{
++    WebCore::setHostScrollIndicatorEnabled(*m_page, enabled);
++}
++void WebPage::getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&& callback)
++{
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr view = frame ? frame->view() : nullptr;
++    if (!view) { callback(1, 0, 0, 0, 0, 0, 0); return; }
++    view->updateLayoutAndStyleIfNeededRecursive();
++    auto state = WebCore::hostScrollIndicatorState(*view);
++    uint32_t flags = (state.enabled ? 1u : 0u) | (state.cssSuppressed ? 2u : 0u);
++    if (RefPtr scrollbar = view->verticalScrollbar()) {
++        flags |= 4u | (scrollbar->isCustomScrollbar() ? 8u : 0u) | (scrollbar->width() <= 0 ? 16u : 0u)
++            | (scrollbar->isHiddenByStyle() ? 32u : 0u)
++            | (static_cast<uint32_t>(std::clamp(scrollbar->width(), 0, 65535)) << 16);
++    }
++    if (state.nativeVisibilityHidden) flags |= 64u;
++    callback(0, flags, state.documentEpoch,
++        state.userMotionSequence, state.position, state.range, state.viewportHeight);
++}
++void WebPage::getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
++{
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr view = frame ? frame->view() : nullptr;
++    if (!view) {
++        callback(1, 0, 0, 0, 0, 0);
++        return;
++    }
++    view->updateLayoutAndStyleIfNeededRecursive();
++    // Reuse native hit testing, backdrop recognition and alpha blending. Do not
++    // mutate the page's color-history cache or extend any DOM layout rectangle.
++    auto [edges, elements] = view->fixedContainerEdges({ BoxSide::Top, BoxSide::Right, BoxSide::Bottom, BoxSide::Left });
++    uint32_t states = 0;
++    auto colorForSide = [&](BoxSide side, unsigned shift) -> uint32_t {
++        if (!edges.hasFixedEdge(side))
++            return 0;
++        auto color = edges.predominantColor(side);
++        if (!color.isValid() || !color.isOpaque()) {
++            states |= 2u << shift;
++            return 0;
++        }
++        auto [r, g, b, a] = color.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
++        states |= 1u << shift;
++        return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
++    };
++    auto top = colorForSide(BoxSide::Top, 0);
++    auto right = colorForSide(BoxSide::Right, 2);
++    auto bottom = colorForSide(BoxSide::Bottom, 4);
++    auto left = colorForSide(BoxSide::Left, 6);
++    callback(0, states, top, right, bottom, left);
++}
++#endif
++
+ void WebPage::getContentsAsString(ContentAsStringIncludesChildFrames includeChildFrames, CompletionHandler<void(const String&)>&& callback)
+ {
+     switch (includeChildFrames) {
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.h b/Source/WebKit/WebProcess/WebPage/WebPage.h
+index d1abf6c..50011bf 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -2545,6 +2545,11 @@ private:
+     void viewWillEndLiveResize();
+ 
+     void getContentsAsString(ContentAsStringIncludesChildFrames, CompletionHandler<void(const String&)>&&);
++#if PLATFORM(WIN)
++    void setHostScrollIndicatorEnabled(bool);
++    void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
++    void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
++#endif
+ #if PLATFORM(COCOA)
+     void getContentsAsAttributedString(CompletionHandler<void(const WebCore::AttributedString&)>&&);
+ #endif
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+index 6b26da1..6a8ef0c 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+@@ -271,6 +271,11 @@ messages -> WebPage WantsAsyncDispatchMessage {
+ 
+     # Callbacks.
+     GetContentsAsString(enum:bool WebKit::ContentAsStringIncludesChildFrames inChildFrames) -> (String string)
++#if PLATFORM(WIN)
++    SetHostScrollIndicatorEnabled(bool enabled)
++    GetHostScrollIndicatorState() -> (uint32_t status, uint32_t flags, uint64_t epoch, uint64_t userSequence, double position, double range, double viewportHeight)
++    GetHostFixedContainerColors() -> (uint32_t status, uint32_t states, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
++#endif
+ #if PLATFORM(COCOA)
+     GetContentsAsAttributedString() -> (struct WebCore::AttributedString result)
+ #endif
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+index c0c6a21..d3501bc 100644
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -46,6 +46,7 @@
+ #include <WebCore/LocalFrameView.h>
+ #include <WebCore/Page.h>
+ #include <WebCore/Settings.h>
++#include <cmath>
+ #include <wtf/Borrow.h>
+ #include <wtf/text/MakeString.h>
+ 
+@@ -172,6 +173,21 @@ void DrawingAreaWC::scroll(const IntRect& scrollRect, const IntSize& scrollDelta
+     if (isCompositingMode())
+         return;
+ 
++#if PLATFORM(WIN)
++    // Integer backing-store copies cannot represent fractional device-pixel
++    // translations. Truncating each smooth-scroll step accumulates visible drift.
++    // Use ordinary scroll damage painting for these steps, not a forced repaint.
++    const auto scale = m_webPage->corePage()->deviceScaleFactor();
++    const auto x = scrollDelta.width() * scale, y = scrollDelta.height() * scale;
++    if (x != std::round(x) || y != std::round(y)) {
++        setNeedsDisplayInRect(m_scrollRect);
++        m_scrollRect = IntRect();
++        m_scrollOffset = IntSize();
++        setNeedsDisplayInRect(scrollRect);
++        return;
++    }
++#endif
++
+     if (scrollRect != m_scrollRect) {
+         // Just repaint the entire current scroll rect, we'll scroll the new rect instead.
+         setNeedsDisplayInRect(m_scrollRect);

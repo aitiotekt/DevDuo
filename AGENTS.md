@@ -23,7 +23,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 
 ## Architecture and measured invariants
 
-- Preserve Avalonia with system WKWebView on macOS and WebView2 on Windows. Keep Safari shell and immersive App WebView modes available.
+- Preserve Avalonia with system WKWebView on macOS and the pinned Windows WebKit Port on Windows. Keep Safari shell and immersive App WebView modes available.
 - Host application controls and measured device scenes have separate responsibilities. Improving the real address bar, buttons, switches or layout must not change the logical screen, viewport reservations, masks or body-to-scene correspondence without new accepted evidence.
 - Preserve all eight Closed/Open body-angle mappings and the 24 initial/scrolled Safari states, including Open single/multiple-tab variants. A commanded rotation is not proof of the observed scene. Preserve the recorded Closed 180-degree rotation-history qualification.
 - Keep screen-mask paths independent of exterior artwork. Keep body angle, scene angle, CSS pixels, native points, rendered DIP and framebuffer pixels distinct. Fit preview scales presentation while preserving the logical viewport; verify actual DOM measurements.
@@ -35,6 +35,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 ## Maintainable implementation
 
 - Prefer readable C#, Swift, Python and TypeScript with clear responsibilities. Comments explain reasoning or constraints. Avoid compressed one-line programs, speculative abstractions and helpers that merely rename an operation.
+- Keep shared application code in `src/DevDuo/Host`, `Browser`, `DeveloperTools` and `Device`; platform bridges and presentation belong in `macos` and `windows`. Application pages/scripts belong in `WebAssets/Pages` and `WebAssets/Scripts`. Production Windows engine patches, locks and build/archive support belong in `native/webkit/windows`, separate from standalone probes under `tests`.
 - Keep maintained Python tools in `scripts/python/devduo_tools`, their tests in `tests/python`, Swift diagnostic utilities in `scripts/swift`, and JavaScript documentation/package helpers in `scripts/`. Keep orchestration in just.
 - Review each script before moving or retaining it. Merge overlapping capabilities, remove obsolete forwarding wrappers and document each supported command. Archive only valuable historical algorithms or experiments under `scripts/archive/`, with source hashes, cohort assumptions and explicit reproduction instructions. Archives are not routine acceptance tools.
 - Preserve the maintained Python/Ruff and TypeScript/Biome conventions. Use mature dependencies where they remove fragile custom parsing. Validate inputs and retain clear failure behavior.
@@ -55,8 +56,8 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 
 ## Verification and handoff
 
-- Run checks appropriate to the change. The standard integration path is `mise exec -- just verify`; use `just build-windows` for shared/native changes and `just test-localization` for catalog or language behavior changes. Keep meaningful tests for boundaries, formats, failure states and measured invariants.
+- Run checks appropriate to the change. The standard integration path is `mise exec -- just verify`; use `just build-windows` for shared/native changes, `just test-core` for shared state/measured invariants, `just test-localization` for catalogs/language behavior and `just test-debugging` for CDP transport. Native Windows scenarios/support/evidence belong in `tests/DevDuo.Windows.Tests/Checks`, `Harness` and `Evidence`; their compilation does not execute native acceptance. Keep meaningful tests for boundaries, formats and failure states.
 - Use `just format`, then inspect the diff. Do not broaden or repeat expensive testing once relevant checks pass unless a new change or unresolved concern requires it.
 - For native UI work, verify the presented window and interactions as well as builds. WK snapshots may omit visible continuation under obscured insets. Record actual viewport and native frames separately from requested settings.
-- Windows cross compilation does not verify WebView2 initialization, input, DPI, zoom, clipping, drawing or accessibility. Keep those native acceptance items explicit in `docs/en/009-WINDOWS-HANDOFF.md`.
-- Future host UI work includes a genuine address bar and navigation bindings, better controls and visual polish. Keep that work independent of measured Safari chrome and document its acceptance criteria in the roadmap.
+- Windows cross compilation does not verify Windows WebKit initialization, input, DPI, backing scale, clipping, drawing or accessibility. Keep those native acceptance items explicit in `docs/en/009-WINDOWS-HANDOFF.md`.
+- The host address bar and native navigation bindings are implemented. Future host UI polish, accessibility acceptance and real tab management must remain independent of measured Safari chrome. Track criteria in the roadmap and platform gaps in `docs/en/015-PLATFORM-PARITY.md`.

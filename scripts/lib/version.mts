@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadMetadata, metadataFile, parseMetadata } from "./metadata.mts";
 import { repoRoot } from "./paths.mts";
@@ -6,6 +6,11 @@ import { nextVersion, parseVersion } from "./release-version.mts";
 
 const jsonManifests = ["package.json", "docsite/package.json"];
 const nativeManifest = "src/DevDuo/DevDuo.csproj";
+const nativeLinks = "src/DevDuo/ProjectLinks.cs";
+
+function projectLinks(repository: string, documentation: string): string {
+  return `// Generated from devduo-metadata.toml by just sync-version.\nnamespace DevDuo;\n\npublic static class ProjectLinks\n{\n    public const string Repository = ${JSON.stringify(repository)};\n    public const string Documentation = ${JSON.stringify(documentation)};\n}\n`;
+}
 
 function nativeVersion(source: string): string {
   const matches = [...source.matchAll(/<Version>\s*([^<]+?)\s*<\/Version>/g)];
@@ -17,7 +22,8 @@ function nativeVersion(source: string): string {
 }
 
 export function checkVersion(root = repoRoot): string {
-  const version = loadMetadata(root).project.version;
+  const project = loadMetadata(root).project;
+  const version = project.version;
   const sources = jsonManifests.map((file) => [
     file,
     JSON.parse(readFileSync(join(root, file), "utf8")).version,
@@ -30,6 +36,14 @@ export function checkVersion(root = repoRoot): string {
   if (mismatches.length)
     throw new Error(
       `Expected ${version} from ${metadataFile}: ${mismatches.map(([file, actual]) => `${file}=${actual}`).join(", ")}. Run just sync-version.`,
+    );
+  if (
+    !existsSync(join(root, nativeLinks)) ||
+    readFileSync(join(root, nativeLinks), "utf8").replaceAll("\r\n", "\n") !==
+      projectLinks(project.repositoryUrl, project.docsUrl)
+  )
+    throw new Error(
+      `${nativeLinks} must match project URLs in ${metadataFile}. Run just sync-version.`,
     );
   return version;
 }
@@ -62,7 +76,7 @@ function replaceMetadataVersion(source: string, version: string): string {
 
 export function setVersion(version: string, root = repoRoot): string {
   parseVersion(version);
-  loadMetadata(root);
+  const project = loadMetadata(root).project;
   // Validate and prepare every source before writing, so malformed manifests leave all files intact.
   const updates = new Map<string, string>();
   updates.set(
@@ -71,6 +85,10 @@ export function setVersion(version: string, root = repoRoot): string {
       readFileSync(join(root, metadataFile), "utf8"),
       version,
     ),
+  );
+  updates.set(
+    nativeLinks,
+    projectLinks(project.repositoryUrl, project.docsUrl),
   );
   for (const file of jsonManifests) {
     const json = JSON.parse(readFileSync(join(root, file), "utf8"));
@@ -89,7 +107,10 @@ export function setVersion(version: string, root = repoRoot): string {
     ),
   );
   for (const [file, source] of updates) {
-    if (readFileSync(join(root, file), "utf8") !== source)
+    if (
+      !existsSync(join(root, file)) ||
+      readFileSync(join(root, file), "utf8") !== source
+    )
       writeFileSync(join(root, file), source);
   }
   return version;

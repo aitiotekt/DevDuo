@@ -1,0 +1,76 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native scroll indicator acceptance</title>
+<style>
+  html { background: rgb(228 234 242); scrollbar-width: auto; }
+  html[data-scrollbar-style="display-none"]::-webkit-scrollbar { display: none; }
+  html[data-scrollbar-style="zero-width"]::-webkit-scrollbar { width: 0; }
+  html[data-scrollbar-style="subpixel-width"]::-webkit-scrollbar { width: .5px; }
+  body { margin: 0; }
+  #content { height: 2400px; }
+  #content p { margin: 0; padding: 48px; width: 250px; box-sizing: border-box; }
+  #fixed { position: fixed; left: 12px; top: 16px; width: 24px; height: 12px; background: rgb(45 109 173); }
+</style>
+<main id="content"><p>Native scroll indicator fixture</p></main>
+<div id="fixed"></div>
+<script>
+  const content = document.getElementById('content');
+  const fixed = document.getElementById('fixed');
+  const receipts = [];
+  let programmaticWheelTrap = false;
+  let configuredShortPage = false;
+  function record(type, event) {
+    receipts.push({ type, at: performance.now(), y: scrollY, trusted: event?.isTrusted ?? null,
+      deltaY: event?.deltaY ?? null, key: event?.key ?? null,
+      prevented: event?.defaultPrevented ?? null });
+    if (receipts.length > 128) receipts.shift();
+  }
+  for (const type of ['scroll', 'resize', 'wheel', 'keydown'])
+    window.addEventListener(type, event => record(type, event), { passive: true });
+  window.addEventListener('wheel', event => {
+    if (!programmaticWheelTrap) return;
+    event.preventDefault();
+    scrollBy(0, Math.sign(event.deltaY) * 120);
+    record('wheel-programmatic', event);
+  }, { passive: false });
+  window.indicatorFixture = {
+    configure(short = false, forceScroll = false, suppress = false, authorStyle = '') {
+      if (!['', 'display-none', 'zero-width', 'subpixel-width'].includes(authorStyle)) throw new Error('Unknown author scrollbar style');
+      programmaticWheelTrap = false;
+      configuredShortPage = short;
+      content.style.height = short ? '200px' : '2400px';
+      document.documentElement.style.overflowY = forceScroll ? 'scroll' : 'auto';
+      document.documentElement.style.scrollbarWidth = suppress ? 'none' : 'auto';
+      document.documentElement.dataset.scrollbarStyle = authorStyle;
+      scrollTo(0, 0);
+      receipts.length = 0;
+      window.__devduoReportContainerObservation?.();
+    },
+    trapWheel(enabled) { programmaticWheelTrap = enabled; },
+    snapshot() {
+      const root = document.documentElement;
+      const scrolling = document.scrollingElement;
+      const box = fixed.getBoundingClientRect();
+      return {
+        documentId: window.devduoShellObservation?.documentId,
+        timeOrigin: performance.timeOrigin, url: location.href,
+        widths: [innerWidth, root.clientWidth, document.body.clientWidth, visualViewport.width],
+        height: innerHeight, clientHeight: scrolling.clientHeight,
+        document: [scrolling.scrollWidth, scrolling.scrollHeight],
+        configuredShortPage, contentHeight: content.getBoundingClientRect().height,
+        scroll: [scrollX, scrollY], maxY: scrolling.scrollHeight - scrolling.clientHeight,
+        fixed: [box.left, box.top, box.width, box.height],
+        scrollbarWidth: getComputedStyle(root).scrollbarWidth,
+        authorScrollbarStyle: root.dataset.scrollbarStyle,
+        scrollbarPseudo: { display: getComputedStyle(root, '::-webkit-scrollbar').display,
+          width: getComputedStyle(root, '::-webkit-scrollbar').width },
+        scrollbarGutter: getComputedStyle(root).scrollbarGutter,
+        overflowY: getComputedStyle(root).overflowY,
+        receipts: receipts.slice()
+      };
+    }
+  };
+  const query = new URLSearchParams(location.search);
+  const authorStyle = ['display-none', 'zero-width', 'subpixel-width'].includes(query.get('scrollbars')) ? query.get('scrollbars') : '';
+  indicatorFixture.configure(query.get('content') === 'short', query.get('overflow') === 'scroll', query.get('scrollbars') === 'none', authorStyle);
+</script>

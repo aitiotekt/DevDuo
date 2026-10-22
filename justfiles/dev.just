@@ -1,5 +1,5 @@
 # For custom arguments, invoke dotnet or the Python CLI directly.
-dev:
+dev: prepare-debugging
     dotnet run --project src/DevDuo -p:RestoreLockedMode=true
 
 serve:

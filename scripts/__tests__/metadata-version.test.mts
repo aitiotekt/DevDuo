@@ -32,6 +32,7 @@ const managedFiles = [
   "package.json",
   "docsite/package.json",
   "src/DevDuo/DevDuo.csproj",
+  "src/DevDuo/ProjectLinks.cs",
 ];
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "devduo-version-"));
@@ -41,6 +42,44 @@ function fixture(): string {
   }
   return root;
 }
+
+test("project links are generated from metadata and drift is rejected", () => {
+  const root = fixture();
+  try {
+    const path = join(root, metadataFile);
+    writeFileSync(
+      path,
+      source
+        .replace(
+          /repository_url = "[^"]+"/,
+          'repository_url = "https://example.test/source"',
+        )
+        .replace(
+          /docs_url = "[^"]+"/,
+          'docs_url = "https://example.test/docs/"',
+        ),
+    );
+    syncVersion(root);
+    const links = join(root, "src/DevDuo/ProjectLinks.cs");
+    assert.match(
+      readFileSync(links, "utf8"),
+      /https:\/\/example\.test\/source/,
+    );
+    assert.match(
+      readFileSync(links, "utf8"),
+      /https:\/\/example\.test\/docs\//,
+    );
+    writeFileSync(
+      links,
+      readFileSync(links, "utf8").replace("/docs/", "/stale/"),
+    );
+    assert.throws(() => checkVersion(root), /ProjectLinks.cs/);
+    syncVersion(root);
+    assert.equal(checkVersion(root), loadMetadata(root).project.version);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("metadata rejects missing identities, unsafe refs and incomplete artifact or signing policies", () => {
   const metadata = loadMetadata();

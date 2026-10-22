@@ -11,6 +11,17 @@ export type ReleaseArtifact = {
   target: Target;
   extension: "zip";
 };
+export type WebKitMetadata = {
+  version: string;
+  tagPrefix: string;
+  assetPrefix: string;
+  target: "win-x64";
+  dllName: "WebKit2.dll";
+  upstreamRevision: string;
+  releaseBranch: string;
+  runnerLabels: string[];
+  archiveSha256: string;
+};
 export type DevDuoMetadata = {
   schemaVersion: 1;
   project: {
@@ -29,6 +40,7 @@ export type DevDuoMetadata = {
     signing: { macos: "signed" };
     artifacts: ReleaseArtifact[];
   };
+  webkit: WebKitMetadata;
 };
 
 function table(value: unknown, location: string): Record<string, unknown> {
@@ -148,6 +160,41 @@ export function parseMetadata(source: string): DevDuoMetadata {
     identities.add(target);
     return { platform, target, extension: "zip" };
   });
+  const webkit = table(raw.webkit, "webkit");
+  const engineVersion = text(webkit, "version", "webkit");
+  if (parseVersion(engineVersion).channel === "dev")
+    throw new Error("WebKit requires a numbered release version.");
+  const engineTagPrefix = text(webkit, "tag_prefix", "webkit");
+  const assetPrefix = text(webkit, "asset_prefix", "webkit");
+  const upstreamRevision = text(webkit, "upstream_revision", "webkit");
+  const releaseBranch = text(webkit, "release_branch", "webkit");
+  const runnerLabels = webkit.runner_labels;
+  const archiveSha256 = webkit.archive_sha256;
+  if (
+    !/^[A-Za-z][A-Za-z0-9_-]*$/.test(engineTagPrefix) ||
+    engineTagPrefix.startsWith(tagPrefix) ||
+    !/^[A-Za-z][A-Za-z0-9_-]*$/.test(assetPrefix) ||
+    !/^[a-f0-9]{40}$/.test(upstreamRevision) ||
+    !/^[A-Za-z0-9][A-Za-z0-9_/-]*$/.test(releaseBranch) ||
+    releaseBranch.includes("//") ||
+    releaseBranch.endsWith("/") ||
+    webkit.target !== "win-x64" ||
+    webkit.dll_name !== "WebKit2.dll" ||
+    !Array.isArray(runnerLabels) ||
+    runnerLabels.length < 3 ||
+    !["self-hosted", "Windows", "X64"].every((label) =>
+      runnerLabels.includes(label),
+    ) ||
+    !runnerLabels.every(
+      (label) => typeof label === "string" && /^[A-Za-z0-9_-]+$/.test(label),
+    ) ||
+    new Set(runnerLabels).size !== runnerLabels.length ||
+    typeof archiveSha256 !== "string" ||
+    (archiveSha256 !== "" && !/^[a-f0-9]{64}$/.test(archiveSha256))
+  )
+    throw new Error(
+      "Invalid WebKit release metadata, runner labels or archive digest.",
+    );
   return {
     schemaVersion: 1,
     project: {
@@ -161,6 +208,17 @@ export function parseMetadata(source: string): DevDuoMetadata {
     macos: { minimumSystemVersion },
     platforms: { linux: { check: linuxCheck, release: false } },
     release: { branch, tagPrefix, signing: { macos: "signed" }, artifacts },
+    webkit: {
+      version: engineVersion,
+      tagPrefix: engineTagPrefix,
+      assetPrefix,
+      target: "win-x64",
+      dllName: "WebKit2.dll",
+      upstreamRevision,
+      releaseBranch,
+      runnerLabels: runnerLabels as string[],
+      archiveSha256,
+    },
   };
 }
 

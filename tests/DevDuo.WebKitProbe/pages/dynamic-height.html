@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dynamic height painting acceptance</title>
+<style>
+  html { background: #e8edf5; }
+  body { margin: 0; color: #172033; font: 20px/1.5 sans-serif; }
+  main { height: 2400px; background: repeating-linear-gradient(90deg, #b8e6a5 0 30px, #83bfff 30px 60px); }
+  h1 { margin: 0; padding: 30px; }
+</style>
+<main><h1>Document height changes through ordinary authored controls</h1>
+  <button onclick="document.querySelector('main').style.height='180px'">Short document</button>
+  <button onclick="document.querySelector('main').style.height='2400px'">Restore height</button>
+</main>

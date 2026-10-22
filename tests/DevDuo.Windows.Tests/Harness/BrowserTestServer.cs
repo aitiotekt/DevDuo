@@ -1,0 +1,59 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+
+namespace DevDuo.Windows.Tests;
+
+internal sealed class BrowserTestServer : IDisposable
+{
+    internal const string Address = "http://127.0.0.1:18879/";
+    internal const string LatencyDocument = "<!doctype html><title>Navigation latency</title><style>body{background:#bad;height:4000px}</style><h1>Inline without resources</h1>";
+    internal sealed record ReceivedRequest(string Path, string? UserAgent, double ReceivedMilliseconds, double HeadersMilliseconds);
+    internal readonly System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest> Requests = new();
+    private readonly bool latency;
+    private readonly HttpListener listener = new();
+    internal BrowserTestServer(bool latency = false)
+    {
+        this.latency = latency;
+        listener.Prefixes.Add(Address);
+        listener.Start();
+        _ = Serve();
+    }
+    private async Task Serve()
+    {
+        try
+        {
+            while (listener.IsListening)
+            {
+                var request = await listener.GetContextAsync();
+                _ = Respond(request);
+            }
+        }
+        catch (Exception error) when (error is HttpListenerException or ObjectDisposedException) { }
+    }
+    private async Task Respond(HttpListenerContext request)
+    {
+        try
+        {
+            var received = System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            var path = request.Request.Url!.AbsolutePath;
+            if (path == "/delay.js") await Task.Delay(2500);
+            var html = path == "/delay.js" ? "window.delayedScriptLoaded=true" :
+                "<!doctype html><meta charset=utf-8><title>Browser lifecycle acceptance</title><style>body{min-height:4000px;background:#cde}input{margin:30px}</style><h1 id='early'>Browser lifecycle acceptance</h1><input aria-label='Draft'><p>Persistent website storage and rotation.</p>" +
+                (path == "/slow.html" ? "<script src='/delay.js'></script>" : "");
+            var body = Encoding.UTF8.GetBytes(latency ? LatencyDocument : html);
+            request.Response.ContentType = path == "/delay.js" ? "application/javascript" : "text/html; charset=utf-8";
+            request.Response.ContentLength64 = body.Length;
+            request.Response.Headers["Cache-Control"] = "no-store";
+            Requests.Enqueue(new(request.Request.RawUrl ?? "", request.Request.UserAgent, received,
+                System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
+            await request.Response.OutputStream.WriteAsync(body);
+            request.Response.Close();
+        }
+        catch (Exception error) when (error is HttpListenerException or ObjectDisposedException or IOException) { }
+    }
+    public void Dispose() => listener.Close();
+}
