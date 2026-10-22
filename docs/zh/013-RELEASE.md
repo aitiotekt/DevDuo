@@ -65,6 +65,8 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 
 正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 
+Alpha 和 beta 均跳过正式版审批。打包、组装和发布显式检查取消状态及直接依赖是否成功，避免已跳过的审批连带抑制后续任务。构建失败或取消仍会阻止组装与发布；dry-run 完成组装，仅跳过发布。
+
 ## 产物和重试
 
 已存在的应用 tag 直接沿用，发布时不与触发提交比较。恢复发布应复用原始 `release-final` artifact，不能替换已签名字节。

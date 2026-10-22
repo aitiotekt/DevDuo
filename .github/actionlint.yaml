@@ -5,8 +5,7 @@ self-hosted-runner:
     - xcode-27
 
 # GitHub supports a 100-run pending queue, but actionlint 1.7.12 lacks its schema.
-# Semantic tests enforce these two complete concurrency mappings; remove these
-# exact, path-scoped exceptions when actionlint supports the official syntax.
+# Remove these exact, path-scoped exceptions when actionlint supports the syntax.
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency
 paths:
   .github/workflows/release.yml:

@@ -6,6 +6,8 @@
 
 First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
 
+- Keep alpha and beta release assembly/publication running after the optional stable approval is skipped, while respecting failed dependencies, cancellation and dry-run mode.
+
 - Rework both READMEs around installation and first use, with the project icon, release/license/check badges and localized app screenshots. Move detailed controls into a usage guide and link contribution, agent, privacy/security and signing documentation by responsibility.
 
 - Remove tests that mirror workflow/task configuration, toolchain setup or implementation text. Contributor and agent guidance forbids command/configuration snapshots and requires observable behavior tests.

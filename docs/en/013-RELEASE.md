@@ -65,6 +65,8 @@ Pushes to `release` and `v*` tags trigger **automatic publication**, as before. 
 
 Stable versions require the `stable-release` environment approval. Both prerelease and stable macOS packages require Developer ID signing and Apple notarization; unlike the reference project's configurable unsigned prereleases, this workflow has no unsigned release fallback. Signing uses a secure timestamp, hardened runtime and the .NET JIT entitlement. Release resources and managed assemblies live in `Contents/Resources`; relative links preserve .NET assembly/resource lookup and local native-runtime probing from both directories. Native Mach-O libraries are signed first; the outer bundle signs its main executable last. `just test-macos-bundle`, also run in macOS CI, tests resource aliases and native ad-hoc signature verification after ZIP extraction without Apple credentials. The app is then notarized, stapled and checked with Gatekeeper before archiving. See [Microsoft's macOS deployment guidance](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos).
 
+Alpha and beta both skip stable approval. Packaging, assembly and publication use explicit cancellation and direct-dependency success conditions, so the skipped approval does not suppress later jobs. Failed or cancelled builds still stop assembly/publication; dry-run mode completes assembly and skips only publication.
+
 ## Artifacts and retries
 
 An existing application tag is reused as is; publication does not compare it with the triggering commit. Reuse the original `release-final` artifact for publication recovery instead of replacing signed bytes.

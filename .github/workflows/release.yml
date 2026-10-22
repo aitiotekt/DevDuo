@@ -150,6 +150,9 @@ jobs:
 
   assemble:
     needs: [macos, windows]
+    # Alpha/beta skip stable approval; do not inherit that ancestor's skipped status.
+    if: >-
+      !cancelled() && needs.macos.result == 'success' && needs.windows.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -188,7 +191,9 @@ jobs:
 
   publish:
     needs: [plan, assemble]
-    if: needs.plan.outputs.dry_run == 'false'
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && needs.assemble.result == 'success' &&
+      needs.plan.outputs.dry_run == 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
