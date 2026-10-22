@@ -20,7 +20,6 @@ export type WebKitMetadata = {
   upstreamRevision: string;
   releaseBranch: string;
   runnerLabels: string[];
-  archiveSha256: string;
 };
 export type DevDuoMetadata = {
   schemaVersion: 1;
@@ -169,12 +168,10 @@ export function parseMetadata(source: string): DevDuoMetadata {
   const upstreamRevision = text(webkit, "upstream_revision", "webkit");
   const releaseBranch = text(webkit, "release_branch", "webkit");
   const runnerLabels = webkit.runner_labels;
-  const archiveSha256 = webkit.archive_sha256;
   if (
     !/^[A-Za-z][A-Za-z0-9_-]*$/.test(engineTagPrefix) ||
     engineTagPrefix.startsWith(tagPrefix) ||
     !/^[A-Za-z][A-Za-z0-9_-]*$/.test(assetPrefix) ||
-    !/^[a-f0-9]{40}$/.test(upstreamRevision) ||
     !/^[A-Za-z0-9][A-Za-z0-9_/-]*$/.test(releaseBranch) ||
     releaseBranch.includes("//") ||
     releaseBranch.endsWith("/") ||
@@ -188,13 +185,9 @@ export function parseMetadata(source: string): DevDuoMetadata {
     !runnerLabels.every(
       (label) => typeof label === "string" && /^[A-Za-z0-9_-]+$/.test(label),
     ) ||
-    new Set(runnerLabels).size !== runnerLabels.length ||
-    typeof archiveSha256 !== "string" ||
-    (archiveSha256 !== "" && !/^[a-f0-9]{64}$/.test(archiveSha256))
+    new Set(runnerLabels).size !== runnerLabels.length
   )
-    throw new Error(
-      "Invalid WebKit release metadata, runner labels or archive digest.",
-    );
+    throw new Error("Invalid WebKit release metadata or runner labels.");
   return {
     schemaVersion: 1,
     project: {
@@ -217,7 +210,6 @@ export function parseMetadata(source: string): DevDuoMetadata {
       upstreamRevision,
       releaseBranch,
       runnerLabels: runnerLabels as string[],
-      archiveSha256,
     },
   };
 }

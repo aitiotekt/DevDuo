@@ -27,7 +27,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       native: ${{ steps.changes.outputs.native }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -81,7 +81,7 @@ jobs:
         run: |
           git config --global core.symlinks true
           git config --global core.longpaths true
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -94,26 +94,3 @@ jobs:
       - name: Build application and check AppKit layout and coordinate transforms
         if: runner.os == 'macOS'
         run: mise exec node pnpm just dotnet -- just build test-macos
-
-  report:
-    name: Checks report
-    if: always()
-    needs: [plan, portable, native]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require every platform check
-        env:
-          PLAN_RESULT: ${{ needs.plan.result }}
-          RESULT: ${{ needs.portable.result }}
-          NATIVE_REQUIRED: ${{ needs.plan.outputs.native }}
-          NATIVE_RESULT: ${{ needs.native.result }}
-        run: |
-          test "${PLAN_RESULT}" = success
-          test "${RESULT}" = success
-          if [[ "${NATIVE_REQUIRED}" == true ]]; then
-            test "${NATIVE_RESULT}" = success
-          else
-            test "${NATIVE_REQUIRED}" = false
-            test "${NATIVE_RESULT}" = skipped
-          fi

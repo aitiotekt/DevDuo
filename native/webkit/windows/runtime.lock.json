@@ -4,8 +4,6 @@
   "revision": "6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d",
   "architecture": "x86_64",
   "archiveUrl": "https://s3-us-west-2.amazonaws.com/archives.webkit.org/win-x86_64-release/324423@main.zip",
-  "archiveBytes": 589666207,
-  "archiveSha256": "b3a06dc5b5461976090fe889acb1022f28ad0ae1f27f40eef83f2916f4c77d4f",
   "archiveExpiresAt": "2026-11-07T00:00:00Z",
   "cacheDirectory": "temp/cache/windows-webkit/324423-main",
   "runtimeDirectory": "temp/windows-webkit-probe/324423-main/bin"

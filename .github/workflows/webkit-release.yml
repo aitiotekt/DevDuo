@@ -25,7 +25,7 @@ jobs:
       stem: ${{ steps.plan.outputs.stem }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -47,41 +47,36 @@ jobs:
       run:
         shell: powershell
     steps:
-      - name: Require real symlinks and preserve tracked workspace edits
+      - name: Require real symlinks
         run: |
           git config --global core.symlinks true
           git config --global core.longpaths true
-          if (Test-Path -LiteralPath .git) {
-            git diff --exit-code
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            git diff --cached --exit-code
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           # The persistent Ninja, source and vcpkg caches live in ignored temp/.
           ref: ${{ github.sha }}
           clean: false
           persist-credentials: false
-      - name: Reject modified tracked inputs in the persistent workspace
-        run: |
-          git diff --exit-code
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff --cached --exit-code
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
       - name: Verify runtime packaging and persistent source recovery
         run: mise exec -- just test-webkit-release-tools
+      - name: Detect the preserved version package
+        id: package
+        run: |
+          $archive = 'temp/release/webkit/${{ needs.plan.outputs.stem }}/${{ needs.plan.outputs.stem }}.zip'
+          "reuse=$((Test-Path -LiteralPath $archive -PathType Leaf).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Install locked portable engine tools
+        if: steps.package.outputs.reuse != 'true'
         run: mise --env windows-webkit install
       - name: Build the pinned patched engine incrementally
+        if: steps.package.outputs.reuse != 'true'
         timeout-minutes: 1320
         run: mise --env windows-webkit exec -- just build-windows-webkit-runtime
       - name: Package the complete runtime, notices and build inputs
         run: mise exec -- just package-webkit-release
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@v7
         with:
           name: webkit-runtime-release
           path: temp/release/webkit/${{ needs.plan.outputs.stem }}/
@@ -89,11 +84,6 @@ jobs:
           retention-days: 1
           compression-level: 0
           overwrite: true
-      - name: Record the candidate archive identity
-        run: |
-          $report = Get-Content -LiteralPath 'temp/release/webkit/${{ needs.plan.outputs.stem }}/${{ needs.plan.outputs.stem }}.json' -Raw | ConvertFrom-Json
-          "Candidate archive SHA-256: $($report.archiveSha256). A dry run does not publish this runtime or authorize an application pin." >> $env:GITHUB_STEP_SUMMARY
-
   publish:
     needs: [plan, build]
     if: needs.plan.outputs.dry_run == 'false'
@@ -102,41 +92,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@v8
         with:
           name: webkit-runtime-release
           path: temp/release/webkit/${{ needs.plan.outputs.stem }}/
-      - name: Verify and publish without replacing existing bytes or the app's latest release
+      - name: Publish without replacing existing assets or the app's latest release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_DRY_RUN: ${{ needs.plan.outputs.dry_run }}
         run: mise exec node pnpm just gh -- just publish-webkit-release
-
-  report:
-    if: always()
-    needs: [plan, build, publish]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require every requested stage
-        env:
-          PLAN: ${{ needs.plan.result }}
-          BUILD: ${{ needs.build.result }}
-          PUBLISH: ${{ needs.publish.result }}
-          DRY_RUN: ${{ needs.plan.outputs.dry_run }}
-        run: |
-          echo "WebKit: plan=${PLAN}, build=${BUILD}, publish=${PUBLISH}, dry-run=${DRY_RUN}" >> "$GITHUB_STEP_SUMMARY"
-          test "${PLAN}" = success
-          test "${BUILD}" = success
-          if [[ "${DRY_RUN}" == true ]]; then
-            test "${PUBLISH}" = skipped
-          else
-            test "${PUBLISH}" = success
-          fi

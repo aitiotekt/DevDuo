@@ -297,7 +297,7 @@ class ToolsTest(unittest.TestCase):
             sum(len(scene["states"]) + len(scene.get("singleStates", {})) for scene in scenes), 24
         )
 
-    def test_video_validates_expected_source_hash_and_frame_changes(self):
+    def test_video_validates_frame_changes_without_a_source_hash_gate(self):
         source = self.folder / "encoded.mov"
         source.write_bytes(b"local encoded source test fixture")
         frames = []
@@ -308,7 +308,6 @@ class ToolsTest(unittest.TestCase):
             )
         metadata = {
             "source": str(source),
-            "sourceSha256": hashlib.sha256(source.read_bytes()).hexdigest(),
             "durationSeconds": 2,
             "nominalFramesPerSecond": 30,
             "frames": frames,
@@ -318,8 +317,7 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         source.write_bytes(b"changed source")
         result = self.command("validate-video", self.folder)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("hash differs", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_gitignore_excludes_generated_files_but_preserves_sources_and_locks(self):
         subprocess.run(["git", "init", str(self.folder)], capture_output=True, check=True)

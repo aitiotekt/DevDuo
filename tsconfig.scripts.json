@@ -1,13 +1,9 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2024",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "strict": true,
-    "types": ["node"],
-    "skipLibCheck": true
+    "rootDir": "./scripts",
+    "outDir": "./temp/build/tsc/scripts"
   },
-  "include": ["scripts/**/*.mts"]
+  "include": ["scripts/**/*.mts"],
+  "exclude": ["scripts/__tests__/**"]
 }

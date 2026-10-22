@@ -47,6 +47,8 @@ Use `mise exec -- just <recipe>` outside an activated mise shell. `global.json` 
 
 Keep application runtime resources separate from test fixtures and original evidence. The [architecture code map](docs/en/001-ARCHITECTURE.md#code-map) identifies the entry points.
 
+Root `tsconfig.json` is a solution file that references the per-function projects: `tsconfig.scripts.json` owns maintained Node tooling and `tsconfig.tests.json` owns its `node --test` suite. Both extend `tsconfig.base.json` and emit declarations under `temp/build/tsc/`. The independent VitePress package keeps its own `docsite/tsconfig.json`. `pnpm typecheck` builds the solution; `just typecheck` also checks the documentation config.
+
 ## Daily commands
 
 The commands below assume an activated mise environment. Use separate terminals for the receiver and app.
@@ -61,7 +63,7 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just build-windows` | Windows compilation; native runtime acceptance is separate |
 | `just build-native-tests` | Compile the current platform's native acceptance harness without running UI; used by CI |
 | `just test-macos` | AppKit clip/resize, logical bounds and passive footer-color regressions (macOS only) |
-| `just references-check` | Reviewed Safari reference image hashes, metadata and 48-case coverage |
+| `just references-check` | Reviewed Safari reference image dimensions, metadata and 48-case coverage |
 | `just test-windows-safari` | Scoped original Safari fixture, appearance, native scroll and pose checks; start `just serve` first |
 | `just test-windows` | Native Avalonia WebKit scene/lifecycle/viewport-unit checks and missing-runtime error; opens Windows UI |
 | `just test-windows-developer-tools` | Native Inspector/WIP, page CDP lifecycle and proxy-routing checks; requires the rebuilt developer API runtime and opens Windows UI |
@@ -91,7 +93,7 @@ Generated builds/caches belong in `temp/build/` and `temp/cache/`; .NET also use
 
 The required Windows WebKit source build uses portable tools from `mise.windows-webkit.toml` and its lock. Run `mise --env windows-webkit install`, then `mise --env windows-webkit exec -- just build-windows-webkit-runtime`. Visual Studio C++/Clang and Windows SDK remain system dependencies. The [WebKit guide](docs/en/014-WINDOWS-WEBKIT.md#host-api-source-build) owns the pinned source patch and acceptance gate.
 
-Windows engine releases are manual and independent from application releases. A dedicated persistent self-hosted runner keeps native caches; ordinary release packaging downloads the metadata-pinned runtime. `[webkit].archive_sha256` stays empty until the first actual engine publication. See [runtime release setup and commands](docs/en/013-RELEASE.md#windows-webkit-runtime-releases).
+Windows engine releases are manual and independent from application releases. A dedicated persistent self-hosted runner keeps native caches; ordinary release packaging downloads the metadata-selected runtime version. See [runtime release setup and commands](docs/en/013-RELEASE.md#windows-webkit-runtime-releases).
 
 Native developer tools and proxy acceptance is separate from service tests: verify a detached Inspector without viewport changes, native remote connect/disconnect, actual chii DOM/Console interactions, target navigation reconnect, listener release and per-platform proxy routing. Windows requires a rebuilt runtime with `hostDeveloperApiVersion: 1` and the third host patch; macOS uses system WebKit and still needs native acceptance for these changes. Direct `dotnet` commands require `just prepare-debugging` first; packaged users need no Node installation. See [developer architecture](docs/en/001-ARCHITECTURE.md#developer-tools-and-page-proxy).
 
@@ -109,7 +111,7 @@ Normal setup/check/build uses frozen pnpm, uv and per-target NuGet locks. For in
 
 Update English and Chinese sources together, with language-local links and a bidirectional footer. Root English convention files are canonical; `docs/en` aliases them with relative symlinks, while `docs/zh` holds their translations. `docsite` links the same sources. Update `scripts/docs-manifest.json` when adding or removing a technical page; do not create website copies.
 
-Keep identifiers/comments in English. Describe changed behavior, relevant checks and untested platforms in a review. Native changes need platform builds and actual UI acceptance; Windows cross compilation is insufficient. Keep simulator coordinates distinct from hardware dimensions, preserve evidence hashes, and review the [measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) before changing calibrated data. Do not commit or push unless requested.
+Keep identifiers/comments in English. Describe changed behavior, relevant checks and untested platforms in a review. Native changes need platform builds and actual UI acceptance; Windows cross compilation is insufficient. Keep simulator coordinates distinct from hardware dimensions, keep original evidence intact, and review the [measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) before changing calibrated data. Do not commit or push unless requested.
 
 For a commit containing Codex-assisted work, retain the maintainer as the author and add this trailer once, separated from the description by a blank line. Preserve other genuine co-authors; purely human changes do not need this attribution.
 

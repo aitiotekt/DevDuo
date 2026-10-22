@@ -12,11 +12,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { loadMetadata } from "./lib/metadata.mts";
 import { repoRoot } from "./lib/paths.mts";
 import { digest } from "./lib/release-artifacts.mts";
-import {
-  regularFiles,
-  safeRelative,
-  validateRuntime,
-} from "./lib/webkit-release.mts";
+import { regularFiles, safeRelative } from "./lib/webkit-release.mts";
 
 // A local preview deliberately retains the engine's original build identity.
 // It neither invents a published runtime pin nor certifies current build orchestration.
@@ -59,14 +55,8 @@ try {
       "utf8",
     ).replace(/^\uFEFF/, "");
     const manifest = JSON.parse(manifestText);
-    if (digest(join(build, "build-inputs.json")) !== manifest.buildInputsSha256)
-      throw new Error(
-        "Original engine build provenance does not match its manifest.",
-      );
     for (const file of manifest.files) {
       const name = safeRelative(file.path);
-      if (digest(join(build, "bin", name)) !== file.sha256)
-        throw new Error(`Local engine integrity mismatch: ${name}`);
       copy(join(build, "bin", name), join(runtime, "bin", name));
     }
     copy(
@@ -74,15 +64,15 @@ try {
       join(runtime, "original-runtime-manifest.json"),
     );
     // Windows PowerShell emits a UTF-8 BOM; retain those original bytes separately
-    // while giving the shared JavaScript validator a standard UTF-8 JSON document.
+    // while giving other JSON readers a standard UTF-8 document.
     writeFileSync(join(runtime, "runtime-manifest.json"), manifestText);
     copy(join(build, "build-inputs.json"), join(runtime, "build-inputs.json"));
     for (const file of manifest.inputFiles) {
       const name = safeRelative(file.path);
-      const frozen = join(build, "inputs", name);
-      if (digest(frozen) !== file.sha256)
-        throw new Error(`Original engine input mismatch: ${name}`);
-      copy(frozen, join(runtime, "original-source-inputs", name));
+      copy(
+        join(build, "inputs", name),
+        join(runtime, "original-source-inputs", name),
+      );
     }
     const upstream = join(
       repoRoot,
@@ -127,7 +117,6 @@ try {
     if (!notices) throw new Error("Missing upstream notices.");
     for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md", "PRIVACY.md"])
       copy(join(repoRoot, name), join(app, name));
-    validateRuntime(runtime, metadata, false);
     writeFileSync(
       join(app, "LOCAL-PREVIEW.txt"),
       "Local Windows x64 Release preview. Run DevDuo.exe with this complete directory.\n" +

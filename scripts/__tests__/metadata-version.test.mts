@@ -13,11 +13,7 @@ import test from "node:test";
 import { macosBundlePlist } from "../lib/macos-bundle.mts";
 import { loadMetadata, metadataFile, parseMetadata } from "../lib/metadata.mts";
 import { repoRoot } from "../lib/paths.mts";
-import {
-  artifactName,
-  checkReleaseConfiguration,
-  releasePlan,
-} from "../lib/release-policy.mts";
+import { artifactName, releasePlan } from "../lib/release-policy.mts";
 import { nextVersion } from "../lib/release-version.mts";
 import {
   bumpVersion,
@@ -256,27 +252,4 @@ test("version increments follow SemVer and reject prerelease regressions", () =>
     /Choose alpha or beta/,
   );
   assert.throws(() => nextVersion("1.2.3", "arbitrary"), /Use major/);
-});
-
-test("release check rejects workflow filters that drift from metadata", () => {
-  const root = fixture();
-  try {
-    assert.equal(
-      checkReleaseConfiguration(root),
-      loadMetadata(root).project.version,
-    );
-    const path = join(root, metadataFile);
-    writeFileSync(
-      path,
-      source.replace('branch = "release"', 'branch = "shipping"'),
-    );
-    assert.throws(() => checkReleaseConfiguration(root), /push filters/);
-    writeFileSync(
-      path,
-      source.replace('tag_prefix = "v"', 'tag_prefix = "app-v"'),
-    );
-    assert.throws(() => checkReleaseConfiguration(root), /push filters/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });

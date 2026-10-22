@@ -123,7 +123,7 @@ Windows 固定容器 API 现查询 WebCore 自身的四边识别与背景混色�
 
 源码宿主 API v2 使用普通 IPC，测试 IPC 保持关闭。完整原生绘制框接收真实四边 obscured inset；逻辑引擎尺寸与原生 backing 比例独立，page zoom 始终为 1。有效普通流实时延伸至工具栏下方，真实视口、fixed 框及滚动范围保持场景约定。被动原生颜色边界只填文档外区域，根背景/底栏颜色扩展为明确标记的近似。
 
-在解锁桌面运行 `mise exec -- just test-windows`。它打开实际 Avalonia/SukiUI 宿主，检查全部 24 个 Safari 状态、精确 Fit 尺寸、fixed-bottom 框、小/大/动态视口单位、原生遮罩角点、语言/文档/滚动保持、沉浸模式、外观/背景分离、替换/释放及运行时缺失错误。每次在新的 `captures/desktop-validation/windows-runtime/` 会话冻结经编译器校验的 C# 源码、资源及可执行文件/PDB 哈希，并隔离偏好。编译成功不等于这些原生结果。
+在解锁桌面运行 `mise exec -- just test-windows`。它打开实际 Avalonia/SukiUI 宿主，检查全部 24 个 Safari 状态、精确 Fit 尺寸、fixed-bottom 框、小/大/动态视口单位、原生遮罩角点、语言/文档/滚动保持、沉浸模式、外观/背景分离、替换/释放及运行时缺失错误。每次在新的 `captures/desktop-validation/windows-runtime/` 会话冻结 C# 源码、资源及可执行文件/PDB 哈希（只记录、不比较），并隔离偏好。编译成功不等于这些原生结果。
 
 先前的 437 项断言/39 组比较不足以证明未经修改的静态页面绘制和圆角透明正确：向颜色页插入 fixed 标记可能改变其合成路径。新的独立套件通过 152 组比较，保留原先 39 组，并加入 94% Fit、HTML 字符串加载、静态渐变、透明根背景、静态 quirks、文档高度控件和独立动画。这些结果只证明几何。当前渲染器检查和实际呈现证据必须对应相同源码/运行时哈希；旧的 96/192 DPI 记录不能证明替换后的合成器已经通过。
 

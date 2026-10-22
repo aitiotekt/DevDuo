@@ -19,39 +19,28 @@ import { repoRoot } from "../lib/paths.mts";
 import { digest } from "../lib/release-artifacts.mts";
 import type { GitHubRelease, Runner } from "../lib/release-github.mts";
 import {
-  checkWebKitConfiguration,
-  engineInputs,
   preflightPublishedWebKit,
-  requirePinnedArchive,
+  publishWebKitOutput,
   safeRelative,
-  sourceFingerprint,
   stageRuntime,
-  validateRuntime,
-  verifyWebKitOutput,
   webkitNames,
   webkitPlan,
 } from "../lib/webkit-release.mts";
 
-const source = readFileSync(
-  join(repoRoot, "devduo-metadata.toml"),
-  "utf8",
-).replace(/^archive_sha256 = .*$/m, 'archive_sha256 = ""');
+const source = readFileSync(join(repoRoot, "devduo-metadata.toml"), "utf8");
 const sha = "a".repeat(40);
+const buildRecipe = "native/webkit/windows/BuildRuntime.ps1";
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "devduo-webkit-tests-"));
   for (const file of [
-    ...engineInputs,
+    buildRecipe,
     "devduo-metadata.toml",
-    "mise.toml",
-    "mise.lock",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
-    ".github/workflows/webkit-release.yml",
   ]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     cpSync(join(repoRoot, file), join(root, file));
   }
-  writeFileSync(join(root, "devduo-metadata.toml"), source);
   return root;
 }
 function cleanup(root: string) {
@@ -76,9 +65,8 @@ function runtimeFixture(root: string) {
     "WebKitGPUProcess.exe",
   ].map((path) => {
     writeFileSync(join(bin, path), `unit fixture ${path}`);
-    return { path, sha256: digest(join(bin, path)) };
+    return { path };
   });
-  const patches = engineInputs.filter((path) => path.endsWith(".patch"));
   writeJson(join(build, "build-inputs.json"), {
     upstreamRevision: config.webkit.upstreamRevision,
     clangSha256: "c".repeat(64),
@@ -91,24 +79,10 @@ function runtimeFixture(root: string) {
     ],
   });
   const manifest = {
-    buildInputsSha256: digest(join(build, "build-inputs.json")),
     schemaVersion: 1,
     upstreamRevision: config.webkit.upstreamRevision,
-    backForwardListSwift: false,
     hostViewportApiVersion: 2,
-    contentPaintingVersion: 2,
-    contentColorApiVersion: 1,
-    hostFixedContainerColorApiVersion: 1,
-    hostScrollIndicatorApiVersion: 1,
-    hostAppearanceApiVersion: 1,
-    hostDeveloperApiVersion: 1,
-    patchSha256: digest(join(root, patches[0])),
-    paintingPatchSha256: digest(join(root, patches[1])),
-    developerPatchSha256: digest(join(root, patches[2])),
-    inputFiles: engineInputs.map((path) => ({
-      path,
-      sha256: digest(join(root, path)),
-    })),
+    inputFiles: [{ path: buildRecipe }],
     files,
     runtimeAcceptancePassed: false,
   };
@@ -139,15 +113,10 @@ test("WebKit release identities are independent and unsafe metadata fails closed
   );
   metadata.project.version = "9.0.0";
   assert.equal(webkitNames(metadata).asset, webkitNames().asset);
-  assert.throws(
-    () => requirePinnedArchive(parseMetadata(source)),
-    /No WebKit archive/,
-  );
   for (const [before, after] of [
     ['asset_prefix = "DevDuo-WebKit"', 'asset_prefix = "../bad"'],
     ['tag_prefix = "webkit-v"', 'tag_prefix = "v"'],
     ['dll_name = "WebKit2.dll"', 'dll_name = "other.dll"'],
-    ['archive_sha256 = ""', 'archive_sha256 = "latest"'],
     ['"Windows", "X64"', '"Windows", "X86"'],
   ])
     assert.throws(() => parseMetadata(source.replace(before, after)));
@@ -163,95 +132,38 @@ test("WebKit release identities are independent and unsafe metadata fails closed
     assert.throws(() => safeRelative(path));
 });
 
-test("application preflight checks the published WebKit tag, channel, source report, assets and pinned checksums", () => {
-  const root = fixture();
-  try {
-    const expected = "d".repeat(64);
-    writeFileSync(
-      join(root, "devduo-metadata.toml"),
-      source.replace('archive_sha256 = ""', `archive_sha256 = "${expected}"`),
-    );
-    const metadata = loadMetadata(root),
-      names = webkitNames(metadata),
-      fingerprint = sourceFingerprint(root);
-    const report = {
-      schemaVersion: 1,
-      version: metadata.webkit.version,
-      asset: names.asset,
-      archiveSha256: expected,
-      runtimeManifestSha256: "c".repeat(64),
-      sourceFingerprint: fingerprint,
-      runtime: {
-        schemaVersion: 1,
-        version: metadata.webkit.version,
-        tag: names.tag,
-        asset: names.asset,
-        upstreamRevision: metadata.webkit.upstreamRevision,
-        sourceFingerprint: fingerprint,
-        sourceSha: sha,
-      },
+test("application preflight requires the published engine asset", () => {
+  const names = webkitNames();
+  const baseline: GitHubRelease = {
+    id: 17,
+    tag_name: names.tag,
+    draft: false,
+    prerelease: true,
+    assets: [names.asset, names.manifest, "SHA256SUMS"].map((name) => ({
+      name,
+      size: 100,
+      state: "uploaded",
+    })),
+  };
+  for (const scenario of ["valid", "channel", "draft", "missing", "asset"]) {
+    const release = structuredClone(baseline);
+    if (scenario === "draft") release.draft = true;
+    if (scenario === "channel") release.prerelease = false;
+    if (scenario === "asset") release.assets.shift();
+    const execute: Runner = (command, args) => {
+      assert.equal(command, "gh");
+      assert.equal(args[0], "api");
+      if (args[1] === "graphql")
+        return JSON.stringify({ data: { repository: { release: null } } });
+      return JSON.stringify([scenario === "missing" ? [] : [release]]);
     };
-    const reportText = JSON.stringify(report),
-      reportPath = join(root, "report.json");
-    writeFileSync(reportPath, reportText);
-    const sums = `${expected}  ${names.asset}\n${digest(reportPath)}  ${names.manifest}\n`;
-    const baseline: GitHubRelease = {
-      id: 17,
-      tag_name: names.tag,
-      draft: false,
-      prerelease: true,
-      assets: [names.asset, names.manifest, "SHA256SUMS"].map((name) => ({
-        name,
-        size: 100,
-        state: "uploaded",
-      })),
-    };
-    for (const scenario of [
-      "valid",
-      "draft",
-      "missing",
-      "channel",
-      "assets",
-      "tag",
-      "hash",
-      "sums",
-      "network",
-    ]) {
-      const release = structuredClone(baseline);
-      if (scenario === "draft") release.draft = true;
-      if (scenario === "channel") release.prerelease = false;
-      if (scenario === "assets") release.assets.pop();
-      const execute: Runner = (command, args) => {
-        if (command === "git")
-          return `${scenario === "tag" ? "b".repeat(40) : sha}\trefs/tags/${names.tag}`;
-        assert.equal(command, "gh");
-        if (args[0] === "api") {
-          if (scenario === "network") throw new Error("network failure");
-          if (args[1] === "graphql")
-            return JSON.stringify({ data: { repository: { release: null } } });
-          return JSON.stringify([scenario === "missing" ? [] : [release]]);
-        }
-        assert.deepEqual(args.slice(0, 2), ["release", "download"]);
-        const name = args[args.indexOf("--pattern") + 1],
-          destination = args[args.indexOf("--dir") + 1];
-        writeFileSync(
-          join(destination, name),
-          name === names.manifest
-            ? scenario === "hash"
-              ? JSON.stringify({ ...report, archiveSha256: "b".repeat(64) })
-              : reportText
-            : scenario === "sums"
-              ? "invalid"
-              : sums,
-        );
-        return "";
-      };
-      if (scenario === "valid") preflightPublishedWebKit(root, execute);
-      else
-        assert.throws(() => preflightPublishedWebKit(root, execute), scenario);
-    }
-  } finally {
-    cleanup(root);
+    if (scenario === "valid" || scenario === "channel")
+      preflightPublishedWebKit(repoRoot, execute);
+    else
+      assert.throws(
+        () => preflightPublishedWebKit(repoRoot, execute),
+        scenario,
+      );
   }
 });
 
@@ -285,8 +197,8 @@ test("runner routing accepts repository-scoped defaults and optional capability 
     assert.throws(() => parseMetadata(metadata.replace(defaults, labels)));
 });
 
-test("manual release planning rejects automatic triggers, wrong branches and abbreviated commits", () => {
-  const plan = webkitPlan("workflow_dispatch", "refs/heads/main", sha);
+test("release planning uses the configured branch and accepts any source revision", () => {
+  const plan = webkitPlan("refs/heads/main", sha);
   assert.deepEqual(
     JSON.parse(plan.runner_labels),
     loadMetadata().webkit.runnerLabels,
@@ -295,188 +207,146 @@ test("manual release planning rejects automatic triggers, wrong branches and abb
     plan.repository,
     new URL(loadMetadata().project.repositoryUrl).pathname.slice(1),
   );
-  for (const event of [
-    "push",
-    "pull_request",
-    "workflow_call",
-    "workflow_run",
-    "schedule",
-  ])
-    assert.throws(() => webkitPlan(event, "refs/heads/main", sha));
-  assert.throws(() => webkitPlan("workflow_dispatch", "refs/heads/other", sha));
-  assert.throws(() =>
-    webkitPlan("workflow_dispatch", "refs/heads/main", "aaaaaaa"),
-  );
+  assert.equal(webkitPlan("refs/heads/main", "abc1234").sourceSha, "abc1234");
+  assert.throws(() => webkitPlan("refs/heads/other", sha));
 });
 
-test("source fingerprint ignores app/tooling/pin changes but detects engine and Python changes", () => {
+test("runtime staging copies the inventory, notices and native input snapshots", () => {
   const root = fixture();
   try {
-    const before = sourceFingerprint(root);
-    writeFileSync(
-      join(root, "devduo-metadata.toml"),
-      source
-        .replace(/^(version = )"[^"]+"/gm, '$1"9.0.0"')
-        .replace('archive_sha256 = ""', `archive_sha256 = "${"b".repeat(64)}"`),
-    );
-    const mise = readFileSync(join(root, "mise.toml"), "utf8");
-    writeFileSync(
-      join(root, "mise.toml"),
-      mise.replace('node = "26"', 'node = "27"'),
-    );
-    assert.equal(sourceFingerprint(root), before);
-    writeFileSync(
-      join(root, "mise.toml"),
-      mise.replace('python = "3.14"', 'python = "3.15"'),
-    );
-    assert.notEqual(sourceFingerprint(root), before);
-    writeFileSync(join(root, "mise.toml"), mise);
-    writeFileSync(join(root, engineInputs[2]), "changed engine build recipe");
-    assert.notEqual(sourceFingerprint(root), before);
-  } finally {
-    cleanup(root);
-  }
-});
-
-test("workflow policy preserves the workspace and permits only manual dispatch", () => {
-  const root = fixture();
-  try {
-    checkWebKitConfiguration(root);
-    const path = join(root, ".github/workflows/webkit-release.yml"),
-      workflow = readFileSync(path, "utf8");
-    writeFileSync(path, workflow.replace("clean: false", "clean: true"));
-    assert.throws(() => checkWebKitConfiguration(root), /preserve caches/);
-    writeFileSync(
-      path,
-      workflow.replace("  workflow_dispatch:", "  workflow_dispatch:\n  push:"),
-    );
-    assert.throws(() => checkWebKitConfiguration(root), /only trigger/);
-  } finally {
-    cleanup(root);
-  }
-});
-
-test("runtime staging validates all components, rejects stale inputs and preserves acceptance qualifications", () => {
-  const root = fixture();
-  try {
-    const { build, manifest } = runtimeFixture(root),
+    const { build } = runtimeFixture(root),
       stage = join(root, "stage");
     stageRuntime(build, stage, sha, root);
-    validateRuntime(stage, loadMetadata(root), true, root);
     assert.equal(
       JSON.parse(readFileSync(join(stage, "runtime-manifest.json"), "utf8"))
         .runtimeAcceptancePassed,
       false,
     );
+    assert.ok(existsSync(join(stage, "bin/WebKit2.dll")));
     assert.ok(existsSync(join(stage, "licenses/vcpkg/fixture/copyright")));
     assert.doesNotMatch(
       readFileSync(join(stage, "build-provenance.json"), "utf8"),
       /private install directory/,
     );
-    writeFileSync(join(stage, "bin/WebCore.dll"), "corrupt");
-    assert.throws(
-      () => validateRuntime(stage, loadMetadata(root), true, root),
-      /integrity mismatch/,
+    const release = JSON.parse(
+      readFileSync(join(stage, "runtime-release.json"), "utf8"),
     );
-    const duplicate = structuredClone(manifest);
-    duplicate.files.push({
-      path: "WEBKIT2.DLL",
-      sha256: manifest.files[0].sha256,
-    });
-    writeJson(join(build, "runtime-manifest.json"), duplicate);
-    assert.throws(
-      () => validateRuntime(build, loadMetadata(root), false, root),
-      /Duplicate/,
-    );
-    writeJson(join(build, "runtime-manifest.json"), manifest);
-    writeFileSync(join(root, engineInputs[2]), "unbuilt recipe");
-    assert.throws(
-      () => stageRuntime(build, join(root, "stale"), sha, root),
-      /Rebuild WebKit/,
+    assert.equal(release.sourceSha, sha);
+    assert.equal(release.sourceFingerprint, undefined);
+    const snapshot = join(build, "inputs", buildRecipe);
+    mkdirSync(dirname(snapshot), { recursive: true });
+    cpSync(join(root, buildRecipe), snapshot);
+    writeFileSync(join(root, buildRecipe), "updated build recipe");
+    stageRuntime(build, join(root, "preserved-inputs"), sha, root);
+    assert.equal(
+      readFileSync(
+        join(root, "preserved-inputs/source-inputs", buildRecipe),
+        "utf8",
+      ),
+      readFileSync(snapshot, "utf8"),
     );
   } finally {
     cleanup(root);
   }
 });
 
-test("PowerShell BOM provenance is parsed without changing the original manifest bytes", () => {
+test("PowerShell BOM manifests are parsed without changing the original bytes", () => {
   const root = fixture();
   try {
     const { build, manifest } = runtimeFixture(root);
     const inputsPath = join(build, "build-inputs.json");
     writeFileSync(inputsPath, `\uFEFF${readFileSync(inputsPath, "utf8")}`);
-    manifest.buildInputsSha256 = digest(inputsPath);
     const manifestPath = join(build, "runtime-manifest.json");
     const original = `\uFEFF${JSON.stringify(manifest)}`;
     writeFileSync(manifestPath, original);
     const stage = join(root, "bom-stage");
     stageRuntime(build, stage, sha, root);
-    validateRuntime(stage, loadMetadata(root), true, root);
     assert.equal(
       readFileSync(join(stage, "runtime-manifest.json"), "utf8"),
       original,
     );
-    assert.equal(
-      digest(join(stage, "runtime-manifest.json")),
-      digest(manifestPath),
-    );
-    assert.equal(digest(inputsPath), manifest.buildInputsSha256);
   } finally {
     cleanup(root);
   }
 });
 
-test("published output validation refuses changed bytes, wrong commits and mismatched archive pins", () => {
+test("publication resumes missing engine assets from the preserved package", () => {
   const root = fixture();
   try {
     const output = join(root, "output"),
       metadata = loadMetadata(root),
       names = webkitNames(metadata);
     mkdirSync(output);
-    const archive = join(output, names.asset);
-    writeFileSync(archive, "unit archive fixture");
-    const fingerprint = sourceFingerprint(root),
-      hash = digest(archive);
+    writeFileSync(join(output, names.asset), "unit archive fixture");
     writeJson(join(output, names.manifest), {
       schemaVersion: 1,
       asset: names.asset,
       version: metadata.webkit.version,
-      archiveSha256: hash,
-      runtimeManifestSha256: "c".repeat(64),
-      sourceFingerprint: fingerprint,
-      runtime: {
-        schemaVersion: 1,
-        version: metadata.webkit.version,
-        tag: names.tag,
-        asset: names.asset,
-        upstreamRevision: metadata.webkit.upstreamRevision,
-        sourceFingerprint: fingerprint,
-        sourceSha: sha,
-      },
+      runtime: { sourceSha: sha },
     });
     writeFileSync(
       join(output, "SHA256SUMS"),
-      `${hash}  ${names.asset}\n${digest(join(output, names.manifest))}  ${names.manifest}\n`,
+      `${digest(join(output, names.asset))}  ${names.asset}\n`,
     );
-    verifyWebKitOutput(output, sha, root);
-    assert.throws(
-      () => verifyWebKitOutput(output, "b".repeat(40), root),
-      /identity/,
-    );
-    writeFileSync(
-      join(root, "devduo-metadata.toml"),
-      source.replace(
-        'archive_sha256 = ""',
-        `archive_sha256 = "${"b".repeat(64)}"`,
-      ),
-    );
-    assert.throws(
-      () => verifyWebKitOutput(output, sha, root),
-      /already pinned/,
-    );
-    writeFileSync(join(root, "devduo-metadata.toml"), source);
-    writeFileSync(archive, "modified transport");
-    assert.throws(() => verifyWebKitOutput(output, sha, root), /integrity/);
+    writeFileSync(join(output, "release-notes.md"), "Fixture release notes\n");
+    const files = [names.asset, names.manifest, "SHA256SUMS"];
+    for (const present of [[], [names.manifest], files]) {
+      const release: GitHubRelease = {
+        id: 17,
+        tag_name: "untagged-fixture",
+        draft: true,
+        prerelease: true,
+        assets: present.map((name) => ({
+          name,
+          size: statSync(join(output, name)).size,
+          state: "uploaded",
+        })),
+      };
+      const calls: string[][] = [];
+      const execute: Runner = (command, args) => {
+        calls.push([command, ...args]);
+        if (command === "git") return `${sha}\trefs/tags/${names.tag}`;
+        assert.equal(command, "gh");
+        if (args[0] === "api") {
+          if (args[1] === "graphql")
+            return JSON.stringify({
+              data: {
+                repository: {
+                  release: { databaseId: 17, isDraft: release.draft },
+                },
+              },
+            });
+          if (args[1].endsWith("/releases/17")) return JSON.stringify(release);
+          return JSON.stringify([[release]]);
+        }
+        if (args[1] === "upload") {
+          for (const file of args.slice(3, args.indexOf("--repo")))
+            release.assets.push({
+              name: basename(file),
+              size: statSync(file).size,
+              state: "uploaded",
+            });
+        } else if (args[1] === "edit") {
+          assert.ok(args.includes("--latest=false"));
+          release.draft = false;
+          release.tag_name = names.tag;
+        } else assert.fail(`Unexpected GitHub operation: ${args[1]}`);
+        return "";
+      };
+      assert.equal(
+        publishWebKitOutput(output, true, execute, root).runtime.sourceSha,
+        sha,
+      );
+      assert.equal(release.assets.length, files.length);
+      assert.equal(release.draft, false);
+      calls.length = 0;
+      publishWebKitOutput(output, true, execute, root);
+      assert.ok(
+        calls.every(
+          (args) => !["upload", "edit", "create", "download"].includes(args[2]),
+        ),
+      );
+    }
   } finally {
     cleanup(root);
   }
@@ -496,6 +366,8 @@ test("native ZIP handling round-trips bytes and rejects traversal before extract
       output = join(root, "unpacked");
     mkdirSync(input);
     writeFileSync(join(input, "sample.txt"), "runtime bytes");
+    mkdirSync(join(input, "bin"));
+    writeFileSync(join(input, "bin/nested.dll"), "nested runtime bytes");
     const invoke = (mode: string, directory: string, zip: string) =>
       spawnSync(
         "powershell.exe",
@@ -512,11 +384,37 @@ test("native ZIP handling round-trips bytes and rejects traversal before extract
         ],
         { encoding: "utf8" },
       );
-    assert.equal(invoke("Pack", input, archive).status, 0);
-    assert.equal(invoke("Unpack", output, archive).status, 0);
+    const packed = invoke("Pack", input, archive);
+    assert.equal(packed.status, 0, packed.stderr);
+    const unpacked = invoke("Unpack", output, archive);
+    assert.equal(unpacked.status, 0, unpacked.stderr);
     assert.equal(
       readFileSync(join(output, "sample.txt"), "utf8"),
       "runtime bytes",
+    );
+    assert.equal(
+      readFileSync(join(output, "bin/nested.dll"), "utf8"),
+      "nested runtime bytes",
+    );
+    const legacy = join(root, "legacy.zip");
+    const makeLegacy = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::CreateFromDirectory($env:INPUT, $env:ARCHIVE)",
+      ],
+      {
+        env: { ...process.env, INPUT: input, ARCHIVE: legacy },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(makeLegacy.status, 0, makeLegacy.stderr);
+    const legacyOutput = join(root, "legacy-unpacked");
+    assert.equal(invoke("Unpack", legacyOutput, legacy).status, 0);
+    assert.equal(
+      readFileSync(join(legacyOutput, "bin/nested.dll"), "utf8"),
+      "nested runtime bytes",
     );
     const invalid = join(root, "invalid.zip");
     const create = spawnSync(

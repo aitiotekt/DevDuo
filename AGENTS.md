@@ -30,7 +30,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 - Keep screen-mask paths independent of exterior artwork. Keep body angle, scene angle, CSS pixels, native points, rendered DIP and framebuffer pixels distinct. Fit preview scales presentation while preserving the logical viewport; verify actual DOM measurements.
 - Use complete visual tab containers for selected-tab backgrounds. Accessibility hit rectangles, optical surfaces and paint/text clipping rectangles are different measurements.
 - Unsupported hardware dimensions, physical millimeters and real hardware radii stay `null` and parameterizable. Do not infer them from screenshot pixels, simulator DPI or artwork. Simulator geometry and desktop material approximations are not physical specifications or the iOS Liquid Glass kernel.
-- Preserve original capture bytes and hashes. New observations belong in new sessions; never sanitize originals in place. Keep source provenance, failed attempts and missing evidence explicit. A fresh public checkout must not fabricate private-evidence passes.
+- Preserve original capture bytes. New observations belong in new sessions; never sanitize originals in place. Keep source provenance, failed attempts and missing evidence explicit. A fresh public checkout must not fabricate private-evidence passes.
 - Dispose native resources and event subscriptions predictably. Async navigation, capture and initialization callbacks must reject stale/disposed containers. Do not recreate or navigate a WebView for a presentation-only setting change.
 
 ## Maintainable implementation
@@ -53,7 +53,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 - Keep both languages current, use language-local links and add a bidirectional language footer. Describe current behavior and planned work clearly; keep historical change chronology in `CHANGELOG.md` or a documented archive.
 - Public content must not contain personal host names, simulator UDIDs, account names, private absolute paths, secrets or raw browsing records. Use repository-relative paths and placeholders. Ignored `captures/`, `measurements/`, `.local/` and `temp/` are local evidence, not publication inputs.
 - The publication audit is one check; review the actual diff and additions. Respect `THIRD_PARTY_NOTICES.md` and keep simulator-artwork redistribution uncertainty visible.
-- Reviewed Device Hub canvas derivatives belong in `docs/shared/safari-reference/` with complete case coverage, explicit crop/source provenance and exact image hashes. Keep originals private and unchanged. `just references-check` validates public derivatives; it does not establish native acceptance or redistribution rights. System appearance, page-derived color and meta hints are separate recorded inputs.
+- Reviewed Device Hub canvas derivatives belong in `docs/shared/safari-reference/` with complete case coverage and explicit crop/source provenance. Keep originals private and unchanged. Pipelines and tools do not gate on content hashes unless the operation cannot run without one; recorded hashes are outputs, not checks. `just references-check` validates public derivatives; it does not establish native acceptance or redistribution rights. System appearance, page-derived color and meta hints are separate recorded inputs.
 
 ## Verification and handoff
 

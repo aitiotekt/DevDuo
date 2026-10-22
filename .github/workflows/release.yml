@@ -32,14 +32,14 @@ jobs:
       display_name: ${{ steps.plan.outputs.displayName }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
-      - name: Validate version and exact triggering ref
+      - name: Plan version and triggering ref
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,7 +72,7 @@ jobs:
     timeout-minutes: 120
     environment: release-signing
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -91,7 +91,7 @@ jobs:
       - name: Build self-contained application
         run: mise exec -- just package-release-macos
       - name: Import Developer ID certificate
-        uses: Apple-Actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        uses: Apple-Actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -102,7 +102,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: mise exec -- just sign-release-macos
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@v7
         with:
           name: release-osx-arm64
           path: temp/release/platform/
@@ -124,14 +124,14 @@ jobs:
         run: |
           git config --global core.symlinks true
           git config --global core.longpaths true
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           native-only: 'true'
-      - name: Fetch and validate the pinned engine before publishing the application
+      - name: Fetch the published engine
         env:
           GH_TOKEN: ${{ github.token }}
         run: mise exec -- just fetch-windows-webkit-runtime
@@ -139,7 +139,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: mise exec -- just package-release-windows
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@v7
         with:
           name: release-win-x64
           path: temp/release/platform/
@@ -157,27 +157,27 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-@(osx-arm64|win-x64)
           path: temp/release/downloads
           merge-multiple: false
-      - name: Assemble and verify complete artifact set
+      - name: Assemble artifact set and checksums
         run: mise exec node pnpm just -- node scripts/release.mts assemble
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             temp/release/final/*.zip
             temp/release/final/SHA256SUMS
             temp/release/final/release-manifest.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@v7
         with:
           name: release-final
           path: temp/release/final/
@@ -194,52 +194,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@v8
         with:
           name: release-final
           path: temp/release/final/
-      - name: Revalidate and publish the exact artifact set
+      - name: Publish the artifact set
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_DRY_RUN: ${{ needs.plan.outputs.dry_run }}
         run: mise exec node pnpm just gh -- node scripts/release.mts publish
-
-  release-report:
-    if: always()
-    needs: [plan, checks, stable-approval, macos, windows, assemble, publish]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require completed release or an explicit development skip
-        env:
-          PLAN: ${{ needs.plan.result }}
-          PUBLISH_ENABLED: ${{ needs.plan.outputs.publish }}
-          ASSEMBLE: ${{ needs.assemble.result }}
-          PUBLISH: ${{ needs.publish.result }}
-          DRY_RUN: ${{ needs.plan.outputs.dry_run }}
-          CHECKS: ${{ needs.checks.result }}
-          MACOS: ${{ needs.macos.result }}
-          WINDOWS: ${{ needs.windows.result }}
-        run: |
-          echo "Release: plan=${PLAN}, checks=${CHECKS}, macOS=${MACOS}, Windows=${WINDOWS}, assemble=${ASSEMBLE}, publish=${PUBLISH}, dry-run=${DRY_RUN}" >> "$GITHUB_STEP_SUMMARY"
-          test "${PLAN}" = success
-          if [[ "${PUBLISH_ENABLED}" == "false" ]]; then
-            echo "Development version: no release published." >> "$GITHUB_STEP_SUMMARY"
-          else
-            test "${CHECKS}" = success
-            test "${MACOS}" = success
-            test "${WINDOWS}" = success
-            test "${ASSEMBLE}" = success
-            if [[ "${DRY_RUN}" == true ]]; then
-              test "${PUBLISH}" = skipped
-            else
-              test "${PUBLISH}" = success
-            fi
-          fi

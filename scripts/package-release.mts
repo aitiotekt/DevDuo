@@ -12,7 +12,6 @@ import { copyMacOSIcons } from "./lib/app-icons.mts";
 import { macosBundlePlist } from "./lib/macos-bundle.mts";
 import { loadMetadata } from "./lib/metadata.mts";
 import { repoRoot } from "./lib/paths.mts";
-import { artifactRecord, windowsRuntime } from "./lib/release-artifacts.mts";
 import {
   artifactName,
   currentVersion,
@@ -20,7 +19,6 @@ import {
   targets,
 } from "./lib/release-policy.mts";
 import { run } from "./lib/release-process.mts";
-import { validateRuntime } from "./lib/webkit-release.mts";
 
 try {
   const command = process.argv[2],
@@ -203,16 +201,7 @@ try {
       run("xcrun", ["stapler", "validate", app]);
       run("spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
       run("ditto", ["-c", "-k", "--keepParent", app, archive]);
-    } else {
-      validateRuntime(join(app, "webkit"));
-      run("tar", ["-a", "-c", "-f", archive, "-C", stage, name]);
-    }
-    const sourceSha =
-      process.env.GITHUB_SHA ?? run("git", ["rev-parse", "HEAD"], true);
-    writeFileSync(
-      join(output, "report.json"),
-      `${JSON.stringify({ sourceSha, artifact: artifactRecord(output, version, target), ...(target === "win-x64" ? { windowsWebKit: windowsRuntime(metadata) } : {}) }, null, 2)}\n`,
-    );
+    } else run("tar", ["-a", "-c", "-f", archive, "-C", stage, name]);
   } else throw new Error("Use preflight, prepare, bundle, sign or archive.");
 } catch (error) {
   console.error(

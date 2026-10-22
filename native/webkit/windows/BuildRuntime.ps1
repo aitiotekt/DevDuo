@@ -119,13 +119,10 @@ foreach ($name in @('WKViewGetViewportHostAPIVersion', 'WKViewSetObscuredContent
 $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
     Where-Object { $_.Extension -notin @('.pdb', '.ilk') -and $_.Name -notlike 'DevDuo.WebKitProbe*' } |
     ForEach-Object {
-        [ordered]@{ path = $_.FullName.Substring($runtime.Length + 1).Replace('\', '/'); sha256 = Get-WebKitFileHash $_.FullName }
+        [ordered]@{ path = $_.FullName.Substring($runtime.Length + 1).Replace('\', '/') }
     }
 [ordered]@{
-    schemaVersion = 1; upstreamRevision = $pin.revision; patchSha256 = Get-WebKitFileHash $patch
-    paintingPatchSha256 = Get-WebKitFileHash $paintingPatch
-    developerPatchSha256 = Get-WebKitFileHash $developerPatch
-    buildInputsSha256 = Get-WebKitFileHash (Join-Path $build 'build-inputs.json')
+    schemaVersion = 1; upstreamRevision = $pin.revision
     inputFiles = @($inputRecords)
     hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 1; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
     runtimeAcceptancePassed = $false

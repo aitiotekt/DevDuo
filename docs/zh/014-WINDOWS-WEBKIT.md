@@ -4,11 +4,11 @@
 
 ## 运行时与复现
 
-生产引擎输入位于 `native/webkit/windows/`：源码/归档 pin、三个宿主补丁、triplet、构建/缓存管理与归档工具。`tests/DevDuo.WebKitProbe/` 仅负责独立诊断程序、测试页面和验收入口。维护中的 `BuildRuntime.ps1` 是生产构建入口，不属于测试基础设施，见[目录职责说明](../../native/webkit/windows/README.md)。已有冻结输入保留原路径和哈希；目录迁移不代表引擎重新编译或重新通过验收。
+生产引擎输入位于 `native/webkit/windows/`：源码 pin、三个宿主补丁、triplet、构建/缓存管理与归档工具。`tests/DevDuo.WebKitProbe/` 仅负责独立诊断程序、测试页面和验收入口。维护中的 `BuildRuntime.ps1` 是生产构建入口，不属于测试基础设施，见[目录职责说明](../../native/webkit/windows/README.md)。已有冻结输入保留原路径和哈希；目录迁移不代表引擎重新编译或重新通过验收。
 
 `native/webkit/windows/runtime.lock.json` 固定官方 release `324423@main`、提交 `6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d`、归档长度 589,666,207 和 SHA-256 `b3a06dc5b5461976090fe889acb1022f28ad0ae1f27f40eef83f2916f4c77d4f`。原始 ZIP 留在 `temp/cache/windows-webkit/`，可运行文件留在 `temp/windows-webkit-probe/`。归档提供 DLL、辅助程序和资源，并非嵌入 SDK。探针按照同一源码提交声明最少 C 接口并检查导出。该 port 默认使用 Skia 和 ANGLE。
 
-官方归档报告于 **2026-11-07** 到期。准备步骤校验长度和哈希，不可用时明确失败；需保留缓存，或有意更新固定版本。不进行全局安装、Playwright 替代或发行包捆绑。参见[第三方声明](THIRD_PARTY_NOTICES.md)。
+官方归档报告于 **2026-11-07** 到期。准备步骤在归档不可用时明确失败；需保留缓存，或有意更新固定版本。不进行全局安装、Playwright 替代或发行包捆绑。参见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 在已解锁桌面、安装 Visual Studio C++ 和 v143 toolset 的 Windows 环境运行：
 
@@ -59,7 +59,7 @@ mise exec -- just probe-windows-webkit
 
 同一呈现补丁还对物理失效矩形向外取整、backing 尺寸向上取整，并将原生栅格原点对齐设备像素。分数缩放后截断逻辑矩形，会让文档缩短后的最后一行/列保留旧像素。这些修改只作用于 Windows 的栅格分配/裁剪，不改变布局或文档尺寸。
 
-`patches/0002-windows-content-painting.patch` 增加**正文绘制 v1**。此前非合成路径的 `ScrollView::paint` 和 `repaintContentRectangle` 裁剪到未遮挡布局视口，使未经修改的静态颜色页下方出现黑块。Windows 专项绘制补丁将画布裁剪扩至 obscured inset，并在绘制原点包含顶部/左侧 inset。画布绘制必须越过缩短文档的精确边界，才能更新分数边缘像素；宿主独立裁剪有效文档流，只填充文档外区域。布局、命中测试、fixed/sticky 位置、视口单位和滚动范围不变，不依赖 fixed 标记、页面样式修改、动画或反复强制重绘。运行时清单记录全部维护补丁的哈希和当前冻结构建输入；启动要求 viewport API v2、正文绘制 v2 和内容取色 API v1，并校验运行时文件哈希；旧运行时必须重建。
+`patches/0002-windows-content-painting.patch` 增加**正文绘制 v1**。此前非合成路径的 `ScrollView::paint` 和 `repaintContentRectangle` 裁剪到未遮挡布局视口，使未经修改的静态颜色页下方出现黑块。Windows 专项绘制补丁将画布裁剪扩至 obscured inset，并在绘制原点包含顶部/左侧 inset。画布绘制必须越过缩短文档的精确边界，才能更新分数边缘像素；宿主独立裁剪有效文档流，只填充文档外区域。布局、命中测试、fixed/sticky 位置、视口单位和滚动范围不变，不依赖 fixed 标记、页面样式修改、动画或反复强制重绘。冻结构建输入记录全部维护补丁；启动要求 viewport API v2、正文绘制 v2 和内容取色 API v1；旧运行时必须重建。
 
 同一补丁还修正保留像素的滚动拷贝区域。普通绘制修正后，部分水平滚动仍使左 inset 暴露黑块，因为 `windowClipRect` 和拷贝矩形依然排除了遮挡区域。拷贝现覆盖完整原生绘制范围，并显式失效软件 overlay 滚动条的原位和拷贝后位置，避免排除条带留下黑块或移动的滚动条轨迹。这是实际滚动时的引擎失效处理，不是重绘定时器或强制重绘循环。左 inset 84、scrollX 40 的回归保留 40 CSS 像素真实正文和 44 像素根背景。
 
@@ -83,7 +83,7 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 mise exec -- just dev
 ```
 
-应用自动查找源码检出中的 `temp/build/windows-webkit-host/bin`。独立安装可在可执行文件旁提供完整 `webkit/bin` 与 `webkit/runtime-manifest.json`，或将 `DEVDUO_WEBKIT_RUNTIME` 设为绝对 bin 目录。显式覆盖具有优先权，路径无效时不会选择其它运行时。WebKit 强制校验完整匹配的清单、哈希、API v2 与全部绑定导出；缺失能力时明确报错，test-only IPC 始终关闭。Windows 使用当前用户本地应用数据下 `DevDuo/WebKit` 的持久网站存储；若设置 `DEVDUO_WEBKIT_PROFILE`，必须使用绝对目录。多个原生视图共用同一存储会话。localStorage、IndexedDB、持久 Cookie 和网络/网站缓存跨应用重启保留；sessionStorage 维持正常的文档会话语义。旧浏览器引擎的 profile 不会被迁移或删除，重置宿主设置不会清除网站数据。
+应用自动查找源码检出中的 `temp/build/windows-webkit-host/bin`。独立安装可在可执行文件旁提供完整 `webkit/bin` 与 `webkit/runtime-manifest.json`，或将 `DEVDUO_WEBKIT_RUNTIME` 设为绝对 bin 目录。显式覆盖具有优先权，路径无效时不会选择其它运行时。WebKit 要求清单中的 API 版本与全部绑定导出，启动时不校验文件哈希；缺失能力时明确报错，test-only IPC 始终关闭。Windows 使用当前用户本地应用数据下 `DevDuo/WebKit` 的持久网站存储；若设置 `DEVDUO_WEBKIT_PROFILE`，必须使用绝对目录。多个原生视图共用同一存储会话。localStorage、IndexedDB、持久 Cookie 和网络/网站缓存跨应用重启保留；sessionStorage 维持正常的文档会话语义。旧浏览器引擎的 profile 不会被迁移或删除，重置宿主设置不会清除网站数据。
 
 `WindowsWebViewPanel.cs` 继续管理同一套外壳、遮罩和场景几何。WebKit 使用完整原生绘制框，接收真实四边 inset 及视口单位范围；Fit 只改变原生 backing 比例，保持引擎逻辑尺寸不变。普通 C 导航回调驱动 URL、标题、加载、错误及历史状态，原生焦点快捷键转发给宿主。脚本操作及导航代次/文档检查拒绝陈旧或已销毁的回调。JSON 字符串消息传输保留了 C 字典转换会丢弃的 null 字段。
 
@@ -129,7 +129,7 @@ mise exec -- just probe-windows-app
 
 ## 分数边界栅格化
 
-当前运行时要求**正文绘制 v2**，同时保持 viewport API v2 和内容取色 API v1。`WKViewSetHostUnderPageBackgroundColor(view, rgb)` 使用与宿主边界条带相同、明确标注的非透明根背景回退值。Setter 更新原生文档外背景，仅在颜色改变时产生绘制失效；导航时先恢复白色，等待当前文档的有效观测。它不修改网页 CSS 或几何。运行时清单、必需导出及冻结补丁哈希区分此版本与 painting v1；旧运行时需要重建。
+当前运行时要求**正文绘制 v2**，同时保持 viewport API v2 和内容取色 API v1。`WKViewSetHostUnderPageBackgroundColor(view, rgb)` 使用与宿主边界条带相同、明确标注的非透明根背景回退值。Setter 更新原生文档外背景，仅在颜色改变时产生绘制失效；导航时先恢复白色，等待当前文档的有效观测。它不修改网页 CSS 或几何。运行时清单版本及必需导出区分此版本与 painting v1；旧运行时需要重建。
 
 约 94% Fit 的细线包含两项栅格问题。宿主用失效区域的 floor/ceil 外包规则计算正文裁剪，但 Skia 硬裁剪采用最近像素边界。实测 594 像素页面在 backing scale 0.939914 下的边界为 558.31 像素：引擎在第 558 列之前停止绘制，旧宿主却从第 559 列才开始填充。边界和 footer 的四条裁剪边现统一采用半值向上取最近像素；失效矩形继续向外保守取整。独立诊断也采用相同裁剪规则。
 
@@ -201,7 +201,7 @@ Windows 边缘元数据路径还会在原生混色前，将背景自身 alpha �
 
 ## Inspector、导航与首帧
 
-`patches/0003-windows-developer-api.patch` 增加宿主开发 API v1：选择性移除专用调试用户脚本、显式启动/停止原生 Inspector TCP，以及每个存储的代理配置。完整性清单和启动现在要求 `hostDeveloperApiVersion: 1`，并保留 viewport/painting/content-color/appearance 版本要求。三份补丁哈希与当前冻结输入均须匹配，旧两补丁运行时必须重建；本次不改变逻辑屏幕或视口预留。
+`patches/0003-windows-developer-api.patch` 增加宿主开发 API v1：选择性移除专用调试用户脚本、显式启动/停止原生 Inspector TCP，以及每个存储的代理配置。运行时清单和启动现在要求 `hostDeveloperApiVersion: 1`，并保留 viewport/painting/content-color/appearance 版本要求。旧两补丁运行时必须重建以提供必需导出；补丁哈希保留为来源记录，打包策略见[发布指南](013-RELEASE.md#windows-webkit-运行时发布)；本次不改变逻辑屏幕或视口预留。
 
 开发工具分组分别提供本地 Inspector、原生远程检查及页内 CDP/chii。原生远程使用无认证的 WebKit `webkit-inspector-socket` TCP 协议，与本地 Inspector 互斥；默认回环，仅显式选择时开放局域网，停止/销毁时释放监听。页面 CDP 使用独立的 token 保护原生消息桥和包内 chii 前端，不转换 WebKit Inspector 流量。Windows 代理支持系统/直连/自定义原生网络配置。详见[开发工具架构](001-ARCHITECTURE.md#开发工具与页面代理)及[验收范围](009-WINDOWS-HANDOFF.md#开发工具验收)。
 
@@ -231,6 +231,6 @@ GPU 握手的两个阶段都在同一个截止时间内检查真实的来源注�
 
 原生测试程序的 `--browser-tools` 模式覆盖两种设备形态、八个旋转姿态、JavaScript/表单/历史身份、延迟脚本的早期绘制及 Inspector 按钮。`--browser-performance` 是主动选择的网络诊断，使用颜色实验室和 MDN 首页并开启 Inspector。两个独立进程依次运行 `--storage-write`、`--storage-read`，可检查 localStorage、IndexedDB 和持久 Cookie；两者需共用绝对路径的 `DEVDUO_WEBKIT_PROFILE` 和唯一的 `DEVDUO_STORAGE_TEST_TOKEN`。普通原生测试使用隔离的临时 profile，不读写用户网站数据。Windows 执行不能验证对应的 macOS 场景更新桥接。
 
-`mise exec -- just package-local-windows` 在 `temp/build/local-release/win-x64/DevDuo` 生成自包含未签名体验包，并归档到 `temp/local-release/`。它复用并校验已有源码构建的 runtime、冻结输入及许可，不需要公开归档 pin。原始原生验收标记保持不变，不宣称已用最新构建编排重新构建引擎。正式发行打包仍遵循独立的已发布 runtime 要求。
+`mise exec -- just package-local-windows` 在 `temp/build/local-release/win-x64/DevDuo` 生成自包含未签名体验包，并归档到 `temp/local-release/`。它复用已有源码构建的 runtime、冻结输入及许可，不需要已发布的运行时 Release。原始原生验收标记保持不变，不宣称已用最新构建编排重新构建引擎。正式发行打包仍遵循独立的已发布 runtime 要求。
 
 [English](../en/014-WINDOWS-WEBKIT.md) | [中文](014-WINDOWS-WEBKIT.md)

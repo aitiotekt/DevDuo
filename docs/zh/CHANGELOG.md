@@ -6,7 +6,9 @@
 
 首个 beta 候选版本，尚未发布。应用与 Windows WebKit 引擎分别管理版本和发布门禁。
 
-- 通过 GraphQL 按待发布标签解析草稿，支持 `untagged-*` 草稿地址，并在恢复已校验资产上传时保持 Release 身份一致。
+- 移除流水线中的哈希与身份门禁：WebKit 归档 pin（`archive_sha256`）、应用启动时的运行时文件哈希、Release 资产下载/字节比较、源码/tag SHA 格式及 tag 指向提交检查、构建指纹比较、WebKit 工作区脏树检查、`release-check` 对工作流的自校验，以及 Checks/Release/WebKit 汇总任务。探针、证据、参考图库、图标和视频工具只记录哈希，不再比较。GitHub Actions 改用版本 tag 而非提交 SHA。已有 WebKit 包直接复用，发布只上传缺失资产，`SHA256SUMS` 和构建来源证明作为供下载者使用的输出保留。锁文件完整性、mise 校验和、构建树缓存身份及正式版审批保持不变。
+
+- 通过 GraphQL 按待发布标签解析草稿，支持 `untagged-*` 草稿地址，并在恢复资产上传时保持 Release 身份一致。
 
 - 显式使用 mise 环境选择的顶层 Ninja 可执行文件。
 

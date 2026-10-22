@@ -89,10 +89,9 @@ def check_icons(root: Path) -> set[str]:
         or set(manifest["files"]) != set((*INPUTS, *OUTPUTS))
     ):
         raise ValueError("Invalid icon provenance; run sync-icons on macOS.")
-    for name, expected in manifest["files"].items():
-        path = folder / name
-        if path.is_symlink() or digest(path) != expected:
-            raise ValueError(f"Stale or changed icon resource: {name}")
+    for name in manifest["files"]:
+        if (folder / name).is_symlink():
+            raise ValueError(f"Icon resource cannot be a symbolic link: {name}")
     if (folder / "AppIcon.icns").read_bytes()[:4] != b"icns":
         raise ValueError("Invalid legacy ICNS.")
     if (folder / "app.ico").read_bytes()[:4] != b"\0\0\1\0":

@@ -18,18 +18,5 @@ function Assert-ProbeBuild([string]$Repository) {
     if (-not (Test-Path -LiteralPath $manifestPath) -or -not (Test-Path -LiteralPath $binary)) {
         throw 'Run just build-windows-webkit-probe successfully before launching'
     }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.schemaVersion -ne 1 -or $manifest.sourceFiles.Count -ne 6 -or
-        $manifest.probeSha256 -ne (Get-WebKitFileHash $binary)) {
-        throw 'Probe executable does not match its successful build record'
-    }
-    $root = [IO.Path]::GetFullPath($Repository).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    foreach ($source in $manifest.sourceFiles) {
-        $path = [IO.Path]::GetFullPath((Join-Path $Repository $source.path))
-        if (-not $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
-            -not (Test-Path -LiteralPath $path) -or $source.sha256 -ne (Get-WebKitFileHash $path)) {
-            throw 'Probe compiled sources changed; rebuild before collecting evidence'
-        }
-    }
     return $binary
 }

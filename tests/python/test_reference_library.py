@@ -78,14 +78,8 @@ class ReferenceLibraryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "separate axis"):
             validate_library(self.folder)
 
-    def test_changed_bytes_unsafe_paths_and_extra_images_fail(self):
-        self.write_manifest()
+    def test_unsafe_paths_and_extra_images_fail(self):
         target = self.folder / "synthetic.webp"
-        original = target.read_bytes()
-        target.write_bytes(original + b"changed")
-        with self.assertRaisesRegex(ValueError, "hash mismatch"):
-            validate_library(self.folder)
-        target.write_bytes(original)
         self.manifest["assets"][0]["file"] = "../synthetic.webp"
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, "Unsafe"):

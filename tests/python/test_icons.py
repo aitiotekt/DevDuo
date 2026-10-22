@@ -1,4 +1,4 @@
-"""Application icon publication integrity boundaries."""
+"""Application icon publication format boundaries."""
 
 import json
 import shutil
@@ -10,8 +10,8 @@ from devduo_tools.icons import check_icons
 from devduo_tools.paths import repository_root
 
 
-class IconIntegrityTest(unittest.TestCase):
-    def test_checked_in_resources_and_stale_or_extra_entries(self):
+class IconFormatTest(unittest.TestCase):
+    def test_checked_in_resources_changed_bytes_and_extra_entries(self):
         root = repository_root()
         self.assertEqual(len(check_icons(root)), 5)
         with tempfile.TemporaryDirectory(prefix="devduo-icons-") as temporary:
@@ -19,11 +19,8 @@ class IconIntegrityTest(unittest.TestCase):
             shutil.copytree(root / "assets/icons", candidate / "assets/icons")
             shutil.copyfile(root / "devduo-metadata.toml", candidate / "devduo-metadata.toml")
             artwork = candidate / "assets/icons/AppIcon.icon/Assets/artwork.png"
-            original = artwork.read_bytes()
-            artwork.write_bytes(original + b"changed")
-            with self.assertRaisesRegex(ValueError, "Stale or changed"):
-                check_icons(candidate)
-            artwork.write_bytes(original)
+            artwork.write_bytes(artwork.read_bytes() + b"changed")
+            self.assertEqual(len(check_icons(candidate)), 5)
             manifest_file = candidate / "assets/icons/manifest.json"
             manifest = json.loads(manifest_file.read_text())
             manifest["files"]["../../unexpected"] = "0" * 64

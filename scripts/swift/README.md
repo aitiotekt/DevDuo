@@ -8,6 +8,6 @@ swift run --package-path scripts/swift --scratch-path temp/build/swift-diagnosti
 mise exec -- uv run --locked devduo-tools validate-video temp/new-video-frames
 ```
 
-The output directory must be new. Encoded source bytes remain untouched. The Python validator requires the original video, verifies its expected hash, checks frame dimensions and frame hashes, and rejects black/transparent or unchanged first/last frames. Repeated actual decode times are retained honestly; successful inspection does not prove compositor timing, optical constants or hardware dimensions.
+The output directory must be new. Encoded source bytes remain untouched. The Python validator requires the original video, records source and frame hashes, checks frame dimensions and rejects black/transparent or unchanged first/last frames. Repeated actual decode times are retained honestly; successful inspection does not prove compositor timing, optical constants or hardware dimensions.
 
 The one-off WKWebView inset capability experiment is retained in the [historical archive](../archive/README.md), with its original cohort assumptions and manual rebuild recipe.

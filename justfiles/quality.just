@@ -149,6 +149,7 @@ format:
 
 typecheck:
     pnpm typecheck
+    pnpm typecheck:docsite
 
 docs-sync:
     node scripts/docs.mts sync

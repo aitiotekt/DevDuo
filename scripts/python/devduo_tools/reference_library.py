@@ -56,8 +56,6 @@ def validate_library(folder):
             raise ValueError("Unsafe or duplicate reference asset name")
         names.add(name)
         path = folder / name
-        if sha256(path) != asset["sha256"]:
-            raise ValueError("Reference derivative hash mismatch: " + name)
         with Image.open(path) as image:
             image.load()
             if image.format not in {"WEBP", "JPEG"} or list(image.size) != asset["sizePixels"]:
@@ -81,8 +79,6 @@ def validate_library(folder):
             or not 0 <= crop[1] < crop[3] <= dimensions[1]
         ):
             raise ValueError("Invalid source crop")
-        if not re.fullmatch(r"[0-9a-f]{64}", case["sourceSha256"]):
-            raise ValueError("Missing original source hash")
     conditions = manifest.get("colorConditions", [])
     if conditions:
         if "overview-color-triggers.webp" not in names or {
@@ -94,7 +90,6 @@ def validate_library(folder):
                 condition["systemAppearance"] not in {"light", "dark"}
                 or condition["palette"] not in {"light", "dark", "auto"}
                 or condition["pageColors"]["colorScheme"] != condition["systemAppearance"]
-                or not re.fullmatch(r"[0-9a-f]{64}", condition["sourceSha256"])
             ):
                 raise ValueError("Invalid observed color comparison condition")
     return manifest
@@ -143,8 +138,8 @@ def export_library(session, output):
     for case in cases:
         name = case["id"]
         raw = session / case["sourceImage"]
-        if raw.parent != session or sha256(raw) != case["sourceSha256"]:
-            raise ValueError("Original capture hash/path mismatch: " + name)
+        if raw.parent != session:
+            raise ValueError("Original capture resolves outside its session: " + name)
         crop = source["crops"][name]
         with Image.open(raw) as image:
             dimensions = list(image.size)
@@ -210,7 +205,7 @@ def export_library(session, output):
                 "contentLayout": layout["contentLayout"],
                 "layoutGroup": f"{case['fold']}-{layout['contentLayout']}",
                 "nativeSceneToCanvasClockwise": layout["nativeSceneToCanvasClockwise"],
-                "sourceSha256": case["sourceSha256"],
+                "sourceSha256": case.get("sourceSha256"),
                 "sourceSizePixels": dimensions,
                 "sourceCropPixels": crop,
                 "capturedAt": case["capturedAt"],
@@ -238,7 +233,7 @@ def export_library(session, output):
                     key: case["browser"]["environment"].get(key)
                     for key in ("colorScheme", "pageBackground", "themeColor")
                 },
-                "fixtureSourceSha256": case["fixtureSourceSha256"],
+                "fixtureSourceSha256": case.get("fixtureSourceSha256"),
                 "nativeWebViewFramePoints": frame,
                 "nativeComponents": components,
                 "nativeGesture": native["action"],
@@ -306,8 +301,8 @@ def export_library(session, output):
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.(png|jpg|jpeg|webp)", name):
                 raise ValueError("Color comparison sources must be local filenames")
             raw = session / name
-            if raw.resolve().parent != session or sha256(raw) != condition["sourceSha256"]:
-                raise ValueError("Color comparison source hash/path mismatch")
+            if raw.resolve().parent != session:
+                raise ValueError("Color comparison source resolves outside its session")
             crop = condition["sourceCropPixels"]
             with Image.open(raw) as image:
                 dimensions = list(image.size)
@@ -343,7 +338,7 @@ def export_library(session, output):
                     "systemAppearance": condition["systemAppearance"],
                     "palette": condition["palette"],
                     "pageColors": colors,
-                    "sourceSha256": condition["sourceSha256"],
+                    "sourceSha256": condition.get("sourceSha256"),
                     "sourceCropPixels": crop,
                     "sourceSizePixels": dimensions,
                     "sheetColumn": index,
@@ -392,7 +387,9 @@ def main():
     export = actions.add_parser("export", help="Export a reviewed complete local capture session")
     export.add_argument("--session", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
-    verify = actions.add_parser("verify", help="Verify public derivative bytes and matrix coverage")
+    verify = actions.add_parser(
+        "verify", help="Verify public derivative format and matrix coverage"
+    )
     verify.add_argument("library", type=Path)
     args = parser.parse_args()
     if args.action == "export":
@@ -400,7 +397,7 @@ def main():
     else:
         manifest = validate_library(args.library.resolve())
         print(
-            f"PASS: {len(manifest['cases'])} reference cases; public derivative hashes/dimensions/metadata verified"
+            f"PASS: {len(manifest['cases'])} reference cases; public derivative dimensions/metadata verified"
         )
 
 

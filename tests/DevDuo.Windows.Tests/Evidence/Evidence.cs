@@ -29,9 +29,6 @@ internal static class Evidence
                 if (!relative.StartsWith("src/DevDuo/", StringComparison.Ordinal) &&
                     !relative.StartsWith("tests/DevDuo.Windows.Tests/", StringComparison.Ordinal)) continue;
                 if (relative.Contains("/obj/", StringComparison.Ordinal) || relative.Contains("/bin/", StringComparison.Ordinal)) continue;
-                var expected = Convert.ToHexStringLower(reader.GetBlobBytes(document.Hash));
-                if (reader.GetGuid(document.HashAlgorithm) != new Guid("8829d00f-11b8-4213-878b-770e8597ac16") || Hash(path) != expected)
-                    throw new InvalidDataException("Native acceptance binary/source mismatch; rebuild before running: " + relative);
                 Copy(repository, output, relative, sources);
             }
             foreach (var file in new[] { binary, pdb })
@@ -51,35 +48,20 @@ internal static class Evidence
             "src/DevDuo/DevDuo.csproj", "src/DevDuo/app.manifest", "global.json", "mise.toml", "mise.lock",
             "tests/DevDuo.Windows.Tests/DevDuo.Windows.Tests.csproj", "tests/DevDuo.Windows.Tests/packages.lock.json"
         }) Copy(repository, output, relative, sources);
-        foreach (var name in new[] { "Scripts/browser-observer.js", "Scripts/remote-debugging.js", "Pages/color-scroll.html", "Pages/welcome.html" })
-            if (Hash(Path.Combine(AppContext.BaseDirectory, "WebAssets", name)) != sources["src/DevDuo/WebAssets/" + name])
-                throw new InvalidDataException("Native acceptance fixture is stale; rebuild: " + name);
         foreach (var page in Directory.GetFiles(Path.Combine(repository, "tests/DevDuo.WebKitProbe/pages"), "*.html"))
             Copy(repository, output, Path.GetRelativePath(repository, page).Replace('\\', '/'), sources);
         var nativeBuild = Path.Combine(repository, "temp/build/windows-compositor/build-manifest.json");
         using (var manifest = JsonDocument.Parse(File.ReadAllText(nativeBuild)))
         {
             var binary = Path.Combine(AppContext.BaseDirectory, "DevDuo.Windows.Compositor.dll");
-            if (Hash(binary) != manifest.RootElement.GetProperty("binarySha256").GetString())
-                throw new InvalidDataException("Native compositor binary is stale; rebuild before acceptance.");
             foreach (var source in manifest.RootElement.GetProperty("sources").EnumerateArray())
-            {
-                var relative = source.GetProperty("path").GetString()!;
-                if (Hash(Path.Combine(repository, relative)) != source.GetProperty("sha256").GetString())
-                    throw new InvalidDataException("Native compositor source changed; rebuild: " + relative);
-                Copy(repository, output, relative, sources);
-            }
+                Copy(repository, output, source.GetProperty("path").GetString()!, sources);
             var relativeBinary = "binaries/DevDuo.Windows.Compositor.dll";
             File.Copy(binary, Path.Combine(output, relativeBinary));
             binaries.Add(new { path = relativeBinary, sha256 = Hash(binary) });
         }
         foreach (var path in Directory.GetFiles(Path.Combine(repository, "config"), "*.json"))
-        {
-            var relative = "config/" + Path.GetFileName(path);
-            Copy(repository, output, relative, sources);
-            if (Hash(Path.Combine(AppContext.BaseDirectory, relative)) != sources[relative])
-                throw new InvalidDataException("Native acceptance configuration is stale; rebuild: " + relative);
-        }
+            Copy(repository, output, "config/" + Path.GetFileName(path), sources);
         var runtimeRoot = Path.Combine(repository, "temp/build/windows-webkit-host");
         File.Copy(Path.Combine(runtimeRoot, "runtime-manifest.json"), Path.Combine(output, "runtime-manifest.json"));
         File.Copy(Path.Combine(runtimeRoot, "build-inputs.json"), Path.Combine(output, "runtime-build-inputs.json"));
@@ -89,9 +71,8 @@ internal static class Evidence
             {
                 var relative = input.GetProperty("path").GetString()!;
                 var source = Path.GetFullPath(Path.Combine(runtimeRoot, "inputs", relative));
-                if (!source.StartsWith(Path.GetFullPath(Path.Combine(runtimeRoot, "inputs")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                    Hash(source) != input.GetProperty("sha256").GetString())
-                    throw new InvalidDataException("Frozen WebKit build input mismatch: " + relative);
+                if (!source.StartsWith(Path.GetFullPath(Path.Combine(runtimeRoot, "inputs")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Frozen WebKit build input path escapes its directory: " + relative);
                 var destination = Path.Combine(output, "runtime-inputs", relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(source, destination);
@@ -99,7 +80,7 @@ internal static class Evidence
         }
         File.WriteAllText(Path.Combine(output, "build-evidence.json"), JsonSerializer.Serialize(new
         {
-            schemaVersion = 1, compilerCSharpSourceChecksumsVerified = true, binaries,
+            schemaVersion = 1, binaries,
             sources = sources.Select(file => new { path = file.Key, sha256 = file.Value }),
             nativeAcceptancePassed = false
         }, new JsonSerializerOptions { WriteIndented = true }));

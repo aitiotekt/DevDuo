@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import {
-  cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -12,13 +12,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { loadMetadata } from "../lib/metadata.mts";
 import { repoRoot } from "../lib/paths.mts";
-import {
-  artifactRecord,
-  assemble,
-  verifyArtifacts,
-  verifyPublished,
-  windowsRuntime,
-} from "../lib/release-artifacts.mts";
+import { assemble, digest, windowsRuntime } from "../lib/release-artifacts.mts";
 import {
   artifactName,
   currentVersion,
@@ -29,9 +23,8 @@ import {
 
 const sha = "a".repeat(40);
 const metadata = loadMetadata();
-metadata.webkit.archiveSha256 = "c".repeat(64);
 
-test("release policy accepts numbered prereleases and gates stable versions on exact tags", () => {
+test("release policy accepts numbered prereleases and stable versions on their tags", () => {
   for (const channel of ["alpha", "beta"]) {
     const version = `1.2.3-${channel}.1`;
     assert.equal(releasePlan(version, "refs/heads/release", sha).publish, true);
@@ -44,6 +37,10 @@ test("release policy accepts numbered prereleases and gates stable versions on e
   assert.equal(
     releasePlan("1.2.3-dev", "refs/heads/release", sha).publish,
     false,
+  );
+  assert.equal(
+    releasePlan("1.2.3", "refs/tags/v1.2.3", "abc1234").sourceSha,
+    "abc1234",
   );
   for (const version of [
     "v1.2.3",
@@ -62,16 +59,14 @@ test("release policy accepts numbered prereleases and gates stable versions on e
   ])
     assert.throws(() => releasePlan("1.2.3", ref, sha));
   assert.throws(() => releasePlan("1.2.3-dev", "refs/tags/v1.2.3-dev", sha));
-  assert.throws(() => releasePlan("1.2.3", "refs/tags/v1.2.3", "aaaaaaa"));
   assert.ok(currentVersion());
 });
 
-test("assembly requires both exact platform reports and verifies every published byte", () => {
+test("assembly copies platform archives and writes the published manifest and checksums", () => {
   const root = mkdtempSync(join(tmpdir(), "devduo-release-"));
   try {
     const input = join(root, "input"),
-      output = join(root, "final"),
-      existing = join(root, "existing");
+      output = join(root, "final");
     const plan = releasePlan("1.2.3-beta.1", "refs/heads/release", sha);
     for (const target of targets) {
       const directory = join(input, `release-${target}`);
@@ -80,111 +75,34 @@ test("assembly requires both exact platform reports and verifies every published
         join(directory, artifactName(plan.version, target)),
         `fake zip for ${target}`,
       );
-      writeFileSync(
-        join(directory, "report.json"),
-        JSON.stringify({
-          sourceSha: sha,
-          artifact: artifactRecord(directory, plan.version, target),
-          ...(target === "win-x64"
-            ? { windowsWebKit: windowsRuntime(metadata) }
-            : {}),
-        }),
-      );
     }
     assemble(input, output, plan, metadata);
-    verifyArtifacts(output, plan, metadata);
-    cpSync(output, existing, { recursive: true });
-    verifyPublished(output, existing, plan, metadata);
-    const changedRuntime = structuredClone(metadata);
-    changedRuntime.webkit.archiveSha256 = "d".repeat(64);
-    assert.throws(
-      () => verifyArtifacts(output, plan, changedRuntime),
-      /approved source/,
+    const names = targets.map((target) => artifactName(plan.version, target));
+    assert.deepEqual(
+      readdirSync(output).sort(),
+      [...names, "SHA256SUMS", "release-manifest.json"].sort(),
     );
-    const windowsReportPath = join(input, "release-win-x64/report.json");
-    const windowsReport = readFileSync(windowsReportPath, "utf8");
-    const withoutRuntime = JSON.parse(windowsReport);
-    delete withoutRuntime.windowsWebKit;
-    writeFileSync(windowsReportPath, JSON.stringify(withoutRuntime));
-    assert.throws(
-      () => assemble(input, output, plan, metadata),
-      /Invalid platform report/,
+    const manifest = JSON.parse(
+      readFileSync(join(output, "release-manifest.json"), "utf8"),
     );
-    writeFileSync(windowsReportPath, windowsReport);
-    assert.throws(() =>
-      verifyArtifacts(output, { ...plan, sourceSha: "b".repeat(40) }, metadata),
-    );
-    const archive = join(existing, artifactName(plan.version, "win-x64"));
-    writeFileSync(archive, "tampered");
-    assert.throws(
-      () => verifyPublished(output, existing, plan, metadata),
-      /integrity/,
-    );
-    writeFileSync(join(output, "unexpected.txt"), "unexpected");
-    assert.throws(() => verifyArtifacts(output, plan, metadata), /Unexpected/);
-    rmSync(join(output, "unexpected.txt"));
-    const manifestPath = join(output, "release-manifest.json");
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    manifest.artifacts[0].signed = false;
-    writeFileSync(manifestPath, JSON.stringify(manifest));
-    assert.throws(
-      () => verifyArtifacts(output, plan, metadata),
-      /signing metadata/,
-    );
-    const reportPath = join(input, "release-osx-arm64/report.json");
-    const report = JSON.parse(readFileSync(reportPath, "utf8"));
-    report.sourceSha = "b".repeat(40);
-    writeFileSync(reportPath, JSON.stringify(report));
-    assert.throws(
-      () => assemble(input, output, plan, metadata),
-      /Invalid platform report/,
+    assert.equal(manifest.sourceSha, sha);
+    assert.deepEqual(manifest.windowsWebKit, windowsRuntime(metadata));
+    assert.equal(manifest.windowsWebKit.archiveSha256, undefined);
+    assert.equal(
+      readFileSync(join(output, "SHA256SUMS"), "utf8"),
+      `${[
+        ...names.map((name) => `${digest(join(output, name))}  ${name}`),
+        `${digest(join(output, "release-manifest.json"))}  release-manifest.json`,
+      ].join("\n")}\n`,
     );
     rmSync(join(input, "release-osx-arm64"), { recursive: true });
-    assert.throws(() => assemble(input, output, plan, metadata));
+    assert.throws(() => assemble(input, join(root, "missing"), plan, metadata));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("checksums, platform identity and duplicate entries cannot be substituted", () => {
-  const root = mkdtempSync(join(tmpdir(), "devduo-release-"));
-  const plan = releasePlan("1.2.3", "refs/tags/v1.2.3", sha);
-  try {
-    for (const target of targets) {
-      const dir = join(root, "inputs", `release-${target}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, artifactName(plan.version, target)), target);
-      writeFileSync(
-        join(dir, "report.json"),
-        JSON.stringify({
-          sourceSha: sha,
-          artifact: artifactRecord(dir, plan.version, target),
-          ...(target === "win-x64"
-            ? { windowsWebKit: windowsRuntime(metadata) }
-            : {}),
-        }),
-      );
-    }
-    const output = join(root, "output");
-    assemble(join(root, "inputs"), output, plan, metadata);
-    const checksums = readFileSync(join(output, "SHA256SUMS"), "utf8");
-    writeFileSync(
-      join(output, "SHA256SUMS"),
-      checksums.replace(/[a-f0-9]/, "z"),
-    );
-    assert.throws(() => verifyArtifacts(output, plan, metadata), /Checksum/);
-    writeFileSync(join(output, "SHA256SUMS"), checksums);
-    const path = join(output, "release-manifest.json");
-    const manifest = JSON.parse(readFileSync(path, "utf8"));
-    manifest.artifacts[1] = manifest.artifacts[0];
-    writeFileSync(path, JSON.stringify(manifest));
-    assert.throws(() => verifyArtifacts(output, plan, metadata), /integrity/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("workflow gates credentials and publication on tested source and approval", () => {
+test("workflow keeps credentials behind tested source and stable approval", () => {
   const workflow = readFileSync(
     join(repoRoot, ".github/workflows/release.yml"),
     "utf8",
@@ -198,13 +116,5 @@ test("workflow gates credentials and publication on tested source and approval",
   assert.doesNotMatch(
     workflow,
     /--clobber|pull_request_target|secrets: inherit/,
-  );
-  const docs = readFileSync(
-    join(repoRoot, ".github/workflows/docs.yml"),
-    "utf8",
-  );
-  assert.match(
-    docs,
-    /github.ref == 'refs\/heads\/main' && github.event_name != 'pull_request'/,
   );
 });

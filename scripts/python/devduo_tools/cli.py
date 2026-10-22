@@ -48,7 +48,7 @@ COMMANDS = {
     "validate-video": (
         "validate_video_evidence",
         "main",
-        "Check decoded video frames and original source hash",
+        "Check decoded video frames",
     ),
     "check-repository": (
         "check_repository",

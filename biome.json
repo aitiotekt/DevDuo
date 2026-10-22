@@ -12,7 +12,11 @@
       "package.json",
       "docsite/package.json",
       "biome.json",
-      "tsconfig.scripts.json"
+      "tsconfig.json",
+      "tsconfig.base.json",
+      "tsconfig.scripts.json",
+      "tsconfig.tests.json",
+      "docsite/tsconfig.json"
     ]
   },
   "formatter": {

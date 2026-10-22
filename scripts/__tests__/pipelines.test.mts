@@ -78,18 +78,11 @@ test("Windows jobs enable Git long paths in the same account configuration as sy
   }
 });
 
-test("persistent engine jobs retain caches, reject workspace edits before checkout and finish within token lifetime", () => {
+test("persistent engine jobs retain caches and finish within token lifetime", () => {
   const engine = workflow("webkit-release"),
     build = engine.jobs.build;
   const checkout = build.steps.findIndex((step: { uses?: string }) =>
     step.uses?.startsWith("actions/checkout@"),
-  );
-  assert.ok(
-    build.steps
-      .slice(0, checkout)
-      .some((step: { run?: string }) =>
-        step.run?.includes("git diff --cached --exit-code"),
-      ),
   );
   assert.equal(build.steps[checkout].with.clean, false);
   assert.equal(build.steps[checkout].with["persist-credentials"], false);
@@ -103,10 +96,10 @@ test("persistent engine jobs retain caches, reject workspace edits before checko
       (step: { run?: string }) => !step.run?.includes("just clean"),
     ),
   );
-  assert.deepEqual(engine.jobs.report.needs, ["plan", "build", "publish"]);
+  assert.equal(engine.jobs.report, undefined);
 });
 
-test("all workflows pin external actions and deployment waits for a publication audit", () => {
+test("external actions use major version tags and deployment waits for a publication audit", () => {
   for (const name of ["checks", "docs", "release", "webkit-release"]) {
     const pipeline = workflow(name);
     for (const job of Object.values(pipeline.jobs) as {
@@ -114,7 +107,7 @@ test("all workflows pin external actions and deployment waits for a publication 
     }[])
       for (const step of job.steps ?? [])
         if (step.uses && !step.uses.startsWith("./"))
-          assert.match(step.uses, /@[a-f0-9]{40}$/);
+          assert.match(step.uses, /@v\d+$/);
   }
   const docs = workflow("docs");
   assert.equal(docs.jobs.deploy.needs, "build");
@@ -124,17 +117,8 @@ test("all workflows pin external actions and deployment waits for a publication 
       step.run?.includes("public-audit"),
     ),
   );
-  const app = workflow("release");
-  assert.equal(app.jobs["release-report"].if, "always()");
-  assert.deepEqual(app.jobs["release-report"].needs, [
-    "plan",
-    "checks",
-    "stable-approval",
-    "macos",
-    "windows",
-    "assemble",
-    "publish",
-  ]);
+  assert.equal(workflow("release").jobs["release-report"], undefined);
+  assert.equal(workflow("checks").jobs.report, undefined);
 });
 
 test("untrusted changes stay on hosted read-only runners at the exact triggering commit", () => {

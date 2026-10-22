@@ -4,7 +4,7 @@
 
 直接依赖包括 Avalonia/Avalonia.Desktop 12 和 SukiUI（MIT）。SukiUI 引入 Avalonia.Themes.Simple、Avalonia.Controls.ColorPicker、Avalonia.Controls.DataGrid 和 System.Linq.Dynamic.Core；其内嵌字体和图标几何保留各自上游许可。macOS 使用系统 WKWebView/AppKit，Windows 使用单独构建的 Windows WebKit Port。文档使用 VitePress/Vue，开发检查使用 Node 工具；接触表使用锁定的 Pillow 运行时依赖，PDF 遮罩检查可选使用独立安装的 Poppler。这些平台运行时和工具没有作为源代码被捆绑。
 
-Windows WebKit 是唯一 Windows 引擎，Avalonia 集成使用固定的上游源码及维护中的宿主 API 补丁构建；独立对照探针将按哈希固定的官方 CI 运行时下载到被忽略的本地目录。WebKit、JavaScriptCore 及第三方运行时库保留上游许可，不因根目录 MIT 许可而被重新授权。Windows 发布流水线仅在 metadata 锁定归档后，将独立版本的宿主运行时加入应用包，不使用官方测试运行时替代。运行时包保留可获得的上游/vcpkg 许可文本、精确源码 revision 及维护中的构建输入/补丁。再分发前应保留上游说明并审查完整二进制包的许可及源码义务；少量 C ABI 声明所参考的精确上游提交记录在运行时锁文件中。
+Windows WebKit 是唯一 Windows 引擎，Avalonia 集成使用固定的上游源码及维护中的宿主 API 补丁构建；独立对照探针将按 URL 固定的官方 CI 运行时下载到被忽略的本地目录。WebKit、JavaScriptCore 及第三方运行时库保留上游许可，不因根目录 MIT 许可而被重新授权。Windows 发布流水线将 metadata 指定的独立版本宿主运行时加入应用包，不使用官方测试运行时替代。运行时包保留可获得的上游/vcpkg 许可文本、精确源码 revision 及维护中的构建输入/补丁。再分发前应保留上游说明并审查完整二进制包的许可及源码义务；少量 C ABI 声明所参考的精确上游提交记录在运行时锁文件中。
 
 `config/device-profiles.json` 包含从本地 Apple Device Hub 模拟器图形变换得到的屏幕路径及外壳几何；`config/safari-scenes.json` 包含模拟器 Safari 测量值与来源哈希。这些数据只描述模拟器外观，不代表真实硬件尺寸。原始 Apple PDF、二进制、截图、视频和提取包不进入 Git。
 

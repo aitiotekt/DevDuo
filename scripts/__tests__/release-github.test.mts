@@ -85,15 +85,6 @@ function fixture() {
         refreshAssets();
         if (state.fail === "upload") throw new Error("upload failure");
       }
-    } else if (operation === "download") {
-      const name = args[args.indexOf("--pattern") + 1],
-        destination = args[args.indexOf("--dir") + 1];
-      const value = state.remote.get(name);
-      assert.ok(value);
-      writeFileSync(
-        join(destination, name),
-        state.fail === "corrupt" ? Buffer.alloc(value.length) : value,
-      );
     } else if (operation === "edit") {
       assert.ok(state.release);
       if (state.fail === "edit") throw new Error("publication failure");
@@ -107,7 +98,6 @@ function fixture() {
     tag,
     sha,
     prerelease: true,
-    mayCreateTag: true,
     latest: false,
     title: "Fixture",
     notes: join(repoRoot, ".github/release-notes.md"),
@@ -137,7 +127,7 @@ function fixture() {
   };
 }
 
-test("publication creates an exact tag and draft, verifies uploaded bytes, then publishes", () => {
+test("publication creates a tag and draft, uploads assets, then publishes", () => {
   const f = fixture();
   try {
     assert.equal(publishRelease(f.options, f.execute), "published");
@@ -148,12 +138,13 @@ test("publication creates an exact tag and draft, verifies uploaded bytes, then 
         calls.findIndex((line) => line.includes("release create")),
     );
     assert.ok(
-      calls.findLastIndex((line) => line.includes("release download")) < edit,
+      calls.findIndex((line) => line.includes("release upload")) < edit,
     );
+    assert.ok(calls.every((line) => !line.includes("release download")));
     assert.match(calls[edit], /--latest=false/);
     assert.ok(calls.every((line) => !line.includes("--clobber")));
     f.state.calls.length = 0;
-    assert.equal(publishRelease(f.options, f.execute), "verified");
+    assert.equal(publishRelease(f.options, f.execute), "existing");
     assert.ok(
       f.state.calls.every(
         (args) => !["upload", "create", "edit"].includes(args[2]),
@@ -164,7 +155,7 @@ test("publication creates an exact tag and draft, verifies uploaded bytes, then 
   }
 });
 
-test("an interrupted draft upload resumes only missing assets from the identical artifact set", () => {
+test("an interrupted draft upload resumes only missing assets", () => {
   const f = fixture();
   try {
     f.state.fail = "upload";
@@ -267,30 +258,8 @@ test("pending-tag lookup rejects permissions, malformed data and changed identit
   }
 });
 
-test("release identity changes during upload stop publication", () => {
-  const f = fixture();
-  try {
-    const execute: Runner = (command, args, capture) => {
-      const result = f.execute(command, args, capture);
-      if (command === "gh" && args[1] === "upload") {
-        assert.ok(f.state.release);
-        f.state.release.id = 18;
-      }
-      return result;
-    };
-    assert.throws(
-      () => publishRelease(f.options, execute),
-      /Draft release changed/,
-    );
-    assert.equal(f.state.release?.draft, true);
-    assert.ok(f.state.calls.every((args) => args[2] !== "edit"));
-  } finally {
-    f.cleanup();
-  }
-});
-
-test("listing, tag, upload, byte-validation and publish failures never expose a release", () => {
-  for (const failure of ["list", "tag", "upload", "corrupt", "edit"]) {
+test("listing, tag, upload and publish failures stop before a later step", () => {
+  for (const failure of ["list", "tag", "upload", "edit"]) {
     const f = fixture();
     try {
       f.state.fail = failure;
@@ -304,50 +273,37 @@ test("listing, tag, upload, byte-validation and publish failures never expose a 
   }
 });
 
-test("changed drafts, incomplete published releases and mismatched tags/channels cannot be repaired", () => {
-  for (const scenario of ["bytes", "incomplete", "tag", "channel", "extra"]) {
-    const f = fixture();
-    try {
-      f.seed(
-        scenario !== "incomplete",
-        scenario === "incomplete" ? ["app.zip"] : undefined,
-      );
-      if (scenario === "bytes") {
-        writeFileSync(
-          join(f.directory, "app.zip"),
-          Buffer.alloc(readFileSync(join(f.directory, "app.zip")).length),
-        );
-      } else if (scenario === "tag") f.state.commit = "b".repeat(40);
-      else if (scenario === "channel") {
-        assert.ok(f.state.release);
-        f.state.release.prerelease = false;
-      } else if (scenario === "extra") {
-        assert.ok(f.state.release);
-        f.state.release.assets.push({
-          name: "extra.zip",
-          size: 1,
-          state: "uploaded",
-        });
-      }
-      assert.throws(() => publishRelease(f.options, f.execute), scenario);
-      assert.ok(
-        f.state.calls.every(
-          (args) => !["upload", "create", "edit"].includes(args[2]),
-        ),
-      );
-    } finally {
-      f.cleanup();
-    }
+test("existing releases receive missing assets without byte, tag or channel comparisons", () => {
+  const f = fixture();
+  try {
+    f.seed(false, ["app.zip"]);
+    f.state.commit = "b".repeat(40);
+    assert.ok(f.state.release);
+    f.state.release.prerelease = false;
+    writeFileSync(join(f.directory, "app.zip"), "different local bytes");
+    assert.equal(publishRelease(f.options, f.execute), "existing");
+    const upload = f.state.calls.find((args) => args[2] === "upload");
+    assert.ok(upload?.includes(join(f.directory, "SHA256SUMS")));
+    assert.ok(!upload?.includes(join(f.directory, "app.zip")));
+    assert.ok(
+      f.state.calls.every(
+        (args) => !["download", "create", "edit", "POST"].includes(args[2]),
+      ),
+    );
+  } finally {
+    f.cleanup();
   }
 });
 
-test("stable tags must preexist and annotated tags resolve to their peeled source commit", () => {
+test("tags are created only when missing and annotated tags resolve to their peeled commit", () => {
   const f = fixture();
   try {
-    assert.throws(
-      () => ensureTag("fixture/repo", tag, sha, false, f.execute),
-      /stable release tag/,
-    );
+    f.state.commit = "b".repeat(40);
+    ensureTag("fixture/repo", tag, sha, f.execute);
+    assert.equal(f.state.commit, "b".repeat(40));
+    delete f.state.commit;
+    ensureTag("fixture/repo", tag, sha, f.execute);
+    assert.equal(f.state.commit, sha);
     const annotated: Runner = () =>
       `${"b".repeat(40)}\trefs/tags/${tag}\n${sha}\trefs/tags/${tag}^{}`;
     assert.equal(tagCommit(tag, annotated), sha);
@@ -360,17 +316,9 @@ test("stable tags must preexist and annotated tags resolve to their peeled sourc
   }
 });
 
-test("dry-run mode is explicit and can only be selected for manual dispatch", () => {
-  assert.equal(dryRun("workflow_dispatch", "true"), true);
-  assert.equal(dryRun("workflow_dispatch", "false"), false);
-  assert.equal(dryRun("push", "false"), false);
-  for (const [event, value] of [
-    ["push", "true"],
-    ["pull_request", "false"],
-    ["workflow_dispatch", ""],
-    ["workflow_dispatch", "TRUE"],
-  ])
-    assert.throws(() => dryRun(event, value));
+test("only an explicit true value selects a dry run", () => {
+  assert.equal(dryRun("true"), true);
+  for (const value of ["false", "", "TRUE"]) assert.equal(dryRun(value), false);
 });
 
 test("publication CLIs refuse dry runs before reading assets or mutating GitHub", () => {

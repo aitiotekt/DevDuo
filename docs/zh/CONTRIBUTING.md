@@ -47,6 +47,8 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 
 应用运行资源、测试夹具和原始证据分别保留；具体入口见[架构代码分工](001-ARCHITECTURE.md#代码分工)。
 
+根目录 `tsconfig.json` 是 solution 文件，按职责引用各子项目：`tsconfig.scripts.json` 负责维护中的 Node 工具，`tsconfig.tests.json` 负责其 `node --test` 测试。两者继承 `tsconfig.base.json`，声明输出到 `temp/build/tsc/`。独立的 VitePress 包保留自己的 `docsite/tsconfig.json`。`pnpm typecheck` 构建该 solution，`just typecheck` 还会检查文档配置。
+
 ## 日常命令
 
 下表假定已激活 mise。接收器和应用在不同终端运行。
@@ -61,7 +63,7 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just build-windows` | Windows 编译，原生运行验收单独进行 |
 | `just build-native-tests` | 仅编译当前平台的原生验收工具，不运行 UI；供 CI 使用 |
 | `just test-macos` | AppKit 裁剪/resize/Fit、逻辑 bounds 和被动底栏颜色层回归，实际窗口另行验收 |
-| `just references-check` | 已审查 Safari 参考图的哈希、元数据与 48 项覆盖 |
+| `just references-check` | 已审查 Safari 参考图的尺寸、元数据与 48 项覆盖 |
 | `just test-windows-safari` | 原始 Safari 夹具、外观、原生滚动和姿态定向检查；先运行 `just serve` |
 | `just test-windows` | 原生 Avalonia WebKit 场景/生命周期/视口单位及缺失运行时检查，会打开 Windows 窗口 |
 | `just test-windows-developer-tools` | 原生 Inspector/WIP、页面 CDP 生命周期及代理路由检查；需要重新构建包含开发者 API 的运行时，会打开 Windows 窗口 |
@@ -91,7 +93,7 @@ Core、本地化和调试检查使用无外部测试框架依赖的 .NET 检查�
 
 必需的 Windows WebKit 源码构建通过 `mise.windows-webkit.toml` 及锁文件管理便携工具。先执行 `mise --env windows-webkit install`，再执行 `mise --env windows-webkit exec -- just build-windows-webkit-runtime`。Visual Studio C++/Clang 和 Windows SDK 仍为系统依赖；固定源码补丁与验收门槛见 [WebKit 指南](014-WINDOWS-WEBKIT.md#宿主-api-源码构建)。
 
-Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；普通应用发布下载 metadata 固定的运行时。首次实际发布引擎前，`[webkit].archive_sha256` 明确留空。配置和命令见[运行时发布说明](013-RELEASE.md#windows-webkit-运行时发布)。
+Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；普通应用发布下载 metadata 指定版本的运行时。配置和命令见[运行时发布说明](013-RELEASE.md#windows-webkit-运行时发布)。
 
 `just test-debugging` 使用真实回环 HTTP/WebSocket 检查 CDP 发现、token、Origin 及生命周期，不证明原生页内注入通过。`just prepare-debugging` 从锁定的 chii/chobitsu 复制离线资源到 `temp/build/debugging/`，应用 dev/build/package 命令均依赖该步骤；直接使用 `dotnet` 命令前先执行它，安装后用户无需 Node。
 
@@ -111,7 +113,7 @@ Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；�
 
 同步维护英中源文件、语言内链接和双向页脚。根目录英文规范文件是主源，`docs/en` 用相对符号链接引用，`docs/zh` 保存翻译；`docsite` 链接同一批源文件。增删技术页时同步 `scripts/docs-manifest.json`，不维护网站内容副本。
 
-标识符与代码注释使用英语。评审说明改后行为、相关检查与未验证平台。原生变更需平台构建及真实 UI 验收；Windows 交叉编译不能替代运行。区分模拟器坐标和硬件尺寸，保留证据哈希；修改标定数据前阅读[测量约定](002-MEASUREMENT-CONTRACT.md)。未经请求不 commit 或推送。
+标识符与代码注释使用英语。评审说明改后行为、相关检查与未验证平台。原生变更需平台构建及真实 UI 验收；Windows 交叉编译不能替代运行。区分模拟器坐标和硬件尺寸，保持原始证据完整；修改标定数据前阅读[测量约定](002-MEASUREMENT-CONTRACT.md)。未经请求不 commit 或推送。
 
 包含 Codex 协助内容的提交保留维护者为主要作者，在说明后空一行，添加一次以下共同作者标记。保留其他真实共同作者；纯人工改动无需这项署名。
 

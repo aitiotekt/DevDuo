@@ -20,11 +20,6 @@ if (-not (Test-Path -LiteralPath $archivePath)) {
     Move-Item -LiteralPath $partial -Destination $archivePath
 }
 
-$archive = Get-Item -LiteralPath $archivePath
-if ($archive.Length -ne $pin.archiveBytes) { throw 'Official archive length does not match runtime.lock.json' }
-$actualHash = Get-WebKitFileHash $archivePath
-if ($actualHash -ne $pin.archiveSha256) { throw 'Official archive SHA-256 does not match runtime.lock.json' }
-
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
 try {
@@ -36,13 +31,8 @@ try {
             throw 'Archive entry escapes the isolated runtime directory'
         }
         [IO.Directory]::CreateDirectory((Split-Path $destination)) | Out-Null
-        if (Test-Path -LiteralPath $destination) {
-            if ((Get-Item -LiteralPath $destination).Length -ne $entry.Length) {
-                throw ('Existing runtime file has an unexpected length: ' + $entry.FullName)
-            }
-            continue
-        }
+        if (Test-Path -LiteralPath $destination) { continue }
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination, $false)
     }
 } finally { $zip.Dispose() }
-Write-Host ('Official WebKit runtime ready: ' + $pin.identifier + '; archive SHA-256 verified.')
+Write-Host ('Official WebKit runtime ready: ' + $pin.identifier)

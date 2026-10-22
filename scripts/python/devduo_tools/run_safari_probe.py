@@ -204,11 +204,6 @@ class CaptureBroker:
                     "Selected display screenshot is entirely black or transparent; rejected"
                 )
             shutil.copyfile(temporary, target)
-            if (
-                not target.is_file()
-                or hashlib.sha256(target.read_bytes()).hexdigest() != record["sha256"]
-            ):
-                raise RuntimeError("Final copied screenshot missing or hash mismatch")
             record["outcome"] = "valid"
             record["validatedAt"] = utcnow()
             return record

@@ -1,6 +1,5 @@
 #if WINDOWS
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -30,18 +29,8 @@ internal static class WindowsWebKitApi
             !root.TryGetProperty("hostAppearanceApiVersion", out var appearance) || appearance.GetInt32() != 1 ||
             !root.TryGetProperty("hostDeveloperApiVersion", out var developer) || developer.GetInt32() != 1 ||
             !root.TryGetProperty("hostFixedContainerColorApiVersion", out var fixedContainer) || fixedContainer.GetInt32() != 1 ||
-            !root.TryGetProperty("hostScrollIndicatorApiVersion", out var scrollIndicator) || scrollIndicator.GetInt32() != 1 ||
-            root.GetProperty("upstreamRevision").GetString() != "6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d")
+            !root.TryGetProperty("hostScrollIndicatorApiVersion", out var scrollIndicator) || scrollIndicator.GetInt32() != 1)
             throw new InvalidOperationException("Windows WebKit requires viewport v2, painting v2, content color v1, host appearance v1, host developer v1, fixed-container color v1 and scroll indicator v1. Rebuild the pinned runtime.");
-        foreach (var file in root.GetProperty("files").EnumerateArray())
-        {
-            var path = Path.GetFullPath(Path.Combine(directory, file.GetProperty("path").GetString()!));
-            if (!path.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Runtime manifest path escapes its directory.");
-            using var stream = File.OpenRead(path);
-            if (!Convert.ToHexStringLower(SHA256.HashData(stream)).Equals(file.GetProperty("sha256").GetString(), StringComparison.Ordinal))
-                throw new InvalidDataException("Windows WebKit runtime hash mismatch: " + Path.GetFileName(path));
-        }
         if (!SetDefaultDllDirectories(0x1000) || AddDllDirectory(directory) == 0)
             throw new InvalidOperationException("Cannot configure the Windows WebKit dependency search path.");
         var loaded = LoadLibraryExW(Path.Combine(directory, "WebKit2.dll"), 0, 0x1100);

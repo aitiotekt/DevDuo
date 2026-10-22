@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./scripts/__tests__",
+    "outDir": "./temp/build/tsc/tests"
+  },
+  "include": ["scripts/__tests__/**/*.mts"],
+  "references": [{ "path": "./tsconfig.scripts.json" }]
+}

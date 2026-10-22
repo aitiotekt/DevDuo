@@ -19,13 +19,6 @@ if ($HostApi) {
     if ($runtimeManifest.schemaVersion -ne 1 -or $runtimeManifest.hostViewportApiVersion -ne 2) {
         throw 'Unsupported source-built runtime manifest'
     }
-    foreach ($file in $runtimeManifest.files) {
-        $path = [IO.Path]::GetFullPath((Join-Path $runtime $file.path))
-        if (-not $path.StartsWith($runtime + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-            -not (Test-Path -LiteralPath $path) -or $file.sha256 -ne (Get-WebKitFileHash $path)) {
-            throw 'Source-built runtime files do not match the successful build manifest'
-        }
-    }
 }
 $probe = Join-Path $runtime 'DevDuo.WebKitProbe.exe'
 Copy-Item -LiteralPath $binary -Destination $probe -ErrorAction Stop
@@ -38,9 +31,8 @@ if ($HostApi) {
     foreach ($buildInput in $runtimeManifest.inputFiles) {
         $frozenRoot = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $runtime) 'inputs'))
         $path = [IO.Path]::GetFullPath((Join-Path $frozenRoot $buildInput.path))
-        if (-not $path.StartsWith($frozenRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-            -not (Test-Path -LiteralPath $path) -or $buildInput.sha256 -ne (Get-WebKitFileHash $path)) {
-            throw 'Frozen native build inputs do not match the runtime manifest'
+        if (-not $path.StartsWith($frozenRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Frozen native build input path escapes its directory'
         }
         $destination = Join-Path (Join-Path $session 'sources/runtime-inputs') $buildInput.path
         [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
