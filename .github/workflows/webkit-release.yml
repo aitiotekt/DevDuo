@@ -50,6 +50,7 @@ jobs:
       - name: Require real symlinks and preserve tracked workspace edits
         run: |
           git config --global core.symlinks true
+          git config --global core.longpaths true
           if (Test-Path -LiteralPath .git) {
             git diff --exit-code
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

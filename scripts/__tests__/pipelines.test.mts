@@ -63,6 +63,18 @@ test("self-hosted jobs install mise locally and do not use the GitHub Actions ca
   assert.equal(install.with.cache, "${{ runner.environment != 'self-hosted' }}");
 });
 
+test("Windows jobs enable Git long paths in the same account configuration as symlinks", () => {
+  for (const name of ["webkit-release", "release", "checks"]) {
+    const text = readFileSync(
+      join(repoRoot, ".github/workflows", `${name}.yml`),
+      "utf8",
+    );
+    assert.match(text, /git config --global core\.symlinks true/);
+    assert.match(text, /git config --global core\.longpaths true/);
+    assert.equal(text.includes("git config --system core.longpaths"), false);
+  }
+});
+
 test("persistent engine jobs retain caches, reject workspace edits before checkout and finish within token lifetime", () => {
   const engine = workflow("webkit-release"),
     build = engine.jobs.build;
