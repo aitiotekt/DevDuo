@@ -37,6 +37,40 @@ WKWebView now owns canvas painting. The additional passive footer layer approxim
 
 For placement regressions, compare the native screen with the exterior after cold start, maximize/restore, sidebar toggles and Fit/1:1 changes; record `nativeClipGeometry` separately from DOM metrics. Native attachment placement and explicit clip configuration must complete the same layout pass. Run `just test-macos` for real AppKit clip/resize/Fit bounds, inset and passive-layer checks; this supplements presented-window acceptance and does not certify Windows.
 
+### Translucent modal overlays
+
+The 2026-10-24 iOS 27.1 Device Hub session used Closed portrait and `/document-end.html?fixed=none`. **Fixed scrim** creates `position: fixed; inset: 0; background: rgb(0 0 0 / 55%)`; **Dialog backdrop** uses `showModal()` and the same `::backdrop` color. Close each overlay before switching. `overlay=fixed|dialog` selects an initial condition; changes automatically save a receiver record. The fixture does not enlarge the overlay, pad the document or add scroll locking.
+
+| Condition | Observed extension |
+| --- | --- |
+| No overlay | Numbered document flow continues behind the address bar |
+| Fixed scrim or native dialog, no fixed footer | Bottom and side inset areas become a flat darkened canvas color; rows do not continue through that fill |
+| Native-scroll compact / document end | Same dark fill; showing/dismissing preserves the 382 × 598 viewport, Y=505 or maximum Y=1802, and document height 2400 |
+| Opaque full-width footer plus overlay | Fresh load gives dark canvas fill beneath the dimmed footer. Dismiss/reopen retained the earlier undimmed purple bottom extension for fixed and dialog overlays, including a later capture; side fill stayed dark |
+
+Expanded navigation retained 382 × 580 and maximum Y=1820. The fixed scrim's DOM bottom stayed at the viewport edge: 580, or compact fractional height 597.65625 rounded to `innerHeight=598`. The browser extends a composited **color**, rather than enlarging the fixed DOM box or dimming every off-viewport flow pixel. This matches [WebKit's backdrop fix](https://github.com/WebKit/WebKit/commit/2ae949b78743): blend backdrop color against page background and extend into obscured insets. [Bug 300965](https://bugs.webkit.org/show_bug.cgi?id=300965) distinguishes this from filter/gradient variants. Blur, gradients, other body directions and other runtimes were not accepted here.
+
+Original window JPEGs, explicit browser-record associations, hashes, native swipe receipts and a resized comparison remain local in `captures/safari/overlay/20261023T194024Z/`, separate from the public 48-case gallery. The footer color-history case is an observed Safari boundary, not the desired general rule. DevDuo's passive helper still accepts only solid opaque fixed footers; translucent overlay/backdrop parity is unverified. A future approximation should handle alpha composition and clear its fill on dismissal, preserving viewport, fixed positions and scroll range. Do not enlarge the DOM overlay or blindly darken all native Safari controls.
+
+### Safari scroll indicators
+
+The 2026-10-24 Closed portrait iOS 27.1 session used `/document-end.html?fixed=none&trace=1`. It records document/client/visual widths, CSS scrollbar settings and bounded scroll/resize samples. **Middle** uses instant `scrollTo`; **Smooth to 1000** uses smooth scrolling. `content=short` removes document overflow, `overflow=scroll` forces that CSS setting, and `scrollbars=none|auto` selects root `scrollbar-width`. These are fixture controls, not changes to DevDuo's renderer or to arbitrary developer pages.
+
+| Condition | Observed indicator behavior |
+| --- | --- |
+| Fresh long page at rest | Hidden in the recorded initial-presentation sequences; scrollable content alone does not require a visible initial indicator |
+| Native swipe and deceleration | A thin overlay appears and tracks position, remains briefly after motion, then fades; idle at nonzero scrollY does not keep it visible |
+| Reaching document end in a clean tab | Still visible at the endpoint before fading; visibility must not be a `scrollY < maxScrollY` rule |
+| Instant/smooth programmatic scrolling | Actual scrollY changed, without showing the indicator in these samples; DOM scroll events alone do not identify user interaction |
+| Short page, including `overflow-y: scroll` | No indicator in the sampled idle/gesture sequences; maximum scrollY remained zero |
+| `scrollbar-width: none` on a long page | Native scrolling reached Y=516 without a visible indicator |
+
+Every recorded width remained `innerWidth = documentElement.clientWidth = body.clientWidth = visualViewport.width = 382`, with zero gutter while shown or hidden. The native thumb occupied the **whole screen's outer right edge**, over the side reserved for Safari widgets, rather than the 382-pixel page viewport edge. Its painted thickness is not a layout reservation. [WebKit's scrollbar guidance](https://webkit.org/blog/16301/webkit-features-in-safari-18-2/#scrollbars) explains overlay scrollbars, iOS's thin style, `none`, and why `scrollbar-gutter` does not reserve space with overlays. macOS's **Always** system preference can instead produce consuming scrollbars; that desktop setting is not the iOS target.
+
+Use separate fresh tabs for positive controls: after the `none` sample, the reused tab's subsequent `auto` documents remained visually hidden even during real scrolling, while a new `auto` tab restored the indicator. The cause remains unlocated; those contaminated endpoint attempts do not establish normal endpoint behavior. Original JPEG sequences, timestamped native receipts, browser-record associations and reviewed comparison crops remain in `captures/safari/scrollbars/20261023T195821Z/`. The native runner's `--gesture-delay 4` starts window capture before the swipe; it defaults to zero. Sampling intervals were roughly 0.2–0.5 seconds, so neither a flash between frames nor an exact universal fade delay is certified. Other body directions, nested/horizontal scrollers, restored navigation, accessibility and host-desktop acceptance remain unverified.
+
+For a future Safari indicator approximation, start hidden, preserve overlay geometry and page CSS suppression, and distinguish input/deceleration from document position. Do not force persistent `overflow:scroll`, subtract desktop scrollbar width from the measured viewport, or derive visibility solely from DOM scroll deltas. Leave page content, fixed positions and scroll ranges intact.
+
 ## Recorded baseline and remaining acceptance
 
 The local 2026-10-21 baseline was established using actual macOS windows, accessibility, saved state and separate Device Hub references. These are recorded observations, not a claim that tests were rerun whenever this document changes.

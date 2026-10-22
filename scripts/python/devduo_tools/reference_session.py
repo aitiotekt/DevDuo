@@ -113,6 +113,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--udid", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--gesture-delay",
+        type=int,
+        choices=range(11),
+        default=0,
+        help="Wait 0–10 seconds before each native swipe so window capture can start first",
+    )
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -152,7 +159,11 @@ def main():
         "-only-testing:SafariProbe/SafariProbe/testReferenceSwipes",
         "test",
     ]
-    environment = dict(os.environ, TEST_RUNNER_DEVDUO_REFERENCE_URL=endpoint)
+    environment = dict(
+        os.environ,
+        TEST_RUNNER_DEVDUO_REFERENCE_URL=endpoint,
+        TEST_RUNNER_DEVDUO_REFERENCE_GESTURE_DELAY=str(args.gesture_delay),
+    )
     process = None
     try:
         with (

@@ -1,6 +1,9 @@
 """Public reference integrity and native gesture capability boundaries."""
 
+import contextlib
+import io
 import json
+import sys
 import tempfile
 import threading
 import time
@@ -8,10 +11,11 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from devduo_tools.reference_library import MATRIX, export_library, sha256, validate_library
 from devduo_tools.reference_session import SwipeBroker
+from devduo_tools.reference_session import main as reference_session_main
 from PIL import Image
 
 
@@ -197,6 +201,36 @@ class ReferenceLibraryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "local filenames"):
             export_library(self.folder, output)
         self.assertFalse(output.exists())
+
+
+class ReferenceSessionArgumentsTest(unittest.TestCase):
+    def test_invalid_gesture_delays_fail_before_output_or_native_launch(self):
+        with tempfile.TemporaryDirectory(prefix="devduo-reference-arguments-") as folder:
+            output = Path(folder) / "native"
+            for delay in ("-1", "11", "0.5"):
+                with (
+                    self.subTest(delay=delay),
+                    patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "reference-session",
+                            "--udid",
+                            "synthetic",
+                            "--output",
+                            str(output),
+                            "--gesture-delay",
+                            delay,
+                        ],
+                    ),
+                    patch("devduo_tools.reference_session.subprocess.Popen") as launch,
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(SystemExit) as failure,
+                ):
+                    reference_session_main()
+                self.assertEqual(failure.exception.code, 2)
+                self.assertFalse(output.exists())
+                launch.assert_not_called()
 
 
 class SwipeBrokerTest(unittest.TestCase):

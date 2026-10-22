@@ -16,6 +16,11 @@
       #status { margin: 2px; white-space: pre-wrap; font-size: 12px; }
       #fixed { position: fixed; z-index: 4; bottom: 0; left: 0; right: 0; height: 28px; padding: 4px; color: white; background: #791ac2; }
       #fixed.narrow { right: auto; width: 150px; }
+      #scrim { position: fixed; inset: 0; z-index: 10; background: rgb(0 0 0 / 55%); }
+      #scrim[hidden] { display: none; }
+      .modal-card { position: absolute; top: 35%; left: 10%; width: 80%; padding: 16px; background: white; color: black; border: 1px solid #223; }
+      dialog { width: 80%; padding: 16px; color: black; background: white; border: 1px solid #223; }
+      dialog::backdrop { background: rgb(0 0 0 / 55%); }
     </style>
   </head>
   <body>
@@ -25,15 +30,41 @@
       <button data-y="1770">Near end</button><button id="end">End</button>
       <button data-variant="full">Full footer</button><button data-variant="narrow">Narrow marker</button>
       <button data-variant="none">No fixed</button><button id="save">Save observation</button>
+      <button data-overlay="fixed">Fixed scrim</button><button data-overlay="dialog">Dialog backdrop</button>
+      <button id="smooth">Smooth to 1000</button>
       <pre id="status"></pre>
     </nav>
     <footer id="fixed">FIXED BOTTOM purple</footer>
+    <section id="scrim" hidden>
+      <div class="modal-card">
+        <p>Fixed inset:0 / black 55%</p>
+        <button data-overlay="none">Close scrim</button>
+      </div>
+    </section>
+    <dialog id="modal">
+      <p>Native dialog / black 55% backdrop</p>
+      <button data-overlay="none">Close dialog</button>
+    </dialog>
     <script>
       const rows = document.getElementById('rows');
       const footer = document.getElementById('fixed');
       const status = document.getElementById('status');
+      const scrim = document.getElementById('scrim');
+      const modal = document.getElementById('modal');
+      const parameters = new URLSearchParams(location.search);
+      const shortContent = parameters.get('content') === 'short';
+      const tracing = parameters.get('trace') === '1';
+      const scrollSamples = [];
+      let measurementTimer;
       let variant = 'full';
-      for (let i = 0; i < 60; i++) {
+      let overlay = 'none';
+      const rowCount = shortContent ? 4 : 60;
+      rows.style.height = `${rowCount * 40}px`;
+      const scrollbarWidth = parameters.get('scrollbars');
+      if (['auto', 'none'].includes(scrollbarWidth)) document.documentElement.style.scrollbarWidth = scrollbarWidth;
+      const overflow = parameters.get('overflow');
+      if (['auto', 'scroll', 'hidden'].includes(overflow)) document.documentElement.style.overflowY = overflow;
+      for (let i = 0; i < rowCount; i++) {
         const row = document.createElement('div');
         row.className = 'row';
         row.textContent = `FLOW ${i * 40} .. ${(i + 1) * 40}`;
@@ -51,22 +82,59 @@
         const doc = document.documentElement;
         const result = {
           schemaVersion: 1, recordType: 'document-end-fixture',
-          labels: { variant },
-          environment: { url: location.href, userAgent: navigator.userAgent },
-          viewport: { innerWidth, innerHeight, scrollY, scrollHeight: doc.scrollHeight,
+          labels: { variant, overlay, content: shortContent ? 'short' : 'long' },
+          environment: { url: location.href, userAgent: navigator.userAgent,
+            colorScheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' },
+          viewport: { innerWidth, innerHeight, clientWidth: doc.clientWidth, clientHeight: doc.clientHeight,
+            scrollX, scrollY, scrollWidth: doc.scrollWidth, scrollHeight: doc.scrollHeight,
+            scrollbarGutterWidth: innerWidth - doc.clientWidth,
+            bodyClientWidth: document.body.clientWidth,
+            visualWidth: visualViewport?.width, visualHeight: visualViewport?.height,
+            overflowY: getComputedStyle(doc).overflowY,
+            scrollbarWidth: getComputedStyle(doc).scrollbarWidth,
+            scrollbarGutter: getComputedStyle(doc).scrollbarGutter,
             maxScrollY: Math.max(0, doc.scrollHeight - innerHeight),
             remaining: doc.scrollHeight - scrollY - innerHeight },
           components: { fixed: { hidden: footer.hidden, x: rect.x, y: rect.y,
-            width: rect.width, height: rect.height, bottom: rect.bottom } },
+            width: rect.width, height: rect.height, bottom: rect.bottom },
+            overlay: { ...overlayBounds(), background: 'rgb(0 0 0 / 55%)' } },
           desktop: window.devduoShellObservation || null,
           container: window.devduoContainerTelemetry || null
         };
         const text = `Y=${scrollY} H=${innerHeight} DOC=${doc.scrollHeight} R=${result.viewport.remaining}\n`
-          + `${variant} fixed.bottom=${rect.bottom} viewport=${innerWidth}x${innerHeight}`;
+          + `${variant} fixed.bottom=${rect.bottom} viewport=${innerWidth}x${innerHeight} overlay=${overlay}`;
         // Avoid a mutation/report loop with the app's read-only observer.
         if (status.textContent !== text) status.textContent = text;
         window.devduoDocumentEndObservation = result;
         return result;
+      }
+      function overlayBounds() {
+        if (overlay !== 'fixed') return { mode: overlay };
+        const rect = scrim.getBoundingClientRect();
+        return { mode: overlay, x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom };
+      }
+      async function saveObservation(reason) {
+        const response = await fetch('/api/measurements', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...observe(), reason, clientTimestamp: new Date().toISOString(),
+            ...(tracing ? { scrollSamples: scrollSamples.slice() } : {}) })
+        });
+        if (!response.ok) throw new Error(`Observation was not saved: HTTP ${response.status}`);
+      }
+      function traceScroll(reason) {
+        if (!tracing) return;
+        scrollSamples.push({ reason, elapsedMs: performance.now(), ...observe().viewport });
+        if (scrollSamples.length > 500) scrollSamples.shift();
+        clearTimeout(measurementTimer);
+        measurementTimer = setTimeout(() => saveObservation(reason), 150);
+      }
+      function setOverlay(value) {
+        if (!['none', 'fixed', 'dialog'].includes(value)) throw new Error('Unknown overlay variant');
+        if (modal.open) modal.close();
+        scrim.hidden = value !== 'fixed';
+        overlay = value;
+        if (value === 'dialog') modal.showModal();
+        requestAnimationFrame(() => saveObservation('overlay-' + value));
       }
       function scrollEnd() { scrollTo(0, document.documentElement.scrollHeight - innerHeight); }
       document.querySelectorAll('[data-y]').forEach(button => {
@@ -76,17 +144,21 @@
         button.onclick = () => setVariant(button.dataset.variant);
       });
       document.getElementById('end').onclick = scrollEnd;
-      document.getElementById('save').onclick = async () => {
-        const response = await fetch('/api/measurements', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(observe())
-        });
-        if (!response.ok) throw new Error(`Observation was not saved: HTTP ${response.status}`);
-      };
-      window.devduoDocumentEndProbe = { setVariant, scrollEnd, observe };
+      document.getElementById('smooth').onclick = () => scrollTo({ top: 1000, behavior: 'smooth' });
+      document.querySelectorAll('[data-overlay]').forEach(button => {
+        button.onclick = () => setOverlay(button.dataset.overlay);
+      });
+      modal.addEventListener('cancel', event => { event.preventDefault(); setOverlay('none'); });
+      document.getElementById('save').onclick = () => saveObservation('manual');
+      window.devduoDocumentEndProbe = { setVariant, scrollEnd, observe, setOverlay };
       addEventListener('scroll', observe, { passive: true });
       addEventListener('resize', observe);
+      for (const event of ['scroll', 'scrollend', 'resize']) addEventListener(event, () => traceScroll(event), { passive: true });
+      visualViewport?.addEventListener('resize', () => traceScroll('visual-resize'));
       setInterval(observe, 500);
-      setVariant(new URLSearchParams(location.search).get('fixed') || 'full');
+      setVariant(parameters.get('fixed') || 'full');
+      setOverlay(parameters.get('overlay') || 'none');
+      traceScroll('load');
     </script>
   </body>
 </html>

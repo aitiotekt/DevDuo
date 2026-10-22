@@ -26,6 +26,10 @@ Comparison uses equal-size decoded RGBA pixels and optional explicit crops/exclu
 
 The receiver also serves `web/document-end.html` at `/document-end.html`: a 2400-CSS-pixel striped fixture with full-width/narrow/absent fixed-footer controls, live DOM measurements and **Save observation**. Use it to compare presented windows at document end without modifying layout or scroll extents.
 
+The same page has **Fixed scrim** and **Dialog backdrop** controls using 55% black; `overlay=fixed|dialog` selects one at load and `window.devduoDocumentEndProbe.setOverlay('none')` closes it. Changes automatically save the overlay mode and fixed scrim bounds. Start with `?fixed=none`, then repeat with `?fixed=full`, separating fresh load from close/reopen color history. The [calibration guide](../../docs/en/003-CALIBRATION-WORKFLOW.md#translucent-modal-overlays) records the observed extension and limits.
+
+For scroll indicators, add `trace=1` to save bounded scroll/resize timing samples and actual inner/client/body/visual widths. `content=short`, `overflow=auto|scroll|hidden` and `scrollbars=auto|none` provide controlled variants; **Smooth to 1000** complements instant **Middle** scrolling. The [scroll-indicator observations](../../docs/en/003-CALIBRATION-WORKFLOW.md#safari-scroll-indicators) distinguish initial state, real gestures, CSS suppression and reused-tab state. Window sampling is required: DOM metrics cannot establish painted indicator visibility.
+
 ## Safari canvas reference library
 
 `/safari-reference.html?tab=A&palette=auto` is the controlled gallery fixture. A second page uses `tab=B`. `palette=light|dark` changes the page background independently of simulator Appearance; optional `themeColor=%23101923` sets an opposing meta hint. Records retain the actual system color scheme, page background, meta hint, DOM/visual viewport and document position. No Safari chrome is drawn in the page.
@@ -37,6 +41,8 @@ mise exec -- uv run --locked devduo-tools reference-session --udid SIMULATOR_UDI
 ```
 
 Enter one `ACTION ID` per line, for example `up closed-b000-light-expanded`, `down closed-b000-light-compact`, `observe inspect-current` and finally `stop complete`. Actions are restricted to `up`, `down`, `observe`, `stop`; IDs are safe local names and cannot be reused. Up means scrolling toward the document top (a native finger swipe down). The broker is loopback-only with a random capability path. It activates the existing Safari document and saves each native receipt before acknowledging it; it does not select poses, navigate, close tabs or capture the desktop. Use native upward gestures until the actual browser record confirms scrollY zero, and record reverse scrolling at nonzero Y separately. `scrollTo` alone did not compact the observed Open Safari.
+
+Optional `--gesture-delay 4` waits four seconds before each swipe so a window-capture sequence can start before input. Accepted delays are integer seconds from 0 to 10, default zero. Native receipts include the configured delay and fractional-second gesture start/return timestamps. The return timestamp includes XCTest's synchronization, rather than claiming an exact finger-up or inertia-end time; `observe` and `stop` do not wait.
 
 The initial reference cohort keeps original PNGs, per-case JSON and failed attempts locally. For export, `cases.json` contains 48 indexed observations with `id`, `fold`, `bodyAngleClockwise`, `appearance` (actual simulator Light/Dark, matching the observed color scheme), `tabCount`, `chrome`, `sourceImage`, `sourceSha256`, `fixtureSourceSha256`, `capturedAt`, `browser`, `native`, `nativeSession`, `nativeId` and `orientationSource`. Native session/ID point to the preserved receipt; orientationSource is the local devicectl JSON filename. Record observed content layout and scene-to-canvas rotation explicitly; the exporter must not infer them from a commanded body angle.
 
