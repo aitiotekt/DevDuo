@@ -23,6 +23,8 @@ export function macosBundlePlist(
 <key>CFBundleDisplayName</key><string>${xml(metadata.project.displayName)}</string>
 <key>CFBundleExecutable</key><string>${xml(executable)}</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconName</key><string>AppIcon</string>
+<key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>CFBundleShortVersionString</key><string>${core}</string>
 <key>CFBundleVersion</key><string>${core}</string>
 <key>LSMinimumSystemVersion</key><string>${metadata.macos.minimumSystemVersion}</string>

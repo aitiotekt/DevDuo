@@ -9,6 +9,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from .icons import check_icons
 from .paths import repository_root
 from .reference_library import validate_library
 
@@ -193,14 +194,21 @@ def main(argv=None):
     names = [name for name in names if name not in removed]
     failures = []
     reviewed_images = set()
+    if (ROOT / "assets/icons").exists():
+        try:
+            reviewed_images.update(check_icons(ROOT))
+        except (OSError, ValueError, KeyError) as error:
+            failures.append(f"Application icon validation failed: {error}")
     library = ROOT / "docs/shared/safari-reference"
     if (library / "manifest.json").exists():
         try:
             references = validate_library(library)
-            reviewed_images = {
-                (library / asset["file"]).relative_to(ROOT).as_posix()
-                for asset in references["assets"]
-            }
+            reviewed_images.update(
+                {
+                    (library / asset["file"]).relative_to(ROOT).as_posix()
+                    for asset in references["assets"]
+                }
+            )
         except (OSError, ValueError, KeyError) as error:
             failures.append(f"Reference library validation failed: {error}")
     for name in names:

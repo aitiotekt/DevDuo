@@ -63,6 +63,12 @@
       "section": "topics"
     },
     {
+      "name": "016-APP-ICON.md",
+      "en": "Application icon",
+      "zh": "应用图标",
+      "section": "topics"
+    },
+    {
       "name": "100-ROADMAP.md",
       "en": "Host UI roadmap",
       "zh": "宿主 UI 路线图",

@@ -11,3 +11,14 @@ sync-version:
 
 check-version:
     node scripts/release.mts check-version
+
+# Raster exports use the locked image toolchain; Apple compilation requires Xcode.
+export-icons:
+    uv run --locked devduo-tools icons export
+
+[macos]
+sync-icons: export-icons
+    uv run --locked devduo-tools icons compile
+
+check-icons:
+    uv run --locked devduo-tools icons check

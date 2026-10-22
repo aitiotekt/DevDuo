@@ -12,6 +12,7 @@
     <TargetFramework Condition="($([MSBuild]::IsOSPlatform('Windows')) Or '$(DevDuoWindows)' == 'true')">net10.0-windows</TargetFramework>
     <UseWindowsForms Condition="'$(TargetFramework)' == 'net10.0-windows'">true</UseWindowsForms>
     <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows'">app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="'$(TargetFramework)' == 'net10.0-windows'">../../assets/icons/app.ico</ApplicationIcon>
     <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
     <NuGetLockFilePath>packages.$(TargetFramework).lock.json</NuGetLockFilePath>
     <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' != ''">packages.$(TargetFramework).$(RuntimeIdentifier).lock.json</NuGetLockFilePath>
@@ -26,6 +27,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="DevDuo.Windows.Tests" />
     <EmbeddedResource Include="Localization/*.json" />
+    <AvaloniaResource Include="../../assets/icons/app-icon.png" Link="Assets/app-icon.png" />
     <None Update="WebAssets/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../temp/build/debugging/**" Link="debugging/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Condition="'$(TargetFramework)' == 'net10.0-windows'" Include="../../temp/build/windows-compositor/DevDuo.Windows.Compositor.dll" Link="DevDuo.Windows.Compositor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

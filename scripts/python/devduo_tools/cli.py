@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 COMMANDS = {
+    "icons": ("icons", "main", "Export, compile or validate application icon resources"),
     "serve": ("calibration_server", "main", "Start the loopback calibration receiver"),
     "capture-macos": ("capture_macos", "main", "Capture an explicitly selected simulator display"),
     "open-safari": (

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "compiler": "Xcode 27.1\nBuild version 27A9275",
+  "minimumSystemVersion": "27.0",
+  "files": {
+    "AppIcon.icon/Assets/artwork.png": "44ec032c73c15af4586e8ccb9fa3f95af5c5acb39bafea42a8b9f72b096e03a4",
+    "AppIcon.icon/icon.json": "b28eda1d8b432c068e6e7deb3adceffe9afeee2403bfea3f297a8c9e0d74e4a4",
+    "app-icon.png": "5d7f9c1acfdd904ab9fd5a2f2f02490787d2c1dfd3f3fb4d78657436c9558df0",
+    "app.ico": "2fc98191af5c24bacc256584c44402d37fd72154786d8b129a3444229a8d72f4",
+    "AppIcon.icns": "77089cd8c2bdf0f429a8c415265139c0d67150341b9bc4acf0f5e4fcc020c8f5",
+    "Assets.car": "c87c2c45aa74aaf35ea1f4251ae67de42aaddd744cff8adec21d8158a4fc4445"
+  }
+}

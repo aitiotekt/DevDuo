@@ -39,6 +39,8 @@
 
 ### Repository and publication
 
+- Add a Duo/developer application icon with Windows ICO/window resources and macOS Icon Composer source, Xcode-compiled Assets.car and safe-zone ICNS. Bundle both macOS formats before signing and validate checked-in resource hashes during publication audits.
+
 - Move production WebKit patches and build tooling to `native/webkit/windows`, group application sources and runtime web assets by responsibility, and separate portable core checks from localization. Preserve historical runtime input hashes and provenance. Add a bilingual platform parity/macOS acceptance handoff.
 - Run portable CI once on Ubuntu, compile native applications and harnesses separately, and skip native compilation only for complete docs-only PRs. Bound job durations and artifact retention, queue serial releases without replacing pending versions, and reject already-tagged versions before expensive packaging. Parse native PowerShell JSON with its UTF-8 BOM while preserving original manifest bytes.
 

@@ -134,6 +134,11 @@ test("release names, refs and macOS identity come from metadata", () => {
     releasePlan("1.2.3-beta.1", "refs/heads/release", "a".repeat(40), metadata),
   );
   const plist = macosBundlePlist(metadata, metadata.project.binaryName);
+  assert.match(plist, /<key>CFBundleIconName<\/key><string>AppIcon<\/string>/);
+  assert.match(
+    plist,
+    /<key>CFBundleIconFile<\/key><string>AppIcon.icns<\/string>/,
+  );
   assert.match(plist, /<string>local.DevDuo.Calibration<\/string>/);
   assert.match(plist, /Fixture &amp; App/);
   assert.match(

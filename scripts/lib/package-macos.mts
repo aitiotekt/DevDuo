@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { copyMacOSIcons } from "./app-icons.mts";
 import { macosBundlePlist } from "./macos-bundle.mts";
 import { loadMetadata } from "./metadata.mts";
 import { repoRoot } from "./paths.mts";
@@ -18,6 +19,7 @@ export function packageMacOS(): void {
       "Publish the macOS application with just package-macos first.",
     );
   checkVersion();
+  copyMacOSIcons(join(output, "../Resources"));
   writeFileSync(
     join(output, "../Info.plist"),
     macosBundlePlist(metadata, "launch"),

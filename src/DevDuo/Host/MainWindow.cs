@@ -59,6 +59,9 @@ public sealed class MainWindow : SukiWindow
 
     public MainWindow()
     {
+        // Packaged macOS uses the Icon Composer catalog through Info.plist.
+        if (OperatingSystem.IsWindows())
+            Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://DevDuo/Assets/app-icon.png")));
         host = preferences.Host.Copy();
         var start = BuiltinPages.Initial(Environment.GetEnvironmentVariable("DEVDUO_URL"), host.LastUrl);
         page = start.Address;

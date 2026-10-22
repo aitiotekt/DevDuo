@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { copyMacOSIcons } from "./lib/app-icons.mts";
 import { macosBundlePlist } from "./lib/macos-bundle.mts";
 import { loadMetadata } from "./lib/metadata.mts";
 import { repoRoot } from "./lib/paths.mts";
@@ -102,6 +103,7 @@ try {
     for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.md", "PRIVACY.md"])
       copyFileSync(join(repoRoot, file), join(notices, file));
     if (target === "osx-arm64") {
+      copyMacOSIcons(notices);
       writeFileSync(
         join(app, "Contents/Info.plist"),
         macosBundlePlist(metadata, name),
