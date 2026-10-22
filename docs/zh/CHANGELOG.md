@@ -6,6 +6,8 @@
 
 首个 beta 候选版本，尚未发布。应用与 Windows WebKit 引擎分别管理版本和发布门禁。
 
+- 初始 Windows WebKit 候选版本与应用对齐为 `0.1.0-beta.1`。源码缓存初始化中断后可继续构建，复用已下载 Git 对象并完整保留残留文件；未知缓存状态仍拒绝覆盖，并以 Windows PowerShell 测试恢复边界。
+
 - 完成 Windows 到 macOS 的集成审查，记录限定原生结果与首次发布前置条件，并同步候选版本。修复 macOS Inspector 异步停靠挤小被测视口的问题，由原生浏览器处理焦点内 Inspector 快捷键；CI 执行 AppKit 断言，交接文档保留明确的平台缺口。
 - 为 macOS 工具 WKWebView 提供按实际尺寸布局的原生容器，使离线 Chrome DevTools 前端正确绘制合成控件，并在真实窗口验证 DOM/样式和 Console 求值。
 - macOS 分数 Fit 使用精确逻辑视口尺寸，不再将浮点 bounds 误差传给 WebKit；为实测丢失一像素的问题添加回归测试。

@@ -34,18 +34,6 @@ try { $identityHash = [BitConverter]::ToString($identityHasher.ComputeHash([Text
 finally { $identityHasher.Dispose() }
 $previousInputRoot = Use-WebKitBuildTree $repository $build $identityHash
 
-function Initialize-PinnedSource([string]$directory, [string]$url, [string]$revision, [string[]]$paths) {
-    if (-not (Test-Path -LiteralPath $directory)) {
-        [IO.Directory]::CreateDirectory($directory) | Out-Null
-        Invoke-CheckedGit $directory @('init', '--quiet')
-        Invoke-CheckedGit $directory @('remote', 'add', 'origin', $url)
-        Invoke-CheckedGit $directory (@('sparse-checkout', 'set', '--cone', '--') + $paths)
-        Invoke-CheckedGit $directory @('fetch', '--filter=blob:none', '--depth', '1', 'origin', $revision)
-        Invoke-CheckedGit $directory @('checkout', '--detach', $revision)
-    }
-    $actual = & git -C $directory rev-parse HEAD
-    if ($LASTEXITCODE -ne 0 -or $actual -ne $revision) { throw 'Source cache has a different revision; preserve it before replacing' }
-}
 Initialize-PinnedSource $source 'https://github.com/WebKit/WebKit.git' $pin.revision @('Source', 'Tools', 'WebKitLibraries')
 $paintingPatch = Join-Path $PSScriptRoot 'patches/0002-windows-content-painting.patch'
 $developerPatch = Join-Path $PSScriptRoot 'patches/0003-windows-developer-api.patch'

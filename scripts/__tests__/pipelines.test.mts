@@ -60,7 +60,10 @@ test("self-hosted jobs install mise locally and do not use the GitHub Actions ca
   const install = action.runs.steps.find((step: { uses?: string }) =>
     step.uses?.startsWith("jdx/mise-action@"),
   );
-  assert.equal(install.with.cache, "${{ runner.environment != 'self-hosted' }}");
+  assert.equal(
+    install.with.cache,
+    `\${{ runner.environment != 'self-hosted' }}`,
+  );
 });
 
 test("Windows jobs enable Git long paths in the same account configuration as symlinks", () => {

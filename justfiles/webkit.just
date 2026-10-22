@@ -3,7 +3,7 @@ check-webkit-release:
     node scripts/webkit-release.mts check
 
 test-webkit-release-tools:
-    node --test scripts/__tests__/webkit-release.test.mts
+    node --test scripts/__tests__/webkit-release.test.mts scripts/__tests__/webkit-source.test.mts
 
 plan-webkit-release:
     node scripts/webkit-release.mts plan

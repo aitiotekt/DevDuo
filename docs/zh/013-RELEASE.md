@@ -34,6 +34,10 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 
 Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改过的已跟踪输入，完成后再次检查工作区。任务之间不要对这个构建工作区执行 `just clean`。Ninja 输出保留在 `temp/build/windows-webkit-host/`；下载、源码 pin、vcpkg 二进制包和已应用补丁记录保留在 `temp/cache/windows-webkit/`。上游 revision、编译器哈希或 Windows SDK/VC 工具版本变化时，构建树在 `temp/build/windows-webkit-trees/` 下保存和恢复。缺少该身份记录的旧构建树另存保留，首次需要重新构建。补丁更新只撤销精确记录的旧补丁，不丢弃额外源码改动；遇到意外状态明确失败。历史构建树会占用磁盘，须明确清理，不承诺自动永久保存。编译步骤限制为 22 小时，整个任务限制为 23 小时，低于 [GitHub token 的 24 小时有效期](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)。冷构建超时后，对同一持久工作区重跑可继续 Ninja 构建，不要先清理缓存。
 
+缓存目录存在不等于源码 checkout 成功。首次 fetch/checkout 中断后，若 `HEAD` 尚未建立且没有索引文件记录，会复用已有 Git 对象继续初始化。重试普通 checkout 前，将残留工作文件（包括未知改动）完整移到旁边的 `<cache-name>.incomplete-<timestamp>-<id>`，须审查后再清理。内层源码和 vcpkg 仓库自行设置 Git 长路径与符号链接选项。已有提交但 revision/origin 不符、未完成缓存包含索引文件记录、Git 锁及非仓库目录仍明确失败，须手动处理或保留，不能通过 reset 或删除绕过。
+
+构建任务在 Windows 上先执行 `test-webkit-release-tools`，再安装引擎工具并编译。2026-10-24 的 SSH 恢复已建立固定源码的 `HEAD`，完整保留 7,525 个残留文件并核对 SHA-256，两个已有对象包也均保留。维护补丁同步和固定 vcpkg 初始化连续验证通过，Windows 打包/构建树与源码恢复回归测试也已通过。这些检查不代表 CMake 完整配置、引擎完整编译或运行时发布通过。
+
 发布顺序：
 
 1. 设置新的 `[webkit].version`，保留预期源码 revision/补丁，未发布版本将 `archive_sha256` 留空。审查并将这些输入合并到配置分支。
@@ -43,7 +47,7 @@ Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改�
 
 使用 `mise exec -- just check-webkit-release` 和 `test-webkit-release-tools` 检查策略与完整性；后者在 Windows 上还执行真实 ZIP 及合成持久缓存检查。`package-webkit-release` 打包匹配的原生构建；`fetch-windows-webkit-runtime` 下载并校验 metadata pin；`publish-webkit-release` 是流水线发布入口。`just release-preflight` 在配置检查后只读查询 GitHub：固定引擎必须已公开发布，资产集完整，源码 tag、补丁指纹、归档 pin 和校验报告一致。首次 pin 为空时会有意失败。Windows 消费端进一步检查实际归档及每个解压文件；下载或解压失败不会形成可复用的完整缓存。Release 资产作为长期依赖，Actions artifact 只在任务间传递。参考 [GitHub 自托管 runner 行为](https://docs.github.com/en/actions/concepts/runners/self-hosted-runners)及[工作流产物保留规则](https://docs.github.com/en/actions/tutorials/store-and-share-data)。
 
-流水线不从 runner 服务中执行交互桌面验收。运行时清单保留明确的原生验收状态，导出、编译和哈希不代表渲染、输入或 DPI 通过。Runner 注册及 Windows 服务配置已对照基础设施源码核实，尚未通过实时 GitHub runner 列表或服务器会话验证。仓库测试覆盖本地发布工具；runner 在线状态、服务账户依赖、首次完整服务器构建、GitHub 上传/下载及使用已发布 pin 的应用发布仍未验收。保留声明及源码来源本身不代表完成[第三方说明](THIRD_PARTY_NOTICES.md)要求的再分发审查。
+流水线不从 runner 服务中执行交互桌面验收。运行时清单保留明确的原生验收状态，导出、编译和哈希不代表渲染、输入或 DPI 通过。首次托管任务及后续 SSH 排查已确认 runner 可接收任务，并完成源码缓存准备；服务账户下的完整构建、GitHub 上传/下载及使用已发布 pin 的应用发布仍未验收。保留声明及源码来源本身不代表完成[第三方说明](THIRD_PARTY_NOTICES.md)要求的再分发审查。
 
 ## 版本和触发规则
 
@@ -77,9 +81,9 @@ Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改�
 
 ## 首次发布清单
 
-当前应用候选版本为 **0.1.0-beta.1**，引擎仍独立使用 **0.1.0-alpha.1**。截至 2026-10-24 的只读核查，GitHub 尚无已发布 Release，`[webkit].archive_sha256` 为空。发布规划正确地拒绝继续，包括 dry run；必须先实际发布并固定引擎。默认分支尚未暴露 **WebKit runtime release** workflow，手动触发前需先合入审查后的引擎输入与 workflow。
+当前应用与引擎候选版本均为 **0.1.0-beta.1**，发布门槛和未来版本更新仍各自独立。[首次托管 WebKit 运行](https://github.com/aitiotekt/DevDuo/actions/runs/40045146774)于 2026-10-24 到达构建步骤，但因不含 `HEAD` 的未完成源码缓存失败，整体运行随后被取消。这证明 workflow 已可用，不代表完整引擎构建通过。`[webkit].archive_sha256` 仍为空。发布规划正确地拒绝继续，包括 dry run；必须先实际发布并固定引擎。在配置的发布分支应用审查后的缓存恢复修复，再重试构建。
 
-三个命名环境已存在，但当前 GitHub 凭据查询签名 secrets 和仓库 runner 时返回 HTTP 403；其就绪状态是**未核实**，不能据此认定缺失。触发前须由具备权限的管理者核验。本次本地准备没有触发远程 workflow、创建标签、上传或发布。[macOS 集成记录](015-PLATFORM-PARITY.md#beta-集成记录-2026-10-24)区分实际原生观察与平台缺口；构建通过不代表这些项目已验收。
+三个命名环境已存在，但当前 GitHub 凭据查询签名 secrets 和仓库 runner 时返回 HTTP 403；其就绪状态是**未核实**，不能据此认定缺失。此次托管构建失败已证明有 Windows runner 接收任务。本地准备和随后 SSH 排查均未触发 workflow、创建标签、上传或发布。[macOS 集成记录](015-PLATFORM-PARITY.md#beta-集成记录-2026-10-24)区分实际原生观察与平台缺口；构建通过不代表这些项目已验收。
 
 1. 将工作流和完整原生源码、补丁输入放到默认分支；本次本地准备不会自动提交或推送。确认本仓库专用的 Windows runner 在线，服务账户可见 Git/Bash、mise、Visual Studio C++/Clang、Windows SDK，并具备符号链接权限。检查源码、依赖和归档构建树所需磁盘空间。
 2. 核对 IaC 管理的 `release-signing`、`stable-release`、`github-pages` 环境和签名 secret 名称，不输出值。Runner/SDK 可用性和 secret 内容需要实际远端验收。

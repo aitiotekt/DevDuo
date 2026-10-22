@@ -72,6 +72,8 @@ jobs:
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
+      - name: Verify runtime packaging and persistent source recovery
+        run: mise exec -- just test-webkit-release-tools
       - name: Install locked portable engine tools
         run: mise --env windows-webkit install
       - name: Build the pinned patched engine incrementally

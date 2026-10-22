@@ -313,7 +313,7 @@ test("source fingerprint ignores app/tooling/pin changes but detects engine and 
     writeFileSync(
       join(root, "devduo-metadata.toml"),
       source
-        .replace('version = "0.1.0-alpha.1"', 'version = "9.0.0"')
+        .replace(/^(version = )"[^"]+"/gm, '$1"9.0.0"')
         .replace('archive_sha256 = ""', `archive_sha256 = "${"b".repeat(64)}"`),
     );
     const mise = readFileSync(join(root, "mise.toml"), "utf8");

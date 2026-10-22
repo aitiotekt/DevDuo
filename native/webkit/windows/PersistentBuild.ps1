@@ -1,7 +1,86 @@
 # Persistent engine build state. Imported after RuntimeFiles.ps1 supplies file hashing.
 function Invoke-CheckedGit([string]$directory, [string[]]$arguments) {
-    & git -C $directory @arguments
-    if ($LASTEXITCODE -ne 0) { throw 'Pinned source operation failed' }
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & git -C $directory @arguments
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned source operation failed; retain the cache and retry after resolving the Git error above' }
+    } finally { $ErrorActionPreference = $previousPreference }
+}
+
+function Initialize-PinnedSource([string]$directory, [string]$url, [string]$revision, [string[]]$paths) {
+    if ($revision -notmatch '^[a-f0-9]{40}$' -or -not $url -or -not $paths.Count) { throw 'Invalid pinned source inputs' }
+    $gitDirectory = Join-Path $directory '.git'
+    if (-not (Test-Path -LiteralPath $gitDirectory -PathType Container)) {
+        if ((Test-Path -LiteralPath $directory) -and @(Get-ChildItem -LiteralPath $directory -Force).Count) {
+            throw 'Source cache is not a standalone Git repository; preserve it before replacing'
+        }
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+        Invoke-CheckedGit $directory @('init', '--quiet')
+    }
+    foreach ($name in @('index.lock', 'HEAD.lock')) {
+        if (Test-Path -LiteralPath (Join-Path $gitDirectory $name)) { throw 'Source cache is locked; resolve the active or interrupted Git operation before retrying' }
+    }
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $actual = & git -C $directory rev-parse --verify --quiet 'HEAD^{commit}'
+        $hasHead = $LASTEXITCODE -eq 0
+        $origin = & git -C $directory config --get remote.origin.url
+        $hasOrigin = $LASTEXITCODE -eq 0
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($hasOrigin -and $origin -cne $url) { throw 'Source cache has a different origin; preserve it before replacing' }
+    if ($hasHead) {
+        if ($actual -ne $revision) { throw 'Source cache has a different revision; preserve it before replacing' }
+        if (-not $hasOrigin) { throw 'Source cache has no origin; preserve it before replacing' }
+        Invoke-CheckedGit $directory @('config', 'core.longpaths', 'true')
+        Invoke-CheckedGit $directory @('config', 'core.symlinks', 'true')
+        return
+    }
+
+    # Only an unborn repository can be resumed. Never reset an established tree,
+    # staged changes, corrupt refs or locks to make a cache look complete.
+    $branch = & git -C $directory symbolic-ref --quiet HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Source cache HEAD is invalid; preserve it before replacing' }
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & git -C $directory show-ref --verify --quiet $branch
+        $branchStatus = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($branchStatus -ne 1) { throw 'Source cache HEAD is unreadable; preserve it before replacing' }
+    $staged = @(& git -C $directory ls-files)
+    if ($LASTEXITCODE -ne 0 -or $staged.Count) { throw 'Incomplete source cache has indexed files; preserve them before retrying' }
+    $entries = @(Get-ChildItem -LiteralPath $directory -Force | Where-Object { $_.Name -ne '.git' })
+    if (-not $hasOrigin) {
+        if ($entries.Count) { throw 'Incomplete source cache has no origin; preserve it before replacing' }
+        Invoke-CheckedGit $directory @('remote', 'add', 'origin', $url)
+    }
+    # Nested caches must not depend on which Windows account launched the build.
+    Invoke-CheckedGit $directory @('config', 'core.longpaths', 'true')
+    Invoke-CheckedGit $directory @('config', 'core.symlinks', 'true')
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & git -C $directory cat-file -e ($revision + '^{commit}') 2>$null
+        $hasRevision = $LASTEXITCODE -eq 0
+    } finally { $ErrorActionPreference = $previousPreference }
+    if (-not $hasRevision) {
+        Invoke-CheckedGit $directory @('fetch', '--filter=blob:none', '--depth', '1', 'origin', $revision)
+    }
+    if ($entries.Count) {
+        # Failed checkout can leave files without HEAD or an index. Keep every
+        # byte (including unknown edits), reuse downloaded Git objects in place,
+        # then let an ordinary checkout finish without force/reset/clean.
+        $archive = $directory + '.incomplete-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+        [IO.Directory]::CreateDirectory($archive) | Out-Null
+        foreach ($entry in $entries) { Move-Item -LiteralPath $entry.FullName -Destination $archive }
+        Write-Warning "Preserved incomplete checkout files at $archive; reusing downloaded Git objects"
+    }
+    Invoke-CheckedGit $directory (@('sparse-checkout', 'set', '--cone', '--') + $paths)
+    Invoke-CheckedGit $directory @('checkout', '--detach', $revision)
+    $actual = & git -C $directory rev-parse --verify 'HEAD^{commit}'
+    if ($LASTEXITCODE -ne 0 -or $actual -ne $revision) { throw 'Pinned source checkout did not establish the required HEAD' }
 }
 
 function Test-WebKitPatchApplied([string]$directory, [string[]]$patches) {
