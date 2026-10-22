@@ -31,6 +31,7 @@ function fixture() {
     remote: Map<string, Buffer>;
     calls: string[][];
     fail?: string;
+    pendingDraft?: boolean;
   } = { remote: new Map(), calls: [] };
   const refreshAssets = () => {
     if (state.release)
@@ -52,12 +53,28 @@ function fixture() {
         return "{}";
       }
       if (state.fail === "list") throw new Error("listing failure");
+      if (args[1] === "graphql") {
+        if (state.fail === "graphql")
+          throw new Error("GraphQL permission failure");
+        return JSON.stringify({
+          data: {
+            repository: {
+              release: state.release
+                ? { databaseId: state.release.id, isDraft: state.release.draft }
+                : null,
+            },
+          },
+        });
+      }
+      if (args[1] === "repos/fixture/repo/releases/17")
+        return JSON.stringify(state.release);
       return JSON.stringify([state.release ? [state.release] : []]);
     }
     const operation = args[1];
     if (operation === "create") {
       state.release = {
-        tag_name: tag,
+        id: 17,
+        tag_name: state.pendingDraft ? "untagged-fixture" : tag,
         draft: true,
         prerelease: true,
         assets: [],
@@ -81,6 +98,7 @@ function fixture() {
       assert.ok(state.release);
       if (state.fail === "edit") throw new Error("publication failure");
       state.release.draft = false;
+      state.release.tag_name = tag;
     } else throw new Error(`Unexpected fake operation: ${operation}`);
     return "";
   };
@@ -98,7 +116,13 @@ function fixture() {
   };
   const seed = (draft: boolean, names = files) => {
     state.commit = sha;
-    state.release = { tag_name: tag, draft, prerelease: true, assets: [] };
+    state.release = {
+      id: 17,
+      tag_name: tag,
+      draft,
+      prerelease: true,
+      assets: [],
+    };
     for (const name of names)
       state.remote.set(name, readFileSync(join(directory, name)));
     refreshAssets();
@@ -154,6 +178,112 @@ test("an interrupted draft upload resumes only missing assets from the identical
     assert.ok(upload);
     assert.ok(upload.includes(join(f.directory, "SHA256SUMS")));
     assert.ok(!upload.includes(join(f.directory, "app.zip")));
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("pending-tag drafts are found after creation and resumed without duplicate releases", () => {
+  const f = fixture();
+  try {
+    f.state.pendingDraft = true;
+    f.state.fail = "upload";
+    assert.throws(() => publishRelease(f.options, f.execute), /upload failure/);
+    assert.match(f.state.release?.tag_name ?? "", /^untagged-/);
+    assert.equal(f.state.remote.size, 1);
+    delete f.state.fail;
+    f.state.calls.length = 0;
+    assert.equal(publishRelease(f.options, f.execute), "published");
+    assert.ok(
+      f.state.calls.some(
+        (args) => args[2] === "repos/fixture/repo/releases/17",
+      ),
+    );
+    assert.ok(f.state.calls.every((args) => args[2] !== "create"));
+    const upload = f.state.calls.find((args) => args[2] === "upload");
+    assert.ok(upload?.includes(join(f.directory, "SHA256SUMS")));
+    assert.ok(!upload?.includes(join(f.directory, "app.zip")));
+    assert.equal(f.state.release?.id, 17);
+    assert.equal(f.state.release?.tag_name, tag);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("pending-tag lookup rejects permissions, malformed data and changed identities before mutation", () => {
+  const f = fixture();
+  try {
+    f.state.fail = "graphql";
+    assert.throws(() => publishRelease(f.options, f.execute), /permission/);
+    assert.ok(
+      f.state.calls.every(
+        (args) =>
+          !["POST", "create", "upload", "edit"].some((value) =>
+            args.includes(value),
+          ),
+      ),
+    );
+    for (const response of [
+      {},
+      {
+        data: { repository: { release: null } },
+        errors: [{ message: "denied" }],
+      },
+      {
+        data: { repository: { release: { databaseId: "17", isDraft: true } } },
+      },
+    ]) {
+      assert.throws(() =>
+        findRelease("fixture/repo", tag, (_command, args) =>
+          args[1] === "graphql" ? JSON.stringify(response) : "[[]]",
+        ),
+      );
+    }
+    assert.throws(
+      () =>
+        findRelease("fixture/repo", tag, (_command, args) => {
+          if (args[1] === "graphql")
+            return JSON.stringify({
+              data: {
+                repository: { release: { databaseId: 17, isDraft: true } },
+              },
+            });
+          if (args[1] === "repos/fixture/repo/releases/17")
+            return JSON.stringify({
+              id: 18,
+              tag_name: "untagged-other",
+              draft: true,
+              prerelease: true,
+              assets: [],
+            });
+          return "[[]]";
+        }),
+      /identity changed/,
+    );
+    f.seed(false);
+    assert.equal(findRelease("fixture/repo", tag, f.execute)?.draft, false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("release identity changes during upload stop publication", () => {
+  const f = fixture();
+  try {
+    const execute: Runner = (command, args, capture) => {
+      const result = f.execute(command, args, capture);
+      if (command === "gh" && args[1] === "upload") {
+        assert.ok(f.state.release);
+        f.state.release.id = 18;
+      }
+      return result;
+    };
+    assert.throws(
+      () => publishRelease(f.options, execute),
+      /Draft release changed/,
+    );
+    assert.equal(f.state.release?.draft, true);
+    assert.ok(f.state.calls.every((args) => args[2] !== "edit"));
   } finally {
     f.cleanup();
   }

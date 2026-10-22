@@ -6,6 +6,8 @@
 
 First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
 
+- Resolve draft releases by their pending tag through GraphQL, including `untagged-*` draft URLs, and preserve release identity while resuming verified asset uploads.
+
 - Select the top-level Ninja executable explicitly from the mise environment.
 
 - Align the initial Windows WebKit candidate with application version `0.1.0-beta.1`. Resume interrupted source-cache initialization without discarding downloaded Git objects or partial files; preserve unrelated cache states and test recovery on Windows PowerShell.

@@ -6,6 +6,7 @@ import { run, temporary } from "./release-process.mts";
 
 export type Runner = typeof run;
 export type GitHubRelease = {
+  id: number;
   tag_name: string;
   draft: boolean;
   prerelease: boolean;
@@ -64,14 +65,82 @@ export function findRelease(
   const matches = pages.flat().filter((release) => release?.tag_name === tag);
   if (matches.length > 1) throw new Error("Duplicate GitHub release tags.");
   const release = matches[0];
+  if (release) return validateRelease(release);
+
+  // Drafts can have an `untagged-*` REST tag while their pending tag is the
+  // requested version. Resolve that association through GraphQL, as gh does.
+  const [owner, name] = repository.split("/");
+  const lookup = JSON.parse(
+    execute(
+      "gh",
+      [
+        "api",
+        "graphql",
+        "-f",
+        "query=query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){databaseId isDraft}}}",
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-f",
+        `tag=${tag}`,
+      ],
+      true,
+    ),
+  );
+  const result = lookup?.data?.repository;
   if (
-    release &&
-    (typeof release.draft !== "boolean" ||
-      typeof release.prerelease !== "boolean" ||
-      !Array.isArray(release.assets))
+    (lookup?.errors !== undefined &&
+      (!Array.isArray(lookup.errors) || lookup.errors.length)) ||
+    !result ||
+    typeof result !== "object" ||
+    !Object.hasOwn(result, "release")
+  )
+    throw new Error("Cannot confirm GitHub release by its pending tag.");
+  if (result.release === null) return undefined;
+  const pending = result.release;
+  if (
+    !Number.isSafeInteger(pending?.databaseId) ||
+    pending.databaseId <= 0 ||
+    typeof pending.isDraft !== "boolean"
+  )
+    throw new Error("Invalid GitHub pending release response.");
+  const resolved = validateRelease(
+    JSON.parse(
+      execute(
+        "gh",
+        ["api", `repos/${repository}/releases/${pending.databaseId}`],
+        true,
+      ),
+    ),
+  );
+  if (
+    resolved.id !== pending.databaseId ||
+    (!resolved.draft && resolved.tag_name !== tag)
+  )
+    throw new Error("GitHub release identity changed during lookup.");
+  return { ...resolved, tag_name: tag };
+}
+
+function validateRelease(release: unknown): GitHubRelease {
+  if (
+    !release ||
+    typeof release !== "object" ||
+    !("id" in release) ||
+    typeof release.id !== "number" ||
+    !Number.isSafeInteger(release.id) ||
+    release.id <= 0 ||
+    !("tag_name" in release) ||
+    typeof release.tag_name !== "string" ||
+    !("draft" in release) ||
+    typeof release.draft !== "boolean" ||
+    !("prerelease" in release) ||
+    typeof release.prerelease !== "boolean" ||
+    !("assets" in release) ||
+    !Array.isArray(release.assets)
   )
     throw new Error("Invalid GitHub release response.");
-  return release;
+  return release as GitHubRelease;
 }
 
 export function tagCommit(
@@ -232,7 +301,7 @@ export function publishRelease(
       "--latest=false",
     ]);
     release = findRelease(repository, tag, execute);
-    if (!release?.draft)
+    if (!release?.draft || release.prerelease !== options.prerelease)
       throw new Error("GitHub did not confirm the new draft release.");
   }
   if (!release.draft) return "verified";
@@ -246,7 +315,11 @@ export function publishRelease(
       repository,
     ]);
   const uploaded = findRelease(repository, tag, execute);
-  if (!uploaded?.draft || uploaded.prerelease !== options.prerelease)
+  if (
+    !uploaded?.draft ||
+    uploaded.prerelease !== options.prerelease ||
+    uploaded.id !== release.id
+  )
     throw new Error("Draft release changed during publication.");
   temporary((path) => {
     mkdirSync(path, { recursive: true });
@@ -269,7 +342,8 @@ export function publishRelease(
   if (
     !published ||
     published.draft ||
-    published.prerelease !== options.prerelease
+    published.prerelease !== options.prerelease ||
+    published.id !== release.id
   )
     throw new Error("GitHub did not confirm release publication.");
   return "published";

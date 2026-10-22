@@ -196,6 +196,7 @@ test("application preflight checks the published WebKit tag, channel, source rep
     writeFileSync(reportPath, reportText);
     const sums = `${expected}  ${names.asset}\n${digest(reportPath)}  ${names.manifest}\n`;
     const baseline: GitHubRelease = {
+      id: 17,
       tag_name: names.tag,
       draft: false,
       prerelease: true,
@@ -226,6 +227,8 @@ test("application preflight checks the published WebKit tag, channel, source rep
         assert.equal(command, "gh");
         if (args[0] === "api") {
           if (scenario === "network") throw new Error("network failure");
+          if (args[1] === "graphql")
+            return JSON.stringify({ data: { repository: { release: null } } });
           return JSON.stringify([scenario === "missing" ? [] : [release]]);
         }
         assert.deepEqual(args.slice(0, 2), ["release", "download"]);

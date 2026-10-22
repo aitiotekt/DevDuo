@@ -6,6 +6,8 @@
 
 首个 beta 候选版本，尚未发布。应用与 Windows WebKit 引擎分别管理版本和发布门禁。
 
+- 通过 GraphQL 按待发布标签解析草稿，支持 `untagged-*` 草稿地址，并在恢复已校验资产上传时保持 Release 身份一致。
+
 - 显式使用 mise 环境选择的顶层 Ninja 可执行文件。
 
 - 初始 Windows WebKit 候选版本与应用对齐为 `0.1.0-beta.1`。源码缓存初始化中断后可继续构建，复用已下载 Git 对象并完整保留残留文件；未知缓存状态仍拒绝覆盖，并以 Windows PowerShell 测试恢复边界。
