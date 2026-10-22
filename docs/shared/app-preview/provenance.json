@@ -1,0 +1,128 @@
+{
+  "captured_on": "2026-10-24",
+  "platform": "macOS 27.0.1 / system WKWebView",
+  "app_version": "0.1.0-beta.1",
+  "source_commit": "53feb6e",
+  "capture_method": "CUA application-window capture; offline welcome page; light appearance",
+  "processing": "Remove the 88-pixel title bar and pointer, resize to 1600 pixels wide with Lanczos, encode WebP quality 88 without metadata. No UI or page content is reconstructed. Original PNGs remain private and unchanged.",
+  "publication_review": "Only the app toolbar, settings, controlled offline welcome page, device preview and status bar remain. No desktop, personal URL, user path, remote-debugging token or account identifier is present. These are product screenshots, not Device Hub references or geometry acceptance evidence. Simulator-artwork redistribution remains subject to THIRD_PARTY_NOTICES.md.",
+  "icon": {
+    "file": "icon.webp",
+    "source": "assets/icons/app-icon.png",
+    "processing": "Resize to 128 by 128 pixels with Lanczos, lossless WebP export with alpha and no metadata"
+  },
+  "assets": [
+    {
+      "file": "closed-en.webp",
+      "source": "captures/readme/20261024/closed-en.png",
+      "source_pixels": [
+        2480,
+        1826
+      ],
+      "crop_pixels": [
+        0,
+        88,
+        2480,
+        1826
+      ],
+      "output_pixels": [
+        1600,
+        1121
+      ],
+      "language": "en",
+      "fold": "closed",
+      "body_angle": 0,
+      "container": "Safari",
+      "chrome": "expanded",
+      "preview": "Fit",
+      "viewport_css": [
+        382,
+        580
+      ]
+    },
+    {
+      "file": "open-en.webp",
+      "source": "captures/readme/20261024/open-en.png",
+      "source_pixels": [
+        2480,
+        1826
+      ],
+      "crop_pixels": [
+        0,
+        88,
+        2480,
+        1826
+      ],
+      "output_pixels": [
+        1600,
+        1121
+      ],
+      "language": "en",
+      "fold": "open",
+      "body_angle": 0,
+      "container": "Safari",
+      "chrome": "expanded",
+      "preview": "Fit",
+      "viewport_css": [
+        951,
+        543
+      ]
+    },
+    {
+      "file": "closed-zh.webp",
+      "source": "captures/readme/20261024/closed-zh.png",
+      "source_pixels": [
+        2480,
+        1826
+      ],
+      "crop_pixels": [
+        0,
+        88,
+        2480,
+        1826
+      ],
+      "output_pixels": [
+        1600,
+        1121
+      ],
+      "language": "zh",
+      "fold": "closed",
+      "body_angle": 0,
+      "container": "Safari",
+      "chrome": "expanded",
+      "preview": "1:1",
+      "viewport_css": [
+        382,
+        580
+      ]
+    },
+    {
+      "file": "open-zh.webp",
+      "source": "captures/readme/20261024/open-zh.png",
+      "source_pixels": [
+        2480,
+        1826
+      ],
+      "crop_pixels": [
+        0,
+        88,
+        2480,
+        1826
+      ],
+      "output_pixels": [
+        1600,
+        1121
+      ],
+      "language": "zh",
+      "fold": "open",
+      "body_angle": 0,
+      "container": "Safari",
+      "chrome": "expanded",
+      "preview": "Fit",
+      "viewport_css": [
+        951,
+        543
+      ]
+    }
+  ]
+}

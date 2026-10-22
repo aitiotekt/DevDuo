@@ -1,0 +1,7 @@
+/* Keep linked badges together, as in the GitHub README rendering. */
+.vp-doc a > img {
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: 4px;
+  margin-block-end: 4px;
+}

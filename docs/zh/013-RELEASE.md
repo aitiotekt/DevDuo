@@ -18,9 +18,15 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 
 仅**完整 PR 差异确认纯文档**时可跳过原生矩阵。比较范围未知时执行完整检查。每次 `main` 推送仍编译原生目标，因为前一次代码推送可能在通过前被取消。应用发布复用验证时始终强制原生编译。Checks 取消同 ref 的过时运行；文档也取消过时部署。全部任务检出不可变的触发 SHA，关闭 checkout 凭据持久化。只读 PR 任务不使用引擎 runner、签名环境或发布凭据。
 
-应用与引擎发布各有一个全局串行组，设置 `queue: max`、`cancel-in-progress: false`。GitHub 最多允许 100 个等待任务，队列满后拒绝新运行；顺序按进入等待队列的时间，而非触发时间，见 [GitHub 并发语义](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)。当前 actionlint 1.7.12 尚无新 `queue` schema；`.github/actionlint.yaml` 仅对这两份文件的精确错误提供兼容例外，同时由 YAML 测试验证完整并发配置。工具支持该语法后删除这些窄范围例外。
+应用与引擎发布各有一个全局串行组，设置 `queue: max`、`cancel-in-progress: false`。GitHub 最多允许 100 个等待任务，队列满后拒绝新运行；顺序按进入等待队列的时间，而非触发时间，见 [GitHub 并发语义](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)。当前 actionlint 1.7.12 尚无新 `queue` schema；`.github/actionlint.yaml` 仅对这两份文件的精确错误提供兼容例外。工具支持该语法后删除这些窄范围例外。
 
 中间平台、引擎和文档预览 artifact 仅保留**一天**，最终应用 artifact 保留**七天**。ZIP 上传关闭重复压缩；主分支文档仅上传 Pages 所需 artifact。持久引擎缓存和 mise 工具安装留在自托管磁盘上。自托管任务不读写 GitHub Actions 缓存；GitHub 托管任务仍使用该缓存。短保留期降低存储占用时间，但不能保证首次大型运行时上传符合账户剩余额度；触发前检查实际用量，并通过仓库管理清理过期临时 artifact。Release 资产仍是长期运行时依赖。托管执行、存储和缓存有不同计费与限制，参阅当前 [Actions 计费规则](https://docs.github.com/en/billing/concepts/product-billing/github-actions)和[运行器/资源限制](https://docs.github.com/en/actions/reference/limits)，不能因为公开仓库执行免费就假定全部存储无限。
+
+## 发行包签名与安装帮助
+
+macOS 官方应用发行包必须通过 Developer ID 签名、Apple 公证并附带公证票据。Windows 应用发行包目前没有 Authenticode 签名，系统可能提示发布者未知或信誉信息不足。源码开发包未签名，并非 macOS 官方发行下载。证书配置和签名实现统一维护在本页后续章节，不放入用户快速上手。
+
+只从本项目的 [GitHub Releases](https://github.com/aitiotekt/DevDuo/releases) 下载应用 ZIP。如果应用被阻止或提示损坏，先按[安装表格](README.md#下载与安装)核对平台及系统版本，再重新完整解压一份应用包，不要混用不同版本的文件。仍有问题时，请在 issue 中提供系统原始提示及版本号；正常安装不需要额外安装证书或更改系统级防护。
 
 ## Windows WebKit 运行时发布
 
@@ -57,7 +63,7 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 
 推送到 `release` 或 `v*` tag 继续触发**自动正式发布**。手动触发默认 `dry-run=true`，仍执行验证、签名公证、组装、来源证明和 Actions 产物上传，但跳过创建 tag 和公开 Release；手动正式发布须明确设置 `dry-run=false`。演练选项不会抑制另一次推送触发的发布。手动触发使用所选 ref 及其 `github.sha`，所有任务检出该触发提交。平台构建前，计划阶段要求 metadata 的 WebKit 版本已发布且含资产。macOS 签名任务在构建前检查六个环境输入及 SDK；检查存在性不代表证书或 Apple 凭据有效。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
 
-正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接、签名顺序和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
+正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 
 ## 产物和重试
 

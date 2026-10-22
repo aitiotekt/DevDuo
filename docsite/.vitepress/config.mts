@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { defineConfig } from "vitepress";
-import { manifest, siteHref } from "../../scripts/lib/docs.mts";
+import { manifest, siteHref, siteImageSrc } from "../../scripts/lib/docs.mts";
 import { loadMetadata } from "../../scripts/lib/metadata.mts";
 import { repoRoot } from "../../scripts/lib/paths.mts";
 
@@ -8,6 +8,7 @@ const metadata = loadMetadata();
 
 function sidebar(prefix: string, language: "en" | "zh") {
   const sections = [
+    { id: "usage", en: "Using DevDuo", zh: "使用 DevDuo" },
     { id: "development", en: "Development", zh: "开发入口" },
     { id: "calibration", en: "Calibration reference", zh: "标定参考" },
     { id: "topics", en: "Read as needed", zh: "按需专题" },
@@ -48,6 +49,28 @@ export default defineConfig({
   vite: { resolve: { preserveSymlinks: true } },
   markdown: {
     config(markdown) {
+      const renderImage = markdown.renderer.rules.image;
+      markdown.renderer.rules.image = (
+        tokens,
+        index,
+        options,
+        environment,
+        self,
+      ) => {
+        const token = tokens[index],
+          src = token.attrGet("src");
+        if (src)
+          token.attrSet(
+            "src",
+            siteImageSrc(
+              src,
+              String(environment.path ?? environment.realPath ?? ""),
+            ),
+          );
+        return renderImage
+          ? renderImage(tokens, index, options, environment, self)
+          : self.renderToken(tokens, index, options);
+      };
       const fallback = markdown.renderer.rules.link_open;
       markdown.renderer.rules.link_open = (
         tokens,
@@ -88,7 +111,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "Home", link: "/" },
-          { text: "Docs", link: "/docs/001-ARCHITECTURE" },
+          { text: "Guide", link: "/docs/004-USAGE" },
           { text: "Security", link: "/security" },
           { text: "Privacy", link: "/privacy" },
           { text: "Contributing", link: "/contributing" },
@@ -107,7 +130,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "首页", link: "/zh/" },
-          { text: "文档", link: "/zh/docs/001-ARCHITECTURE" },
+          { text: "使用指南", link: "/zh/docs/004-USAGE" },
           { text: "安全", link: "/zh/security" },
           { text: "隐私", link: "/zh/privacy" },
           { text: "贡献", link: "/zh/contributing" },

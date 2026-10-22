@@ -14,7 +14,7 @@
     "noImplicitReturns": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node", "vitepress/client"]
   },
   "include": [".vitepress/**/*.ts", ".vitepress/**/*.mts"]
 }

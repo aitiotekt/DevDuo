@@ -20,7 +20,7 @@ export type DocumentEntry = {
   name: string;
   en: string;
   zh: string;
-  section: "development" | "calibration" | "topics";
+  section: "usage" | "development" | "calibration" | "topics";
 };
 type Manifest = {
   conventions: string[];
@@ -105,7 +105,9 @@ export function checkLinks(entries: LinkEntry[], root = repoRoot): void {
 
 export function checkParity(root = repoRoot): void {
   for (const doc of manifest.documents) {
-    if (!["development", "calibration", "topics"].includes(doc.section))
+    if (
+      !["usage", "development", "calibration", "topics"].includes(doc.section)
+    )
       throw new Error(`Missing documentation reading group: ${doc.name}`);
   }
   const names = (language: string) =>
@@ -202,4 +204,13 @@ export function siteHref(href: string, sourcePath: string): string {
     .split(sep)
     .join("/");
   return `https://github.com/aitiotekt/DevDuo/blob/main/${repoPath}${suffix}`;
+}
+
+// README and translated pages share assets even though their source directories differ.
+export function siteImageSrc(src: string, sourcePath: string): string {
+  if (!sourcePath || !existsSync(sourcePath)) return src;
+  const target = resolve(dirname(realpathSync(sourcePath)), src);
+  const sharedPath = relative(join(repoRoot, "docs/shared"), target);
+  if (sharedPath.startsWith("..") || !existsSync(target)) return src;
+  return `/shared/${sharedPath.split(sep).join("/")}`;
 }

@@ -74,11 +74,6 @@ try
 }
 finally { Directory.Delete(temporary, true); }
 
-var fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "WebAssets", "Pages", "color-scroll.html"));
-foreach (Match match in Regex.Matches(fixture, "Fixture\\.[A-Za-z]+"))
-    Check(english.ContainsKey(match.Value) && chinese.ContainsKey(match.Value), "Missing fixture key: " + match.Value);
-Check(fixture.Contains("__DEVDUO_LANGUAGE__") && fixture.Contains("__DEVDUO_STRINGS__"), "Fixture bootstrap must receive selected language.");
-
 var scenes = SafariScene.Load();
 var sceneSnapshot = JsonSerializer.Serialize(scenes);
 var profiles = DeviceProfile.Load();

@@ -76,50 +76,6 @@ test("macOS data resides in Resources while BaseDirectory aliases remain readabl
   }
 });
 
-test("macOS signs nested Mach-O files before the bundle, leaving main-executable signing to the bundle", () => {
-  const f = fixture();
-  try {
-    writeFileSync(
-      join(f.payload, "Fixture"),
-      Buffer.from("cffaedfe00000000", "hex"),
-    );
-    writeFileSync(
-      join(f.payload, "libFixture.dylib"),
-      Buffer.from("cffaedfe00000000", "hex"),
-    );
-    relocateMacOSResources(f.app);
-    assert.equal(
-      readlinkSync(
-        join(f.app, "Contents/Resources/libFixture.dylib"),
-      ).replaceAll("\\", "/"),
-      "../MacOS/libFixture.dylib",
-    );
-    const calls: string[][] = [];
-    signMacOSBundle(
-      f.app,
-      "Fixture",
-      "Developer ID Application: Fixture",
-      "entitlements.plist",
-      (command, args) => {
-        assert.equal(command, "codesign");
-        calls.push(args);
-        return "";
-      },
-    );
-    assert.deepEqual(
-      calls.map((args) => args.at(-1)),
-      [join(f.payload, "libFixture.dylib"), f.app],
-    );
-    assert.ok(
-      calls.every(
-        (args) => args.includes("--timestamp") && !args.includes("--deep"),
-      ),
-    );
-  } finally {
-    rmSync(f.directory, { recursive: true, force: true });
-  }
-});
-
 test("native macOS signing seals relocated HTML/config/DevTools resources and preserves links in ZIPs", {
   skip: process.platform !== "darwin",
 }, () => {
@@ -142,11 +98,11 @@ test("native macOS signing seals relocated HTML/config/DevTools resources and pr
       },
     );
     assert.equal(compiled.status, 0, compiled.stderr);
+    command("codesign", ["--remove-signature", library]);
     const before = spawnSync("codesign", ["--force", "--sign", "-", f.app], {
       encoding: "utf8",
     });
     assert.notEqual(before.status, 0);
-    assert.match(before.stderr, /code object is not signed at all/);
     relocateMacOSResources(f.app);
     signMacOSBundle(
       f.app,

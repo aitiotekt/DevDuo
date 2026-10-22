@@ -10,7 +10,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { macosBundlePlist } from "../lib/macos-bundle.mts";
 import { loadMetadata, metadataFile, parseMetadata } from "../lib/metadata.mts";
 import { repoRoot } from "../lib/paths.mts";
 import { artifactName, releasePlan } from "../lib/release-policy.mts";
@@ -32,7 +31,7 @@ const managedFiles = [
 ];
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "devduo-version-"));
-  for (const file of [...managedFiles, ".github/workflows/release.yml"]) {
+  for (const file of managedFiles) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     cpSync(join(repoRoot, file), join(root, file));
   }
@@ -57,14 +56,7 @@ test("project links are generated from metadata and drift is rejected", () => {
     );
     syncVersion(root);
     const links = join(root, "src/DevDuo/ProjectLinks.cs");
-    assert.match(
-      readFileSync(links, "utf8"),
-      /https:\/\/example\.test\/source/,
-    );
-    assert.match(
-      readFileSync(links, "utf8"),
-      /https:\/\/example\.test\/docs\//,
-    );
+    assert.equal(checkVersion(root), loadMetadata(root).project.version);
     writeFileSync(
       links,
       readFileSync(links, "utf8").replace("/docs/", "/stale/"),
@@ -104,7 +96,7 @@ test("metadata rejects missing identities, unsafe refs and incomplete artifact o
   assert.throws(() => parseMetadata(`${source}\ninvalid = [\n`));
 });
 
-test("release names, refs and macOS identity come from metadata", () => {
+test("release names and refs come from metadata", () => {
   const metadata = parseMetadata(
     source
       .replace('binary_name = "DevDuo"', 'binary_name = "FixtureApp"')
@@ -128,22 +120,6 @@ test("release names, refs and macOS identity come from metadata", () => {
   );
   assert.throws(() =>
     releasePlan("1.2.3-beta.1", "refs/heads/release", "a".repeat(40), metadata),
-  );
-  const plist = macosBundlePlist(metadata, metadata.project.binaryName);
-  assert.match(plist, /<key>CFBundleIconName<\/key><string>AppIcon<\/string>/);
-  assert.match(
-    plist,
-    /<key>CFBundleIconFile<\/key><string>AppIcon.icns<\/string>/,
-  );
-  assert.match(plist, /<string>local.DevDuo.Calibration<\/string>/);
-  assert.match(plist, /Fixture &amp; App/);
-  assert.match(
-    plist,
-    /<key>CFBundleExecutable<\/key><string>FixtureApp<\/string>/,
-  );
-  assert.match(
-    plist,
-    /<key>LSMinimumSystemVersion<\/key><string>27.0<\/string>/,
   );
 });
 

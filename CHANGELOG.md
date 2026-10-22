@@ -6,6 +6,10 @@
 
 First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
 
+- Rework both READMEs around installation and first use, with the project icon, release/license/check badges and localized app screenshots. Move detailed controls into a usage guide and link contribution, agent, privacy/security and signing documentation by responsibility.
+
+- Remove tests that mirror workflow/task configuration, toolchain setup or implementation text. Contributor and agent guidance forbids command/configuration snapshots and requires observable behavior tests.
+
 - Place macOS release data and managed assemblies in Resources with relative aliases for .NET probing. Sign native libraries before the outer bundle and its main executable; cover signing and ZIP extraction with native regressions.
 
 - Remove hash and identity gates from the pipelines: the WebKit archive pin (`archive_sha256`), runtime-file hashes at application startup, release asset download/byte comparison, source/tag SHA format and tag-to-commit checks, build-fingerprint comparison, the WebKit workspace dirty-tree check, workflow self-validation in `release-check` and the aggregate Checks/Release/WebKit report jobs. Probe, evidence, reference-library, icon and video tools record hashes without comparing them. GitHub Actions use version tags instead of commit SHAs. Existing WebKit packages are reused, publication only uploads missing assets, and `SHA256SUMS` plus build provenance remain downloader outputs. Lockfile integrity, mise checksums, the build-tree cache identity and stable-release approval are unchanged.

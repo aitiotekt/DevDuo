@@ -1,6 +1,6 @@
 # Development and contributing
 
-This is the day-to-day development guide. Start with the [README](README.md) to run the app; consult the technical pages below only for the area you are changing.
+This is the day-to-day development guide. The [README](README.md) covers installed-app use; this guide owns source setup, commands and contribution conventions. Consult the technical pages below only for the area you are changing. Coding agents must also follow [AGENTS.md](AGENTS.md).
 
 ## Environment and setup
 
@@ -13,6 +13,8 @@ mise install
 mise exec -- just setup
 mise exec -- just doctor
 ```
+
+After the platform setup below, launch from source with `mise exec -- just dev`. The offline welcome page needs no receiver. For measurement work, run `mise exec -- just serve` in a separate terminal before opening **Local calibration page**; see [Calibration](docs/en/003-CALIBRATION-WORKFLOW.md).
 
 Windows requires a one-time native runtime build before `just dev` or `just test-windows`:
 
@@ -108,6 +110,8 @@ Normal setup/check/build uses frozen pnpm, uv and per-target NuGet locks. For in
 `devduo-metadata.toml` owns version, identity, URLs and release policy. Use `just set-version VERSION` or `just bump-version LEVEL`; a direct metadata version edit needs `just sync-version`. Run `just release-check`. Signing, platform/runtime locks, deployment and repository administration are documented in [Releases](docs/en/013-RELEASE.md).
 
 ## Editing and review
+
+Tests must exercise behavior and assert results or failure states. Do not scan source or workflow/task/tool configuration to assert command spelling, fixed job/runner names or preferred wiring, including regex/token equivalents of command snapshots. Run functions, CLIs, protocols or native operations instead. Keep configuration schemas, generated artifacts and external API contracts covered by their observable behavior. Review this requirement directly; do not add a test that scans for prohibited tests.
 
 Update English and Chinese sources together, with language-local links and a bidirectional footer. Root English convention files are canonical; `docs/en` aliases them with relative symlinks, while `docs/zh` holds their translations. `docsite` links the same sources. Update `scripts/docs-manifest.json` when adding or removing a technical page; do not create website copies.
 

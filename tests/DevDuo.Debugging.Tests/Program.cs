@@ -53,11 +53,14 @@ using var targets = JsonDocument.Parse(await http.GetStringAsync(new Uri(root, "
 var target = targets.RootElement[0];
 Check(target.GetProperty("url").GetString() == "https://example.test/", "discovery advertises the instrumented document");
 var websocketUri = new Uri(target.GetProperty("webSocketDebuggerUrl").GetString()!);
-var frontend = await http.GetStringAsync(service.FrontendUri);
-Check(frontend.Contains("entrypoints/chii_app/chii_app.js", StringComparison.Ordinal), "the packaged chii frontend is served offline");
-Check((await http.GetAsync(new Uri(root, "front_end/core/sdk/sdk.js"))).StatusCode == HttpStatusCode.OK, "frontend modules resolve under the token prefix");
-var version = await http.GetStringAsync(new Uri(root, "json/version"));
-Check(version.Contains("JavaScript subset", StringComparison.Ordinal), "version discovery qualifies the CDP scope");
+using var frontend = await http.GetAsync(service.FrontendUri);
+Check(frontend.StatusCode == HttpStatusCode.OK && frontend.Content.Headers.ContentType?.MediaType == "text/html",
+    "the packaged chii frontend is served offline");
+var module = Directory.EnumerateFiles(Path.Combine(assets, "front_end"), "*.js", SearchOption.AllDirectories).First();
+var modulePath = Path.GetRelativePath(assets, module).Replace('\\', '/');
+Check((await http.GetAsync(new Uri(root, modulePath))).StatusCode == HttpStatusCode.OK, "frontend modules resolve under the token prefix");
+using var version = JsonDocument.Parse(await http.GetStringAsync(new Uri(root, "json/version")));
+Check(!string.IsNullOrEmpty(version.RootElement.GetProperty("Protocol-Version").GetString()), "version discovery supplies a protocol version");
 
 using (var request = new HttpRequestMessage(HttpMethod.Get, new Uri(root, "json/list")))
 {
@@ -140,8 +143,6 @@ Check(errors.Count == 0, "normal shutdown emits no errors");
 await service.StartAsync();
 Check(service.BaseUri!.AbsolutePath != root.AbsolutePath, "restarting rotates the access token");
 await service.StopAsync();
-var injection = CdpDebuggingService.CreateInjectionScript(assets);
-Check(injection.Contains("chobitsu v1.8.6", StringComparison.Ordinal) && !injection.Contains("/* CHOBITSU */", StringComparison.Ordinal), "injection embeds the pinned offline backend");
 Console.WriteLine("All CDP transport checks passed. Native injection and actual chobitsu domain support require platform acceptance.");
 
 static void Check(bool condition, string name)

@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadMetadata } from "../lib/metadata.mts";
-import { repoRoot } from "../lib/paths.mts";
 import { assemble, digest, windowsRuntime } from "../lib/release-artifacts.mts";
 import {
   artifactName,
@@ -100,21 +99,4 @@ test("assembly copies platform archives and writes the published manifest and ch
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("workflow keeps credentials behind tested source and stable approval", () => {
-  const workflow = readFileSync(
-    join(repoRoot, ".github/workflows/release.yml"),
-    "utf8",
-  );
-  assert.match(workflow, /uses: \.\/\.github\/workflows\/checks.yml/);
-  assert.match(workflow, /environment: stable-release/);
-  assert.match(workflow, /environment: release-signing/);
-  assert.match(workflow, /needs\.stable-approval\.result == 'success'/);
-  assert.match(workflow, /needs: \[macos, windows\]/);
-  assert.match(workflow, /node scripts\/release.mts publish/);
-  assert.doesNotMatch(
-    workflow,
-    /--clobber|pull_request_target|secrets: inherit/,
-  );
 });

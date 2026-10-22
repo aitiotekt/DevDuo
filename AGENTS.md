@@ -45,6 +45,8 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 
 ## Documentation and publication
 
+- Keep the English and Chinese READMEs focused on choosing, installing and using the app. Link to the usage guide for detailed controls, CONTRIBUTING for source workflows, SECURITY/PRIVACY for policy, the release guide for certificates/signing, and this file for agent rules. Maintain each topic in its owning document instead of repeating it on the homepage.
+
 - `devduo-metadata.toml` owns release versions, application identity, URLs and artifact policy. Use `just set-version VERSION` or `just bump-version LEVEL`; `just sync-version` propagates a direct metadata version edit. Keep `just release-check` passing and update both changelogs separately.
 
 - Canonical English convention documents live at the root without a language suffix. `docs/en` contains relative symlink aliases to those documents and numbered technical sources. `docs/zh` contains matching Chinese sources. Keep filenames, coverage, navigation and `scripts/docs-manifest.json` synchronized.
@@ -57,6 +59,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 
 ## Verification and handoff
 
+- Test observable behavior, results and failure states. Do not add tests that scan implementation source, workflow/just/mise files, or parsed configuration merely to assert command text, task/job names, runner/action versions, preferred wiring or other current implementation choices. Do not replace exact-string checks with regexes, token scans or configuration snapshots. Execute the relevant function, CLI, protocol or native operation and assert its effects instead. Subprocess mocks may model external API contracts and meaningful side effects; do not snapshot whole commands or incidental call sequences. Enforce this rule through review, not another source-scanning test.
 - Run checks appropriate to the change. The standard integration path is `mise exec -- just verify`; use `just build-windows` for shared/native changes, `just test-core` for shared state/measured invariants, `just test-localization` for catalogs/language behavior and `just test-debugging` for CDP transport. Native Windows scenarios/support/evidence belong in `tests/DevDuo.Windows.Tests/Checks`, `Harness` and `Evidence`; their compilation does not execute native acceptance. Keep meaningful tests for boundaries, formats and failure states.
 - Use `just format`, then inspect the diff. Do not broaden or repeat expensive testing once relevant checks pass unless a new change or unresolved concern requires it.
 - For native UI work, verify the presented window and interactions as well as builds. WK snapshots may omit visible continuation under obscured insets. Record actual viewport and native frames separately from requested settings.

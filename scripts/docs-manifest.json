@@ -9,6 +9,12 @@
   ],
   "documents": [
     {
+      "name": "004-USAGE.md",
+      "en": "Using DevDuo",
+      "zh": "使用 DevDuo",
+      "section": "usage"
+    },
+    {
       "name": "001-ARCHITECTURE.md",
       "en": "Architecture and containers",
       "zh": "架构与容器",
@@ -194,6 +200,16 @@
     {
       "link": "docsite/zh/docs",
       "target": "docs/zh",
+      "type": "dir"
+    },
+    {
+      "link": "docsite/shared/app-preview",
+      "target": "docs/shared/app-preview",
+      "type": "dir"
+    },
+    {
+      "link": "docsite/zh/shared/app-preview",
+      "target": "docs/shared/app-preview",
       "type": "dir"
     }
   ]

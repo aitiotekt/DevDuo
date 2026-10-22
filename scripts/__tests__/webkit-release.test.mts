@@ -327,7 +327,6 @@ test("publication resumes missing engine assets from the preserved package", () 
               state: "uploaded",
             });
         } else if (args[1] === "edit") {
-          assert.ok(args.includes("--latest=false"));
           release.draft = false;
           release.tag_name = names.tag;
         } else assert.fail(`Unexpected GitHub operation: ${args[1]}`);

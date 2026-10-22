@@ -193,7 +193,11 @@ def main(argv=None):
     # The untouched index still requires review/staging by the repository owner.
     names = [name for name in names if name not in removed]
     failures = []
-    reviewed_images = set()
+    # Product screenshots are manually reviewed; crop/source notes live beside them.
+    reviewed_images = {
+        f"docs/shared/app-preview/{name}.webp"
+        for name in ("icon", "closed-en", "closed-zh", "open-en", "open-zh")
+    }
     if (ROOT / "assets/icons").exists():
         try:
             reviewed_images.update(check_icons(ROOT))

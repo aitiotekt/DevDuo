@@ -1,6 +1,6 @@
 # 开发与贡献指南
 
-这是日常开发入口。先按 [README](README.md) 运行应用，再按修改范围查阅专题，无需通读全部技术文档。
+这是日常开发入口。[README](README.md)负责安装版的使用，本指南负责源码初始化、命令和贡献规范。按修改范围查阅专题即可，无需通读全部技术文档。编码代理还须遵守 [AGENTS.md](../../AGENTS.md)。
 
 ## 环境与初始化
 
@@ -13,6 +13,8 @@ mise install
 mise exec -- just setup
 mise exec -- just doctor
 ```
+
+完成下述平台设置后，用 `mise exec -- just dev` 从源码启动。离线欢迎页无需接收服务；进行测量时，先在独立终端运行 `mise exec -- just serve`，再打开**本地标定页**，详见[标定指南](003-CALIBRATION-WORKFLOW.md)。
 
 Windows 首次执行 `just dev` 或 `just test-windows` 前需构建原生运行时：
 
@@ -110,6 +112,8 @@ Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；�
 `devduo-metadata.toml` 统一管理版本、标识、URL 和发布策略。使用 `just set-version VERSION` 或 `just bump-version LEVEL`；直接修改元数据版本后运行 `just sync-version`，并通过 `just release-check`。签名、平台/runtime 锁、部署和仓库管理见[发布指南](013-RELEASE.md)。
 
 ## 编辑与评审
+
+测试应执行行为并验证结果或失败状态。禁止扫描源码或工作流、任务、工具配置，断言命令写法、固定 job/runner 名称或偏好的接线方式；正则、token 匹配等命令快照变体也不允许。应运行函数、CLI、协议或原生操作来验证。配置 schema、生成产物和外部 API 契约通过可观察行为覆盖。此要求由评审落实，不再新增扫描测试来检查测试。
 
 同步维护英中源文件、语言内链接和双向页脚。根目录英文规范文件是主源，`docs/en` 用相对符号链接引用，`docs/zh` 保存翻译；`docsite` 链接同一批源文件。增删技术页时同步 `scripts/docs-manifest.json`，不维护网站内容副本。
 

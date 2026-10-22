@@ -131,18 +131,13 @@ test("publication creates a tag and draft, uploads assets, then publishes", () =
   const f = fixture();
   try {
     assert.equal(publishRelease(f.options, f.execute), "published");
-    const calls = f.state.calls.map((args) => args.join(" "));
-    const edit = calls.findIndex((line) => line.includes("release edit"));
-    assert.ok(
-      calls.findIndex((line) => line.includes("git/refs")) <
-        calls.findIndex((line) => line.includes("release create")),
-    );
-    assert.ok(
-      calls.findIndex((line) => line.includes("release upload")) < edit,
-    );
-    assert.ok(calls.every((line) => !line.includes("release download")));
-    assert.match(calls[edit], /--latest=false/);
-    assert.ok(calls.every((line) => !line.includes("--clobber")));
+    assert.equal(f.state.release?.draft, false);
+    assert.equal(f.state.commit, sha);
+    for (const name of f.options.files)
+      assert.deepEqual(
+        f.state.remote.get(name),
+        readFileSync(join(f.directory, name)),
+      );
     f.state.calls.length = 0;
     assert.equal(publishRelease(f.options, f.execute), "existing");
     assert.ok(
@@ -165,10 +160,11 @@ test("an interrupted draft upload resumes only missing assets", () => {
     f.state.calls.length = 0;
     delete f.state.fail;
     assert.equal(publishRelease(f.options, f.execute), "published");
-    const upload = f.state.calls.find((args) => args[2] === "upload");
-    assert.ok(upload);
-    assert.ok(upload.includes(join(f.directory, "SHA256SUMS")));
-    assert.ok(!upload.includes(join(f.directory, "app.zip")));
+    assert.equal(f.state.remote.size, f.options.files.length);
+    assert.deepEqual(
+      f.state.remote.get("SHA256SUMS"),
+      readFileSync(join(f.directory, "SHA256SUMS")),
+    );
   } finally {
     f.cleanup();
   }
@@ -185,15 +181,12 @@ test("pending-tag drafts are found after creation and resumed without duplicate 
     delete f.state.fail;
     f.state.calls.length = 0;
     assert.equal(publishRelease(f.options, f.execute), "published");
-    assert.ok(
-      f.state.calls.some(
-        (args) => args[2] === "repos/fixture/repo/releases/17",
-      ),
-    );
     assert.ok(f.state.calls.every((args) => args[2] !== "create"));
-    const upload = f.state.calls.find((args) => args[2] === "upload");
-    assert.ok(upload?.includes(join(f.directory, "SHA256SUMS")));
-    assert.ok(!upload?.includes(join(f.directory, "app.zip")));
+    assert.equal(f.state.remote.size, f.options.files.length);
+    assert.deepEqual(
+      f.state.remote.get("SHA256SUMS"),
+      readFileSync(join(f.directory, "SHA256SUMS")),
+    );
     assert.equal(f.state.release?.id, 17);
     assert.equal(f.state.release?.tag_name, tag);
   } finally {
@@ -282,9 +275,11 @@ test("existing releases receive missing assets without byte, tag or channel comp
     f.state.release.prerelease = false;
     writeFileSync(join(f.directory, "app.zip"), "different local bytes");
     assert.equal(publishRelease(f.options, f.execute), "existing");
-    const upload = f.state.calls.find((args) => args[2] === "upload");
-    assert.ok(upload?.includes(join(f.directory, "SHA256SUMS")));
-    assert.ok(!upload?.includes(join(f.directory, "app.zip")));
+    assert.equal(f.state.remote.size, f.options.files.length);
+    assert.deepEqual(
+      f.state.remote.get("SHA256SUMS"),
+      readFileSync(join(f.directory, "SHA256SUMS")),
+    );
     assert.ok(
       f.state.calls.every(
         (args) => !["download", "create", "edit", "POST"].includes(args[2]),
