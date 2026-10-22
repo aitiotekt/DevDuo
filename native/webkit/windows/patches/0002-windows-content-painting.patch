@@ -1,0 +1,384 @@
+diff --git a/Source/WTF/wtf/win/RunLoopWin.cpp b/Source/WTF/wtf/win/RunLoopWin.cpp
+index b29ab03..517aa66 100644
+--- a/Source/WTF/wtf/win/RunLoopWin.cpp
++++ b/Source/WTF/wtf/win/RunLoopWin.cpp
+@@ -27,12 +27,20 @@
+ #include <wtf/RunLoop.h>
+ 
+ #include <wtf/WindowsExtras.h>
++#include <algorithm>
++#include <cmath>
+ 
+ namespace WTF {
+ 
+ static const UINT PerformWorkMessage = WM_USER + 1;
+ static const UINT SetTimerMessage = WM_USER + 2;
+ static const UINT FireTimerMessage = WM_USER + 3;
++static constexpr UINT_PTR nativeDeadlineTimerID = 1;
++static constexpr int nativeDeadlineStateOffset = sizeof(RunLoop*);
++struct NativeDeadlineState {
++    MonotonicTime deadline = MonotonicTime::infinity();
++    bool armed = false;
++};
+ static const LPCWSTR kRunLoopMessageWindowClassName = L"RunLoopMessageWindow";
+ 
+ LRESULT CALLBACK RunLoop::RunLoopWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+@@ -45,6 +53,7 @@ LRESULT CALLBACK RunLoop::RunLoopWndProc(HWND hWnd, UINT message, WPARAM wParam,
+ 
+         // Associate the RunLoop with the window.
+         setWindowPointer(hWnd, 0, createStruct->lpCreateParams);
++        setWindowPointer(hWnd, nativeDeadlineStateOffset, new NativeDeadlineState);
+         return 0;
+     }
+ 
+@@ -53,12 +62,55 @@ LRESULT CALLBACK RunLoop::RunLoopWndProc(HWND hWnd, UINT message, WPARAM wParam,
+ 
+ LRESULT RunLoop::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+ {
++    auto* nativeTimer = static_cast<NativeDeadlineState*>(getWindowPointer(hWnd, nativeDeadlineStateOffset));
++    auto armNativeDeadline = [&] {
++        Locker locker { m_loopLock };
++        auto deadline = m_timers.isEmpty() ? MonotonicTime::infinity() : m_timers.last()->m_nextFireDate;
++        // Repeated work/callbacks must not push the same native deadline back.
++        if (!m_timers.isEmpty() && nativeTimer->armed && nativeTimer->deadline == deadline)
++            return;
++        ::KillTimer(hWnd, nativeDeadlineTimerID);
++        nativeTimer->armed = false;
++        nativeTimer->deadline = MonotonicTime::infinity();
++        if (deadline == MonotonicTime::infinity())
++            return;
++        // An embedder may dispatch Windows messages without calling run/cycle.
++        // Wake once for the nearest deadline; ordinary timer callbacks still
++        // use FireTimerMessage and the existing cancellation/lifetime checks.
++        auto delay = std::ceil(std::max(0_s, deadline - MonotonicTime::now()).milliseconds());
++        auto milliseconds = static_cast<UINT>(std::clamp(delay, 1., static_cast<double>(USER_TIMER_MAXIMUM)));
++        RELEASE_ASSERT(::SetTimer(hWnd, nativeDeadlineTimerID, milliseconds, nullptr));
++        nativeTimer->armed = true;
++        nativeTimer->deadline = deadline;
++    };
+     switch (message) {
+     case PerformWorkMessage:
+         performWork();
+         return 0;
+     case SetTimerMessage:
++        fireTimers();
++        armNativeDeadline();
++        return 0;
++    case WM_TIMER:
++        if (wParam != nativeDeadlineTimerID)
++            break;
++        // KillTimer cannot retract a WM_TIMER already queued for an older arm.
++        if (nativeTimer->armed && MonotonicTime::now() < nativeTimer->deadline)
++            return 0;
++        // Win32 timers repeat by default. Consume this wake before posting due
++        // callbacks, then arm only the next pending monotonic deadline.
++        ::KillTimer(hWnd, nativeDeadlineTimerID);
++        nativeTimer->armed = false;
++        nativeTimer->deadline = MonotonicTime::infinity();
++        fireTimers();
++        armNativeDeadline();
+         return 0;
++    case WM_NCDESTROY:
++        ::KillTimer(hWnd, nativeDeadlineTimerID);
++        delete nativeTimer;
++        setWindowPointer(hWnd, nativeDeadlineStateOffset, nullptr);
++        setWindowPointer(hWnd, 0, nullptr);
++        break;
+     case FireTimerMessage:
+         RunLoop::TimerBase* timer = nullptr;
+         {
+@@ -68,6 +120,7 @@ LRESULT RunLoop::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+         }
+         if (timer)
+             timer->timerFired();
++        armNativeDeadline();
+         return 0;
+     }
+ 
+@@ -152,7 +205,7 @@ void RunLoop::registerRunLoopMessageWindowClass()
+ {
+     WNDCLASS windowClass = { };
+     windowClass.lpfnWndProc = RunLoop::RunLoopWndProc;
+-    windowClass.cbWndExtra = sizeof(RunLoop*);
++    windowClass.cbWndExtra = sizeof(RunLoop*) + sizeof(NativeDeadlineState*);
+     windowClass.lpszClassName = kRunLoopMessageWindowClassName;
+     bool result = ::RegisterClass(&windowClass);
+     RELEASE_ASSERT(result);
+@@ -272,6 +325,7 @@ void RunLoop::TimerBase::stop()
+     // (Starting a timer cross-thread is safe and supported -- that is how dispatch()/dispatchAfter()
+     // schedule work onto another run loop.)
+     assertIsCurrent(m_runLoop);
++    bool wasNextTimer = !m_runLoop->m_timers.isEmpty() && m_runLoop->m_timers.last() == this;
+     m_isActive = false;
+     m_nextFireDate = MonotonicTime::infinity();
+ 
+@@ -281,6 +335,8 @@ void RunLoop::TimerBase::stop()
+     m_runLoop->m_timersToFire.removeAllMatching([&] (TimerBase* t) -> bool {
+         return this == t;
+     });
++    if (wasNextTimer)
++        ::PostMessage(m_runLoop->m_runLoopMessageWindow, SetTimerMessage, 0, 0);
+ }
+ 
+ bool RunLoop::TimerBase::isActiveWithLock() const
+diff --git a/Source/WebCore/platform/ScrollView.cpp b/Source/WebCore/platform/ScrollView.cpp
+index a2c87b5..1f611f3 100644
+--- a/Source/WebCore/platform/ScrollView.cpp
++++ b/Source/WebCore/platform/ScrollView.cpp
+@@ -920,6 +920,15 @@ void ScrollView::scrollContents(const IntSize& scrollDelta)
+     // with the clip rect every time to keep it smooth.
+     IntRect clipRect = windowClipRect();
+     IntRect scrollViewRect = rectToCopyOnScroll();    
++#if PLATFORM(WIN)
++    // The retained backing store also contains live content under chrome.
++    // Scroll its complete drawing domain, not only the layout viewport.
++    auto insets = obscuredContentInsets();
++    clipRect.move(-static_cast<int>(insets.left()), -static_cast<int>(insets.top()));
++    clipRect.expand(static_cast<int>(insets.left() + insets.right()), static_cast<int>(insets.top() + insets.bottom()));
++    if (insets.top() || insets.right() || insets.bottom() || insets.left())
++        scrollViewRect = convertToRootView(IntRect(0, 0, width(), height()));
++#endif
+     IntRect updateRect = clipRect;
+     updateRect.intersect(scrollViewRect);
+ 
+@@ -945,6 +954,22 @@ void ScrollView::scrollContents(const IntSize& scrollDelta)
+         scrollContentsSlowPath(updateRect);
+     }
+ 
++#if PLATFORM(WIN)
++    if (insets.top() || insets.right() || insets.bottom() || insets.left()) {
++        // Software overlay scrollbars lie inside the expanded copy domain.
++        // Repaint their original and copied positions instead of leaving tracks.
++        for (auto* bar : { horizontalScrollbar(), verticalScrollbar() }) {
++            if (!bar || (bar->orientation() == ScrollbarOrientation::Horizontal ? hasLayerForHorizontalScrollbar() : hasLayerForVerticalScrollbar()))
++                continue;
++            auto dirty = convertToRootView(bar->frameRect());
++            auto moved = dirty;
++            moved.move(-scrollDelta);
++            dirty.unite(moved);
++            window->invalidateContentsAndRootView(dirty);
++        }
++    }
++#endif
++
+     // Invalidate the overhang areas if they are visible.
+     updateOverhangAreas();
+ 
+@@ -1464,11 +1489,24 @@ void ScrollView::positionScrollbarLayers()
+     positionScrollCornerLayer(protect(layerForScrollCorner()), scrollCornerRect());
+ }
+ 
++static IntRect contentPaintingRect(const ScrollView& view)
++{
++    auto rect = view.visibleContentRect(ScrollableArea::LegacyIOSDocumentVisibleRect);
++#if PLATFORM(WIN)
++    // Painting can extend under native chrome without enlarging the layout
++    // viewport. Keep hit testing, fixed positioning and scrolling unchanged.
++    auto insets = view.obscuredContentInsets();
++    rect.move(-static_cast<int>(insets.left()), -static_cast<int>(insets.top()));
++    rect.expand(static_cast<int>(insets.left() + insets.right()), static_cast<int>(insets.top() + insets.bottom()));
++#endif
++    return rect;
++}
++
+ void ScrollView::repaintContentRectangle(const IntRect& rect)
+ {
+     IntRect paintRect = rect;
+     if (!paintsEntireContents())
+-        paintRect.intersect(visibleContentRect(LegacyIOSDocumentVisibleRect));
++        paintRect.intersect(contentPaintingRect(*this));
+     if (paintRect.isEmpty())
+         return;
+ 
+@@ -1562,24 +1600,30 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
+     if (context.paintingDisabled() && !context.performingPaintInvalidation() && !regionContext)
+         return;
+ 
++    IntPoint contentLocation = locationOfContents();
++#if PLATFORM(WIN)
++    // Match document-to-window conversion in the non-composited painter.
++    auto insets = obscuredContentInsets();
++    contentLocation.move(static_cast<int>(insets.left()), static_cast<int>(insets.top()));
++#endif
+     IntRect documentDirtyRect = rect;
+     if (!paintsEntireContents()) {
+-        IntRect visibleAreaWithoutScrollbars(locationOfContents(), visibleContentRect(LegacyIOSDocumentVisibleRect).size());
++        auto visibleAreaWithoutScrollbars = contentPaintingRect(*this);
++        visibleAreaWithoutScrollbars.move(contentLocation - scrollPosition());
+         documentDirtyRect.intersect(visibleAreaWithoutScrollbars);
+     }
+ 
+     if (!documentDirtyRect.isEmpty()) {
+         GraphicsContextStateSaver stateSaver(context);
+ 
+-        IntPoint locationOfContents = this->locationOfContents();
+-        context.translate(locationOfContents.x(), locationOfContents.y());
+-        documentDirtyRect.moveBy(-locationOfContents);
++        context.translate(contentLocation.x(), contentLocation.y());
++        documentDirtyRect.moveBy(-contentLocation);
+ 
+         if (!paintsEntireContents()) {
+             context.translate(-scrollX(), -scrollY());
+             documentDirtyRect.moveBy(scrollPosition());
+ 
+-            context.clip(visibleContentRect(LegacyIOSDocumentVisibleRect));
++            context.clip(contentPaintingRect(*this));
+         }
+ 
+         paintContents(context, documentDirtyRect, securityOriginPaintPolicy, regionContext);
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+index 0dd11ad..55fb96c 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -28,6 +28,7 @@
+ #include "WKView.h"
+ 
+ #include "APIPageConfiguration.h"
++#include "DrawingAreaProxyWC.h"
+ #include "ImageOptions.h"
+ #include "WKAPICast.h"
+ #include "WebPageProxy.h"
+@@ -74,6 +75,25 @@ void WKViewSetUsesOffscreenRendering(WKViewRef viewRef, bool enabled)
+     toImpl(viewRef)->setUsesOffscreenRendering(enabled);
+ }
+ 
++bool WKViewGetHostRenderingStatistics(WKViewRef viewRef, unsigned long long* updates,
++    unsigned long long* acceleratedTransitions, unsigned long long* staleUpdates)
++{
++#if USE(GRAPHICS_LAYER_WC)
++    if (!viewRef || !updates || !acceleratedTransitions || !staleUpdates)
++        return false;
++    auto* view = toImpl(viewRef);
++    if (!view->page() || view->page()->isClosed() || !view->page()->drawingArea())
++        return false;
++    auto* area = static_cast<DrawingAreaProxyWC*>(view->page()->drawingArea());
++    *updates = area->hostUpdateCount();
++    *acceleratedTransitions = area->hostAcceleratedTransitionCount();
++    *staleUpdates = area->hostStaleUpdateCount();
++    return true;
++#else
++    return false;
++#endif
++}
++
+ void WKViewSetScrollOffsetOnNextResize(WKViewRef viewRef, WKSize scrollOffset)
+ {
+     toImpl(viewRef)->setScrollOffsetOnNextResize(toIntSize(scrollOffset));
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+index d85786e..af5618c 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -68,6 +68,10 @@ WK_EXPORT unsigned WKViewGetContentColorAPIVersion(void);
+ WK_EXPORT void WKViewRequestContentEdgeColor(WKViewRef view, int x, int y, int width, int height,
+     unsigned long long requestID, const void* context, WKContentColorCallback callback);
+ 
++// Read-only UI-thread counters; no paint, capture or IPC is requested.
++WK_EXPORT bool WKViewGetHostRenderingStatistics(WKViewRef view, unsigned long long* updates,
++    unsigned long long* acceleratedTransitions, unsigned long long* staleUpdates);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+index 2a5f7eb..9d16eb6 100644
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -77,13 +77,19 @@ void DrawingAreaProxyWC::sizeDidChange()
+ 
+ void DrawingAreaProxyWC::update(uint64_t backingStoreStateID, UpdateInfo&& updateInfo)
+ {
+-    if (backingStoreStateID == m_currentBackingStoreStateID)
++    if (backingStoreStateID == m_currentBackingStoreStateID) {
++        ++m_hostUpdateCount;
+         incorporateUpdate(WTF::move(updateInfo));
++    } else
++        ++m_hostStaleUpdateCount;
+     send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
+ }
+ 
+ void DrawingAreaProxyWC::enterAcceleratedCompositingMode(uint64_t backingStoreStateID, const LayerTreeContext&)
+ {
++    if (backingStoreStateID != m_currentBackingStoreStateID)
++        return;
++    ++m_hostAcceleratedTransitionCount;
+     discardBackingStore();
+ }
+ 
+diff --git a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+index 5ede972..26eff08 100644
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -49,6 +49,9 @@ public:
+     void deref() const final { RefCounted::deref(); }
+ 
+     void paint(PlatformPaintContextPtr, const WebCore::IntRect&, WebCore::Region& unpaintedRegion);
++    uint64_t hostUpdateCount() const { return m_hostUpdateCount; }
++    uint64_t hostAcceleratedTransitionCount() const { return m_hostAcceleratedTransitionCount; }
++    uint64_t hostStaleUpdateCount() const { return m_hostStaleUpdateCount; }
+ 
+ private:
+     DrawingAreaProxyWC(WebPageProxy&, WebProcessProxy&);
+@@ -66,6 +69,9 @@ private:
+     void discardBackingStore();
+ 
+     uint64_t m_currentBackingStoreStateID { 0 };
++    uint64_t m_hostUpdateCount { 0 };
++    uint64_t m_hostAcceleratedTransitionCount { 0 };
++    uint64_t m_hostStaleUpdateCount { 0 };
+     std::optional<BackingStore> m_backingStore;
+ };
+ 
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.cpp b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+index 99a822d..40a66d0 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -4889,6 +4889,14 @@ void WebPage::setObscuredContentInsets(const FloatBoxExtent& obscuredContentInse
+ 
+     page->setObscuredContentInsets(obscuredContentInsets);
+ 
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    // Insets move the document's paint origin inside the retained scene even
++    // when the outer view size is unchanged. Repaint that scene and discard any
++    // queued scroll-copy delta; invalidating the HWND alone only reuses old pixels.
++    if (RefPtr drawingArea = this->drawingArea())
++        drawingArea->setNeedsDisplay();
++#endif
++
+ #if ENABLE(PDF_PLUGIN)
+     for (Ref pluginView : m_pluginViews)
+         pluginView->obscuredContentInsetsDidChange();
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+index d3501bc..eac8475 100644
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -303,16 +303,27 @@ void DrawingAreaWC::sendUpdateAC()
+ 
+         auto fence = m_webPage->ensureRemoteRenderingBackendProxy().flushImageBuffers();
+ 
+-        m_commitQueue->dispatch([this, weakThis = WeakPtr(*this), stateID = m_backingStoreStateID, updateInfo = std::exchange(m_updateInfo, { }), fence = WTF::move(fence), willCallDisplayDidRefresh]() mutable {
++        m_commitQueue->dispatch([this, weakThis = WeakPtr(*this), stateID = m_backingStoreStateID, logicalSize = size, backingScale = m_webPage->intrinsicDeviceScaleFactor(), updateInfo = std::exchange(m_updateInfo, { }), fence = WTF::move(fence), willCallDisplayDidRefresh]() mutable {
+             fence();
+-            RunLoop::mainSingleton().dispatch([this, weakThis = WTF::move(weakThis), stateID, updateInfo = WTF::move(updateInfo), willCallDisplayDidRefresh]() mutable {
++            RunLoop::mainSingleton().dispatch([this, weakThis = WTF::move(weakThis), stateID, logicalSize, backingScale, updateInfo = WTF::move(updateInfo), willCallDisplayDidRefresh]() mutable {
+                 if (!weakThis)
+                     return;
+-                m_remoteWCLayerTreeHostProxy->update(WTF::move(updateInfo), [this, weakThis = WTF::move(weakThis), stateID, willCallDisplayDidRefresh](std::optional<UpdateInfo> updateInfo) {
++                m_remoteWCLayerTreeHostProxy->update(WTF::move(updateInfo), [this, weakThis = WTF::move(weakThis), stateID, logicalSize, backingScale, willCallDisplayDidRefresh](std::optional<UpdateInfo> updateInfo) {
+                     if (!weakThis)
+                         return;
+                     if (updateInfo && stateID == m_backingStoreStateID) {
+                         ASSERT(willCallDisplayDidRefresh);
++#if PLATFORM(WIN)
++                        // WCScene reads a device-pixel framebuffer. BackingStore
++                        // and native damage consume logical view coordinates,
++                        // just like sendUpdateNonAC. Keep the submitted geometry:
++                        // a later resize must not reinterpret this bitmap.
++                        updateInfo->viewSize = logicalSize;
++                        updateInfo->deviceScaleFactor = backingScale;
++                        updateInfo->updateRectBounds = IntRect { { }, logicalSize };
++                        updateInfo->updateRects.clear();
++                        updateInfo->updateRects.append(updateInfo->updateRectBounds);
++#endif
+                         send(Messages::DrawingAreaProxy::Update(m_backingStoreStateID, WTF::move(*updateInfo)));
+                         return;
+                     }

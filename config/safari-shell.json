@@ -3,6 +3,17 @@
   "tintAlpha": 0.32,
   "glassStrength": 0.35,
   "shadowOpacity": 0.16,
+  "windowsMaterial": {
+    "blur": 14,
+    "saturation": 1.8,
+    "brightness": 1.05,
+    "contrast": 1.02,
+    "topHighlight": 0.35,
+    "edgeHighlight": 0.30,
+    "sheen": 0.08,
+    "shadowBlur": 10,
+    "shadowOffset": 3
+  },
   "cornerRadius": 24,
   "collapseThresholdCssPx": 24,
   "closedSideWidth": 84,

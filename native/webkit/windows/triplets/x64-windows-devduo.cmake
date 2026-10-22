@@ -1,0 +1,5 @@
+if(NOT DEFINED ENV{DEVDUO_WEBKIT_SOURCE})
+    message(FATAL_ERROR "DEVDUO_WEBKIT_SOURCE must identify the pinned source cache")
+endif()
+include("$ENV{DEVDUO_WEBKIT_SOURCE}/WebKitLibraries/triplets/x64-windows-webkit.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../MiseTools.cmake")

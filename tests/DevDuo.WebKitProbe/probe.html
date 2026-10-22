@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevDuo native WebKit inset probe</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #18b9a8; }
+  html { scrollbar-width: none; }
+  body { font: 14px/20px sans-serif; }
+  .row { height: 20px; border-bottom: 1px solid #0004; }
+  .row:nth-child(odd) { background: #89dc64; }
+  .row:nth-child(even) { background: #08af9d; }
+  #fixed { position: fixed; bottom: 0; left: 0; width: 180px; height: 20px; background: #ff00ff; }
+  #live { position: absolute; top: 610px; left: 4px; width: 70px; height: 18px; color: #000; }
+  .unit { position: absolute; top: 0; left: 0; width: 0; pointer-events: none; }
+  #controls { position: fixed; top: 0; right: 0; z-index: 10; width: 160px; background: #fffd; font: 11px sans-serif; }
+  #controls button { font: inherit; margin: 2px; }
+</style>
+<div id="flow"></div>
+<div id="fixed">FIXED BOTTOM</div>
+<div id="live"></div>
+<nav id="controls">
+  <button data-footer="full">Full footer</button><button data-footer="narrow">Narrow</button><button data-footer="none">No fixed</button>
+  <button data-scroll="end">End</button><button data-scroll="1770">Near end</button><button data-scroll="0">Top</button>
+  <button data-rows="10">Short</button><button data-rows="120">2400</button><button data-rows="160">3200</button>
+</nav>
+<script>
+  const documentId = crypto.randomUUID();
+  const resizeEvents = [];
+  const clicks = [];
+  let animationFrames = 0;
+  window.probeSetRows = count => {
+    const flow = document.getElementById('flow');
+    flow.replaceChildren();
+    document.getElementById('live').hidden = count < 34;
+    for (let index = 0; index < count; index++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.textContent = `ROW ${index * 20} .. ${(index + 1) * 20}`;
+    row.addEventListener('click', () => clicks.push(index));
+      flow.append(row);
+    }
+  };
+  window.probeSetFooter = mode => {
+    const fixed = document.getElementById('fixed');
+    fixed.hidden = mode === 'none';
+    fixed.style.width = mode === 'full' ? '100%' : '180px';
+    fixed.style.backgroundColor = mode === 'full' ? '#791ac2' : '#ff00ff';
+  };
+  probeSetRows(120);
+  document.getElementById('controls').addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.dataset.footer) probeSetFooter(button.dataset.footer);
+    if (button.dataset.rows) probeSetRows(Number(button.dataset.rows));
+    if (button.dataset.scroll) scrollTo(0, button.dataset.scroll === 'end'
+      ? document.documentElement.scrollHeight : Number(button.dataset.scroll));
+  });
+  for (const unit of ['vh', 'svh', 'lvh', 'dvh']) {
+    const element = document.createElement('div');
+    element.className = 'unit';
+    element.id = unit;
+    element.style.height = `100${unit}`;
+    document.body.append(element);
+  }
+  addEventListener('resize', () => resizeEvents.push({ innerWidth, innerHeight, time: performance.now() }));
+  function tick() {
+    const live = document.getElementById('live');
+    live.textContent = `LIVE ${++animationFrames}`;
+    live.style.backgroundColor = `hsl(${animationFrames * 3 % 360} 100% 65%)`;
+    requestAnimationFrame(tick);
+  }
+  tick();
+  window.probeMetrics = () => ({
+    documentId, innerWidth, innerHeight,
+    clientWidth: document.documentElement.clientWidth,
+    clientHeight: document.documentElement.clientHeight,
+    visualWidth: visualViewport.width, visualHeight: visualViewport.height,
+    visualScale: visualViewport.scale, dpr: devicePixelRatio,
+    fixed: document.getElementById('fixed').getBoundingClientRect().toJSON(),
+    fixedVisible: !document.getElementById('fixed').hidden,
+    scrollX, scrollY, documentHeight: document.documentElement.scrollHeight,
+    animationFrames, clicks, resizeEvents,
+    units: Object.fromEntries(['vh', 'svh', 'lvh', 'dvh'].map(unit =>
+      [unit, document.getElementById(unit).getBoundingClientRect().height])),
+    screen: { width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight },
+    userAgent: navigator.userAgent,
+  });
+</script>

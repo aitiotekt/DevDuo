@@ -15,7 +15,7 @@ Browser records use `schemaVersion: 1`. The receiver writes individual `UUID.jso
 | `environment` | Actual UA, platform, URL, preferences, locale and timezone |
 | `unknown` | Hardware millimeters/radii and Liquid Glass parameters stay null without an independent authoritative source |
 
-The calibration page draws no Safari chrome. Desktop records retain `macOS-WKWebView` / `Windows-WebView2` and `safari-shell-approx` / `app-webview` labels. Their screen APIs, DPR and safe areas remain native; they must not be labeled actual iPhone Safari. Desktop-only `window.devduoContainerTelemetry` and **Save state** record requested scene, actual viewport/native frame, scroll/chrome state, separate optical/hit bounds, tint source and material parameters. DOM observations and native snapshots are asynchronous, not atomic. Rendering/output behavior is described in [Architecture](001-ARCHITECTURE.md).
+The calibration page draws no Safari chrome. Desktop records retain `macOS-WKWebView` or `Windows-WebKit` (older records retain their original engine labels), and `safari-shell-approx` / `app-webview` labels. Their screen APIs, DPR and safe areas remain native; they must not be labeled actual iPhone Safari. Desktop-only `window.devduoContainerTelemetry` and **Save state** record requested scene, actual viewport/native frame, scroll/chrome state, separate optical/hit bounds, tint source and material parameters. DOM observations and native snapshots are asynchronous, not atomic. Rendering/output behavior is described in [Architecture](001-ARCHITECTURE.md).
 
 ## Coordinates, curves and unknown physical values
 

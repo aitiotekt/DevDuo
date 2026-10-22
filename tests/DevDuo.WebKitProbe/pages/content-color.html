@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native content edge color acceptance</title>
+<style>
+  html { background: white; }
+  body { margin: 0; font: 18px sans-serif; }
+  header { height: 80px; background: white; display: flex; align-items: flex-end; }
+  section { height: 800px; }
+  #solid { background: #2468ac; }
+  #gradient { background: linear-gradient(90deg, #204060, #6080a0); }
+  #image { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath fill='%2340a0d0' d='M0 0H40V40H0Z'/%3E%3C/svg%3E") center / cover no-repeat; }
+</style>
+<header>Actual rendered color: solid, gradient, SVG image and transparent canvas.</header>
+<section id="solid"></section>
+<section id="gradient"></section>
+<section id="image"></section>
+<section id="transparent"></section>

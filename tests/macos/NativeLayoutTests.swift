@@ -36,7 +36,14 @@ struct NativeLayoutTests {
         host.needsLayout = true
         host.layoutSubtreeIfNeeded()
         precondition(host.web.obscuredContentInsets.bottom == 80)
+        let nativeFixedContainerColorsAvailable = host.nativeFixedContainerColorsAvailable
         host.latestObservation = ["fixedBottomColor": [121, 26, 194]]
+        host.updateAppearance()
+        precondition(host.fixedBottomBackground.isHidden == nativeFixedContainerColorsAvailable,
+                     "The DOM footer surface must defer to the system fixed-container extension")
+        // Exercise the fallback surface independently of the installed system capability.
+        // Its geometry is testable here; actual system extension pixels require native acceptance.
+        host.nativeFixedContainerColorsAvailable = false
         host.updateAppearance()
         precondition(!host.fixedBottomBackground.isHidden)
         precondition(host.fixedBottomBackground.frame == NSRect(x: 0, y: 598, width: 382, height: 80))
@@ -44,6 +51,44 @@ struct NativeLayoutTests {
         host.latestObservation = [:]
         host.updateAppearance()
         precondition(host.fixedBottomBackground.isHidden, "Old footer color survived its removal")
-        print("Native layout checks passed: clip resize, logical bounds, insets, passive footer color and removal")
+        host.nativeFixedContainerColorsAvailable = nativeFixedContainerColorsAvailable
+        for degrees in [0,90,180,270] {
+            let swapped=degrees % 180 != 0
+            host.clipView.clockwiseDegrees=degrees
+            host.clipView.contentSize=swapped ? NSSize(width:339,height:233):NSSize(width:233,height:339)
+            host.clipView.needsLayout=true
+            host.clipView.layoutSubtreeIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            let point=host.convert(NSPoint(x:20,y:40),to:host.clipView)
+            let expected:NSPoint
+            switch degrees {
+            case 90:expected=NSPoint(x:339-20-12,y:10-20)
+            case 180:expected=NSPoint(x:233-10-12,y:339-20-20)
+            case 270:expected=NSPoint(x:20-12,y:233-10-20)
+            default:expected=NSPoint(x:10-12,y:20-20)
+            }
+            precondition(abs(point.x-expected.x)<0.001 && abs(point.y-expected.y)<0.001,"Scene/body coordinate transform: \(degrees), \(point), expected \(expected)")
+            let roundTrip=host.convert(point,from:host.clipView)
+            precondition(abs(roundTrip.x-20)<0.001 && abs(roundTrip.y-40)<0.001,"Native input inverse changed")
+            precondition(host.bounds.size==NSSize(width:466,height:678),"Presentation rotation changed logical bounds")
+        }
+        var scrollPolicy=NativeScrollState()
+        precondition(!scrollPolicy.observe(compact:false,y:509,delta:509,viewportChanged:false,now:1,threshold:24),"Script scrolling is not native intent")
+        scrollPolicy.record(1,now:1,source:"native wheel")
+        precondition(scrollPolicy.observe(compact:false,y:539,delta:30,viewportChanged:false,now:1.01,threshold:24))
+        precondition(scrollPolicy.observe(compact:true,y:521,delta:-18,viewportChanged:true,now:1.02,threshold:24),"Viewport clamp must not expand")
+        scrollPolicy.record(-1,now:1.03,source:"native wheel")
+        precondition(!scrollPolicy.observe(compact:true,y:509,delta:-12,viewportChanged:false,now:1.04,threshold:24),"Reverse gesture expands above zero")
+        precondition(scrollPolicy.observe(compact:true,y:0,delta:-509,viewportChanged:false,now:2,threshold:24),"Expired intent rejects a later script")
+        let oldFrame=host.web.frame,oldBounds=host.bounds
+        var darkOptions=host.options;darkOptions["shellAppearance"]="dark"
+        host.configure(darkOptions)
+        precondition(host.appearance?.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua)
+        precondition(host.web.appearance?.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua)
+        precondition(host.web.frame==oldFrame && host.bounds==oldBounds,"Appearance must preserve native geometry")
+        host.clock.stringValue="stale-clock"
+        host.clockTimer?.fire()
+        precondition(host.clock.stringValue.range(of:"^[0-9]{2}:[0-9]{2}$",options:.regularExpression) != nil,"A static page clock refreshes without scrolling")
+        print("Native layout checks passed: clip resize, logical bounds, insets, passive footer color, four presentation rotations, coordinate round trips, native scroll intent and independent appearance")
     }
 }

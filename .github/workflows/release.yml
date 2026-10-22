@@ -5,6 +5,11 @@ on:
     branches: [release]
     tags: [v*]
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Build, sign and verify artifacts without creating tags or publishing a Release
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -12,36 +17,48 @@ permissions:
 # Serialize versions as well as retries so publication and tag creation cannot race.
 concurrency:
   group: devduo-release
+  queue: max
   cancel-in-progress: false
 
 jobs:
   plan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       publish: ${{ steps.plan.outputs.publish }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
       display_name: ${{ steps.plan.outputs.displayName }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
-          docs-only: 'true'
+          tooling-only: 'true'
       - name: Validate version and exact triggering ref
         id: plan
-        run: mise exec node pnpm just -- node scripts/release.mts plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run && 'true' || 'false' }}
+        run: mise exec node pnpm just gh -- node scripts/release.mts plan
 
   checks:
     name: Verification
     needs: plan
     if: needs.plan.outputs.publish == 'true'
     uses: ./.github/workflows/checks.yml
+    with:
+      force-native: true
 
   stable-approval:
     needs: [plan, checks]
     if: needs.plan.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     environment: stable-release
     steps:
       - run: echo "Stable release approved."
@@ -52,10 +69,25 @@ jobs:
       !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
       (needs.plan.outputs.prerelease == 'true' || needs.stable-approval.result == 'success')
     runs-on: xcode-27
+    timeout-minutes: 120
     environment: release-signing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
+        with:
+          native-only: 'true'
+      - name: Check signing inputs and SDK before building
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: mise exec -- node scripts/package-release.mts preflight osx-arm64
       - name: Build self-contained application
         run: mise exec -- just package-release-macos
       - name: Import Developer ID certificate
@@ -76,6 +108,8 @@ jobs:
           path: temp/release/platform/
           if-no-files-found: error
           overwrite: true
+          retention-days: 1
+          compression-level: 0
 
   windows:
     needs: [plan, checks, stable-approval]
@@ -83,13 +117,25 @@ jobs:
       !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
       (needs.plan.outputs.prerelease == 'true' || needs.stable-approval.result == 'success')
     runs-on: windows-2025
+    timeout-minutes: 60
     steps:
       - name: Require real symlinks before checkout
         shell: pwsh
         run: git config --global core.symlinks true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
+        with:
+          native-only: 'true'
+      - name: Fetch and validate the pinned engine before publishing the application
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise exec -- just fetch-windows-webkit-runtime
       - name: Package unsigned self-contained Windows application
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: mise exec -- just package-release-windows
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -97,19 +143,25 @@ jobs:
           path: temp/release/platform/
           if-no-files-found: error
           overwrite: true
+          retention-days: 1
+          compression-level: 0
 
   assemble:
     needs: [macos, windows]
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
-          docs-only: 'true'
+          tooling-only: 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-@(osx-arm64|win-x64)
@@ -129,55 +181,39 @@ jobs:
           path: temp/release/final/
           if-no-files-found: error
           overwrite: true
+          retention-days: 7
+          compression-level: 0
 
   publish:
     needs: [plan, assemble]
+    if: needs.plan.outputs.dry_run == 'false'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
-          docs-only: 'true'
+          tooling-only: 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-final
           path: temp/release/final/
-      - name: Revalidate artifacts and create or verify exact tag
-        run: |
-          mise exec node pnpm just -- node scripts/release.mts verify
-          mise exec node pnpm just -- node scripts/release.mts ensure-tag
-      - name: Publish without overwriting existing assets
+      - name: Revalidate and publish the exact artifact set
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.plan.outputs.tag }}
-          DISPLAY_NAME: ${{ needs.plan.outputs.display_name }}
-          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Listing must succeed: authentication/network failures are not an absent release.
-          existing="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq ".[] | select(.tag_name == \"${TAG}\") | .id")"
-          if [[ -n "${existing}" ]]; then
-            mkdir -p temp/release/existing
-            gh release download "${TAG}" --dir temp/release/existing
-            mise exec node pnpm just -- node scripts/release.mts verify-published
-          else
-            gh release create "${TAG}" temp/release/final/* --verify-tag --draft --title "${DISPLAY_NAME} ${TAG}" --prerelease="${PRERELEASE}" --notes-file .github/release-notes.md
-            mkdir -p temp/release/existing
-            gh release download "${TAG}" --dir temp/release/existing
-            mise exec node pnpm just -- node scripts/release.mts verify-published
-          fi
-          is_draft="$(gh release view "${TAG}" --json isDraft --jq .isDraft)"
-          if [[ "${is_draft}" == "true" ]]; then
-            gh release edit "${TAG}" --draft=false --prerelease="${PRERELEASE}" --latest="$([[ "${PRERELEASE}" == "false" ]] && echo true || echo false)"
-          fi
+          RELEASE_DRY_RUN: ${{ needs.plan.outputs.dry_run }}
+        run: mise exec node pnpm just gh -- node scripts/release.mts publish
 
   release-report:
     if: always()
-    needs: [plan, checks, assemble, publish]
+    needs: [plan, checks, stable-approval, macos, windows, assemble, publish]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Require completed release or an explicit development skip
         env:
@@ -185,11 +221,23 @@ jobs:
           PUBLISH_ENABLED: ${{ needs.plan.outputs.publish }}
           ASSEMBLE: ${{ needs.assemble.result }}
           PUBLISH: ${{ needs.publish.result }}
+          DRY_RUN: ${{ needs.plan.outputs.dry_run }}
+          CHECKS: ${{ needs.checks.result }}
+          MACOS: ${{ needs.macos.result }}
+          WINDOWS: ${{ needs.windows.result }}
         run: |
+          echo "Release: plan=${PLAN}, checks=${CHECKS}, macOS=${MACOS}, Windows=${WINDOWS}, assemble=${ASSEMBLE}, publish=${PUBLISH}, dry-run=${DRY_RUN}" >> "$GITHUB_STEP_SUMMARY"
           test "${PLAN}" = success
           if [[ "${PUBLISH_ENABLED}" == "false" ]]; then
             echo "Development version: no release published." >> "$GITHUB_STEP_SUMMARY"
           else
+            test "${CHECKS}" = success
+            test "${MACOS}" = success
+            test "${WINDOWS}" = success
             test "${ASSEMBLE}" = success
-            test "${PUBLISH}" = success
+            if [[ "${DRY_RUN}" == true ]]; then
+              test "${PUBLISH}" = skipped
+            else
+              test "${PUBLISH}" = success
+            fi
           fi

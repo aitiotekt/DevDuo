@@ -3,7 +3,29 @@ name: Documentation
 on:
   push:
     branches: [main, release]
-  pull_request:
+    paths:
+      - '**.md'
+      - docs/**
+      - docsite/**
+      - scripts/docs.mts
+      - scripts/lib/docs.mts
+      - scripts/lib/metadata.mts
+      - scripts/lib/paths.mts
+      - scripts/docs-manifest.json
+      - scripts/python/**
+      - pyproject.toml
+      - uv.lock
+      - package.json
+      - devduo-metadata.toml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - mise.toml
+      - mise.lock
+      - justfile
+      - justfiles/**
+      - .github/actions/setup-workspace/action.yml
+      - .github/workflows/docs.yml
+  # PR documentation is built by Checks; this workflow packages deployment inputs.
   workflow_dispatch:
 
 permissions:
@@ -11,23 +33,33 @@ permissions:
 
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
           docs-only: 'true'
+      - name: Audit publication inputs before packaging the site
+        run: |
+          mise install python uv
+          mise exec python uv node pnpm just -- just setup-python public-audit
       - run: mise exec node pnpm just -- just docs-check
       - run: mise exec node pnpm just -- just build-docs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: github.ref != 'refs/heads/main'
         with:
           name: devduo-docsite
           path: temp/build/docsite/
           if-no-files-found: error
+          retention-days: 1
 
       - name: Upload Pages site
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -39,6 +71,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       pages: write
       id-token: write

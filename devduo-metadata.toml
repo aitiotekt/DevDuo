@@ -32,3 +32,18 @@ extension = "zip"
 platform = "windows"
 target = "win-x64"
 extension = "zip"
+
+# The engine is versioned and released independently from the application.
+[webkit]
+version = "0.1.0-alpha.1"
+tag_prefix = "webkit-v"
+asset_prefix = "DevDuo-WebKit"
+target = "win-x64"
+dll_name = "WebKit2.dll"
+upstream_revision = "6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d"
+release_branch = "main"
+# The repository-scoped runner supplies these default labels; keep host names private.
+runner_labels = ["self-hosted", "Windows", "X64"]
+# Set from the manual engine release report before releasing an application.
+# Empty explicitly means that no published runtime has been pinned yet.
+archive_sha256 = ""

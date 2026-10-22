@@ -51,6 +51,18 @@
       "section": "topics"
     },
     {
+      "name": "014-WINDOWS-WEBKIT.md",
+      "en": "Windows WebKit backend",
+      "zh": "Windows WebKit 后端",
+      "section": "topics"
+    },
+    {
+      "name": "015-PLATFORM-PARITY.md",
+      "en": "Platform parity and macOS acceptance",
+      "zh": "平台对齐与 macOS 验收",
+      "section": "topics"
+    },
+    {
       "name": "100-ROADMAP.md",
       "en": "Host UI roadmap",
       "zh": "宿主 UI 路线图",

@@ -1,0 +1,106 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixed translucent overlay acceptance</title>
+<style>
+  html { background: white; }
+  body { margin: 0; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); height: 48px; }
+  #mask { position: fixed; inset: 0; z-index: 10; background: rgb(0 0 0 / .5); }
+  #footer { position: fixed; inset: auto 0 0; height: 24px; background: rgb(150 80 208); }
+  dialog { width: 100px; height: 36px; padding: 10px; }
+  dialog::backdrop { background: var(--overlay-color, rgb(0 0 0 / .5)); }
+</style>
+<main id="rows"></main>
+<div id="footer" hidden></div>
+<div id="mask" hidden></div>
+<dialog id="modal">Dialog</dialog>
+<script>
+  const rows = document.getElementById('rows');
+  const mask = document.getElementById('mask');
+  const footer = document.getElementById('footer');
+  const modal = document.getElementById('modal');
+  const palette = [[240, 176, 64], [48, 176, 224], [208, 64, 128], [80, 208, 112]];
+  for (let index = 0; index < 80; index++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (let column = 0; column < 4; column++) {
+      const cell = document.createElement('div');
+      cell.style.backgroundColor = `rgb(${palette[(column + index) % 4].join(' ')})`;
+      row.append(cell);
+    }
+    rows.append(row);
+  }
+  window.fixedOverlayRevision = 0;
+  window.fixedOverlaySettled = 0;
+  window.fixedOverlayMode = 'fixed';
+  window.fixedOverlayRootRgb = [255, 255, 255];
+  window.fixedOverlayRgb = [0, 0, 0];
+  window.fixedOverlayAlpha = .5;
+  window.setFixedOverlay = (visible, showFooter = false, mode = 'fixed') => {
+    window.fixedOverlayMode = mode;
+    const opaque = `rgb(${window.fixedOverlayRgb.join(' ')})`;
+    const rgba = `rgb(${window.fixedOverlayRgb.join(' ')} / ${window.fixedOverlayAlpha})`;
+    document.documentElement.style.backgroundColor = `rgb(${window.fixedOverlayRootRgb.join(' ')})`;
+    document.documentElement.style.setProperty('--overlay-color', rgba);
+    mask.style.backgroundColor = mode === 'opacity' ? opaque : rgba;
+    mask.style.opacity = mode === 'opacity' ? String(window.fixedOverlayAlpha) : '1';
+    mask.style.pointerEvents = mode === 'passive' ? 'none' : 'auto';
+    mask.hidden = !visible || mode === 'dialog';
+    footer.hidden = !showFooter;
+    if (modal.open && (!visible || mode !== 'dialog')) modal.close();
+    if (visible && mode === 'dialog' && !modal.open) modal.showModal();
+    const revision = ++window.fixedOverlayRevision;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.__devduoReportContainerObservation?.();
+      window.fixedOverlaySettled = revision;
+    }));
+    return revision;
+  };
+  window.fixedOverlayState = () => {
+    const scrolling = document.scrollingElement;
+    const box = mask.getBoundingClientRect();
+    return {
+      identity: {
+        timeOrigin: performance.timeOrigin, url: location.href,
+        documentId: window.devduoShellObservation?.documentId,
+        inner: [innerWidth, innerHeight], client: [scrolling.clientWidth, scrolling.clientHeight],
+        document: [scrolling.scrollWidth, scrolling.scrollHeight], scroll: [scrollX, scrollY],
+        range: [scrolling.scrollWidth - scrolling.clientWidth, scrolling.scrollHeight - scrolling.clientHeight],
+        rows: rows.children.length, cells: rows.querySelectorAll('.row > div').length,
+        firstRow: rows.firstElementChild.getBoundingClientRect().top + scrollY,
+        lastRow: rows.lastElementChild.getBoundingClientRect().bottom + scrollY
+      },
+      maskVisible: !mask.hidden, footerVisible: !footer.hidden,
+      mode: window.fixedOverlayMode, dialogOpen: modal.open,
+      rootRgb: window.fixedOverlayRootRgb, overlayRgb: window.fixedOverlayRgb,
+      overlayAlpha: window.fixedOverlayAlpha,
+      mask: [box.left, box.top, box.right, box.bottom],
+      backdropPosition: getComputedStyle(modal, '::backdrop').position,
+      background: getComputedStyle(mask).backgroundColor,
+      opacity: getComputedStyle(mask).opacity,
+      fixedBottomColor: window.devduoShellObservation?.fixedBottomColor ?? null
+    };
+  };
+  window.fixedOverlaySamples = () => {
+    const samples = [];
+    // Choose actual row interiors; fixed CSS sample heights can land exactly
+    // on a stripe boundary after scrolling or changing the chrome reservation.
+    const visibleRows = [...rows.children].map((row, index) => {
+      const rect = row.getBoundingClientRect();
+      return { index, y: (rect.top + rect.bottom) / 2 };
+    }).filter(row => row.y >= 8 && row.y < innerHeight - 8);
+    for (const offset of [0, Math.floor(visibleRows.length / 2), visibleRows.length - 1]) {
+      const { index, y } = visibleRows[offset];
+      for (let column = 0; column < 4; column++)
+        samples.push({ x: innerWidth * (column + .5) / 4, y,
+          rgb: palette[(column + index) % 4] });
+    }
+    const excluded = [modal.open ? modal.getBoundingClientRect() : null,
+      !footer.hidden ? footer.getBoundingClientRect() : null].filter(Boolean);
+    return samples.filter(point => !excluded.some(rect => point.x >= rect.left - 2 &&
+      point.x <= rect.right + 2 && point.y >= rect.top - 2 && point.y <= rect.bottom + 2));
+  };
+  const requestedOverlay = new URLSearchParams(location.search).get('overlay');
+  if (['fixed', 'dialog', 'opacity', 'passive'].includes(requestedOverlay))
+    window.setFixedOverlay(true, false, requestedOverlay);
+</script>

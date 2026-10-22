@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    inputs:
+      force-native:
+        description: Compile every enabled target for release verification.
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -17,53 +22,92 @@ concurrency:
 jobs:
   plan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      native: ${{ steps.changes.outputs.native }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
         with:
-          docs-only: 'true'
+          tooling-only: 'true'
       - name: Resolve platform matrix from metadata
         id: plan
         run: mise exec node pnpm just -- node scripts/release.mts checks-matrix
+      - name: Compare the complete push or pull request
+        id: changes
+        env:
+          CI_FORCE_NATIVE: ${{ inputs.force-native || false }}
+        run: mise exec node pnpm just -- node scripts/ci-plan.mts
 
   portable:
-    name: Tooling (${{ matrix.os }})
+    name: Portable tooling and services
     needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          portable-only: 'true'
+      - name: Check docs, Python, JavaScript and portable .NET harnesses
+        run: mise exec -- just check
+      - run: mise exec -- just lint
+      - run: mise exec -- just typecheck
+      - run: mise exec -- just release-check
+      - name: Build documentation
+        run: mise exec -- just build-docs
+
+  native:
+    name: Compile (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.native == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - name: Require real Windows symlinks before checkout
         if: runner.os == 'Windows'
         shell: pwsh
         run: git config --global core.symlinks true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-workspace
-      - name: Check docs, Python, JavaScript and localization harness
-        run: mise exec -- just check
-      - run: mise exec -- just lint
-      - run: mise exec -- just typecheck
-      - run: mise exec -- just release-check
-      - name: Build documentation
-        if: runner.os == 'macOS'
-        run: mise exec -- just build-docs
-      - name: Compile native target
-        if: runner.os != 'Linux'
-        run: mise exec -- just build
+        with:
+          native-only: 'true'
+      - name: Compile application and native bridge without building WebKit
+        run: mise exec node pnpm just dotnet -- just build build-native-tests
 
   report:
     name: Checks report
     if: always()
-    needs: [plan, portable]
+    needs: [plan, portable, native]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Require every platform check
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
           RESULT: ${{ needs.portable.result }}
+          NATIVE_REQUIRED: ${{ needs.plan.outputs.native }}
+          NATIVE_RESULT: ${{ needs.native.result }}
         run: |
           test "${PLAN_RESULT}" = success
           test "${RESULT}" = success
+          if [[ "${NATIVE_REQUIRED}" == true ]]; then
+            test "${NATIVE_RESULT}" = success
+          else
+            test "${NATIVE_REQUIRED}" = false
+            test "${NATIVE_RESULT}" = skipped
+          fi

@@ -21,6 +21,9 @@ final class SafariProbe: XCTestCase {
         }
         let app = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         app.activate()
+        let gestureDelay = min(10, max(0, Double(environment["DEVDUO_REFERENCE_GESTURE_DELAY"] ?? "0") ?? 0))
+        let clock = ISO8601DateFormatter()
+        clock.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var previous = ""
         while true {
             let command = try referenceRequest(endpoint)
@@ -38,14 +41,21 @@ final class SafariProbe: XCTestCase {
                 throw NSError(domain: "DevDuoReference", code: 3,
                               userInfo: [NSLocalizedDescriptionKey: "Unsupported reference action"])
             }
+            var gestureStartedAt: String?
+            var gestureReturnedAt: String?
             if action != "stop" {
                 // Device Hub shortcuts can lock or background the app during pose changes.
                 // Activation restores the target without recreating its document or tabs.
                 app.activate()
                 let web = app.webViews.firstMatch
                 XCTAssertTrue(web.exists, "Load the controlled reference fixture before requesting a swipe")
+                if action == "down" || action == "up" {
+                    Thread.sleep(forTimeInterval: gestureDelay)
+                    gestureStartedAt = clock.string(from: Date())
+                }
                 if action == "down" { web.swipeUp(velocity: .slow) }
                 if action == "up" { web.swipeDown(velocity: .slow) }
+                if gestureStartedAt != nil { gestureReturnedAt = clock.string(from: Date()) }
             }
             var components: [[String: Any]] = []
             if action != "stop" {
@@ -57,7 +67,10 @@ final class SafariProbe: XCTestCase {
                 }
             }
             let receipt: [String: Any] = ["id": identifier, "action": action,
-                "clientTimestamp": ISO8601DateFormatter().string(from: Date()),
+                "clientTimestamp": clock.string(from: Date()),
+                "gestureDelaySeconds": gestureDelay,
+                "gestureStartedAt": gestureStartedAt as Any? ?? NSNull(),
+                "gestureReturnedAt": gestureReturnedAt as Any? ?? NSNull(),
                 "applicationFramePoints": rect(app.frame), "components": components,
                 "deviceOrientationRaw": XCUIDevice.shared.orientation.rawValue]
             _ = try referenceRequest(endpoint, receipt: receipt)

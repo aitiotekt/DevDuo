@@ -17,6 +17,15 @@
     return record;
   }
   window.devduoCapture = capture;
+  // The host changes only this owned page's labels; rotation must not navigate.
+  window.devduoUpdateCalibrationLabels = target => {
+    const next = new URL(target);
+    if (next.origin !== location.origin || next.pathname !== location.pathname) return;
+    for (const key of Object.keys(labels)) labels[key] = next.searchParams.get(key) || (key === 'notes' ? '' : 'unknown');
+    document.getElementById('labels').textContent = JSON.stringify(labels);
+    history.replaceState(history.state, '', next);
+    schedule('host-labels');
+  };
   let timer; const schedule = reason => { clearTimeout(timer); timer = setTimeout(() => capture(reason), 350) };
   window.addEventListener('resize', () => schedule('resize')); window.addEventListener('orientationchange', () => schedule('orientationchange')); window.addEventListener('scroll', () => schedule('scroll'), { passive: true });
   if (visualViewport) { visualViewport.addEventListener('resize', () => schedule('visualViewport.resize')); visualViewport.addEventListener('scroll', () => schedule('visualViewport.scroll')); }

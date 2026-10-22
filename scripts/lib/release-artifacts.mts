@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { type DevDuoMetadata, loadMetadata } from "./metadata.mts";
 import {
   artifactName,
   type ReleasePlan,
@@ -16,8 +20,36 @@ import {
   targets,
 } from "./release-policy.mts";
 
-export const digest = (path: string): string =>
-  createHash("sha256").update(readFileSync(path)).digest("hex");
+export function digest(path: string): string {
+  const hash = createHash("sha256"),
+    buffer = Buffer.allocUnsafe(1024 * 1024);
+  const descriptor = openSync(path, "r");
+  try {
+    while (true) {
+      const count = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+    }
+    return hash.digest("hex");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+export function windowsRuntime(metadata = loadMetadata()) {
+  const config = metadata.webkit;
+  if (!/^[a-f0-9]{64}$/.test(config.archiveSha256))
+    throw new Error(
+      "Publish and pin the metadata WebKit runtime before releasing the application.",
+    );
+  return {
+    version: config.version,
+    tag: `${config.tagPrefix}${config.version}`,
+    asset: `${config.assetPrefix}-${config.version}-${config.target}.zip`,
+    archiveSha256: config.archiveSha256,
+    upstreamRevision: config.upstreamRevision,
+  };
+}
 export type Artifact = {
   name: string;
   target: Target;
@@ -32,6 +64,7 @@ export type Manifest = {
   sourceSha: string;
   sourceRef: string;
   artifacts: Artifact[];
+  windowsWebKit: ReturnType<typeof windowsRuntime>;
 };
 
 export function artifactRecord(
@@ -57,6 +90,7 @@ export function assemble(
   input: string,
   output: string,
   plan: ReleasePlan,
+  metadata: DevDuoMetadata = loadMetadata(),
 ): void {
   mkdirSync(output, { recursive: true });
   const artifacts = targets.map((target) => {
@@ -67,6 +101,9 @@ export function assemble(
     const actual = artifactRecord(directory, plan.version, target);
     if (
       report.sourceSha !== plan.sourceSha ||
+      (target === "win-x64" &&
+        JSON.stringify(report.windowsWebKit) !==
+          JSON.stringify(windowsRuntime(metadata))) ||
       JSON.stringify(report.artifact) !== JSON.stringify(actual)
     )
       throw new Error(`Invalid platform report for ${target}`);
@@ -84,13 +121,14 @@ export function assemble(
     sourceSha: plan.sourceSha,
     sourceRef: plan.sourceRef,
     artifacts,
+    windowsWebKit: windowsRuntime(metadata),
   };
   writeFileSync(
     join(output, "release-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
   writeFileSync(join(output, "SHA256SUMS"), checksumText(manifest, output));
-  verifyArtifacts(output, plan);
+  verifyArtifacts(output, plan, metadata);
 }
 
 function checksumText(manifest: Manifest, directory: string): string {
@@ -103,6 +141,7 @@ function checksumText(manifest: Manifest, directory: string): string {
 export function verifyArtifacts(
   directory: string,
   expected: ReleasePlan,
+  metadata: DevDuoMetadata = loadMetadata(),
 ): Manifest {
   const manifest = JSON.parse(
     readFileSync(join(directory, "release-manifest.json"), "utf8"),
@@ -113,6 +152,8 @@ export function verifyArtifacts(
     manifest.version !== expected.version ||
     manifest.sourceSha !== expected.sourceSha ||
     manifest.sourceRef !== expected.sourceRef ||
+    JSON.stringify(manifest.windowsWebKit) !==
+      JSON.stringify(windowsRuntime(metadata)) ||
     !Array.isArray(manifest.artifacts) ||
     manifest.artifacts.length !== targets.length
   )
@@ -150,9 +191,10 @@ export function verifyPublished(
   current: string,
   existing: string,
   plan: ReleasePlan,
+  metadata: DevDuoMetadata = loadMetadata(),
 ): void {
-  verifyArtifacts(current, plan);
-  verifyArtifacts(existing, plan);
+  verifyArtifacts(current, plan, metadata);
+  verifyArtifacts(existing, plan, metadata);
   for (const file of readdirSync(current))
     if (digest(join(current, file)) !== digest(join(existing, file)))
       throw new Error(

@@ -11,6 +11,7 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TargetFramework Condition="($([MSBuild]::IsOSPlatform('Windows')) Or '$(DevDuoWindows)' == 'true')">net10.0-windows</TargetFramework>
     <UseWindowsForms Condition="'$(TargetFramework)' == 'net10.0-windows'">true</UseWindowsForms>
+    <ApplicationManifest Condition="'$(TargetFramework)' == 'net10.0-windows'">app.manifest</ApplicationManifest>
     <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
     <NuGetLockFilePath>packages.$(TargetFramework).lock.json</NuGetLockFilePath>
     <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' != ''">packages.$(TargetFramework).$(RuntimeIdentifier).lock.json</NuGetLockFilePath>
@@ -20,23 +21,28 @@
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="SukiUI" Version="7.0.1" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <PackageReference Condition="'$(TargetFramework)' == 'net10.0-windows'" Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="DevDuo.Windows.Tests" />
     <EmbeddedResource Include="Localization/*.json" />
-    <None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="WebAssets/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../temp/build/debugging/**" Link="debugging/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Condition="'$(TargetFramework)' == 'net10.0-windows'" Include="../../temp/build/windows-compositor/DevDuo.Windows.Compositor.dll" Link="DevDuo.Windows.Compositor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Condition="'$(TargetFramework)' == 'net10.0'" Include="$(DevDuoNativeDirectory)/libDevDuoWebView.dylib" Link="libDevDuoWebView.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <Target Name="RemoveUnusedWebViewWpf" BeforeTargets="ResolveAssemblyReferences">
+  <Target Name="BuildWindowsCompositor" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('Windows')) And '$(TargetFramework)' == 'net10.0-windows'">
+    <Exec Command="powershell.exe -NoLogo -NoProfile -File &quot;$(ProjectDir)windows/BuildCompositor.ps1&quot;" />
+  </Target>
+  <!-- The WebView2 package unconditionally references both UI frameworks. This host uses WinForms only. -->
+  <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences" Condition="'$(TargetFramework)' == 'net10.0-windows'">
     <ItemGroup>
       <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
     </ItemGroup>
   </Target>
   <Target Name="BuildMacWebView" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DevDuoWindows)' != 'true'">
     <MakeDir Directories="$(DevDuoNativeDirectory)" />
-    <Exec Command="xcrun swiftc &quot;$(ProjectDir)macos/WebViewBridge.swift&quot; -emit-library -o &quot;$(DevDuoNativeDirectory)/libDevDuoWebView.dylib&quot; -module-name DevDuoWebView -module-cache-path &quot;$(DevDuoNativeDirectory)/swift-cache&quot; -framework AppKit -framework WebKit -framework QuartzCore" />
+    <Exec Command="xcrun swiftc &quot;$(ProjectDir)macos/WebViewBridge.swift&quot; &quot;$(ProjectDir)macos/DeveloperWebViewBridge.swift&quot; -emit-library -o &quot;$(DevDuoNativeDirectory)/libDevDuoWebView.dylib&quot; -module-name DevDuoWebView -module-cache-path &quot;$(DevDuoNativeDirectory)/swift-cache&quot; -framework AppKit -framework WebKit -framework QuartzCore" />
   </Target>
 </Project>

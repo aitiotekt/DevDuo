@@ -1,0 +1,1839 @@
+diff --git a/Source/JavaScriptCore/inspector/remote/RemoteInspector.h b/Source/JavaScriptCore/inspector/remote/RemoteInspector.h
+index 3ba4ffe..6857c41 100644
+--- a/Source/JavaScriptCore/inspector/remote/RemoteInspector.h
++++ b/Source/JavaScriptCore/inspector/remote/RemoteInspector.h
+@@ -184,7 +184,9 @@ public:
+     void requestAutomationSession(String&& sessionID, const Client::SessionCapabilities&);
+ 
+     bool isConnected() const { return !!m_clientConnection; }
++    bool acceptsEvent(ConnectionID id) const final { return m_enabled && m_clientConnection && *m_clientConnection == id; }
+     void connect(ConnectionID);
++    JS_EXPORT_PRIVATE void disconnectFrontend();
+ 
+     void setBackendCommandsPath(const String& backendCommandsPath) { m_backendCommandsPath = backendCommandsPath; }
+ #endif
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.cpp b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.cpp
+index bd6c6db..6582450 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.cpp
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.cpp
+@@ -40,6 +40,15 @@ RemoteInspectorConnectionClient::~RemoteInspectorConnectionClient()
+     endpoint.invalidateClient(*this);
+ }
+ 
++void RemoteInspectorConnectionClient::invalidateFrontendConnection()
++{
++    // Reject messages queued by a frontend before Stop, including after restart.
++    ++m_connectionGeneration;
++    RemoteInspectorSocketEndpoint::singleton().invalidateClient(*this);
++    Locker locker { m_parsersLock };
++    m_parsers.clear();
++}
++
+ std::optional<ConnectionID> RemoteInspectorConnectionClient::connectInet(UTF8CStringView serverAddr, uint16_t serverPort)
+ {
+     auto& endpoint = Inspector::RemoteInspectorSocketEndpoint::singleton();
+@@ -70,7 +79,9 @@ void RemoteInspectorConnectionClient::didReceive(RemoteInspectorSocketEndpoint&,
+     auto result = m_parsers.ensure(clientID, [this, clientID] {
+         return MessageParser([this, clientID](Vector<uint8_t>&& data) {
+             if (auto event = RemoteInspectorConnectionClient::extractEvent(clientID, WTF::move(data))) {
+-                RunLoop::mainSingleton().dispatch([this, event = WTF::move(*event)] {
++                RunLoop::mainSingleton().dispatch([this, generation = connectionGeneration(), event = WTF::move(*event)] {
++                    if (generation != connectionGeneration() || !acceptsEvent(event.clientID))
++                        return;
+                     const auto& methodName = event.methodName;
+                     auto& methods = dispatchMap();
+                     if (methods.contains(methodName)) {
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.h b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.h
+index 70534a3..eeed550 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.h
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorConnectionClient.h
+@@ -30,6 +30,7 @@
+ #include "RemoteControllableTarget.h"
+ #include "RemoteInspectorMessageParser.h"
+ #include "RemoteInspectorSocketEndpoint.h"
++#include <atomic>
+ #include <wtf/HashMap.h>
+ #include <wtf/JSONValues.h>
+ #include <wtf/Lock.h>
+@@ -59,14 +60,19 @@ public:
+ 
+     using CallHandler = void (RemoteInspectorConnectionClient::*)(const Event&);
+     virtual HashMap<String, CallHandler>& dispatchMap() = 0;
++    virtual bool acceptsEvent(ConnectionID) const { return true; }
+ 
+ protected:
++    void invalidateFrontendConnection();
++    uint64_t connectionGeneration() const { return m_connectionGeneration.load(); }
++
+     JS_EXPORT_PRIVATE std::optional<Vector<Ref<JSON::Object>>> parseTargetListJSON(const String&);
+ 
+     static std::optional<Event> extractEvent(ConnectionID, Vector<uint8_t>&&);
+ 
+     HashMap<ConnectionID, MessageParser> m_parsers WTF_GUARDED_BY_LOCK(m_parsersLock);
+     Lock m_parsersLock;
++    std::atomic<uint64_t> m_connectionGeneration { 0 };
+ };
+ 
+ } // namespace Inspector
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.cpp b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.cpp
+index e8b52fa..8dec1fe 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.cpp
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.cpp
+@@ -52,12 +52,25 @@ RemoteInspectorServer::~RemoteInspectorServer()
+ 
+ bool RemoteInspectorServer::start(UTF8CStringView address, uint16_t port)
+ {
++    Locker locker { m_lifecycleLock };
+     if (isRunning())
+         return false;
+ 
+     auto& endpoint = Inspector::RemoteInspectorSocketEndpoint::singleton();
+     m_server = endpoint.listenInet(address, port, *this);
+-    return isRunning();
++    m_accepting = isRunning();
++    return m_accepting;
++}
++
++void RemoteInspectorServer::stop()
++{
++    ASSERT(isMainThread());
++    // Serialize with an accept already in progress before closing all clients.
++    Locker locker { m_lifecycleLock };
++    m_accepting = false;
++    RemoteInspectorSocketEndpoint::singleton().invalidateListener(*this);
++    m_server.reset();
++    RemoteInspector::singleton().disconnectFrontend();
+ }
+ 
+ std::optional<uint16_t> RemoteInspectorServer::getPort() const
+@@ -72,6 +85,9 @@ std::optional<uint16_t> RemoteInspectorServer::getPort() const
+ std::optional<ConnectionID> RemoteInspectorServer::doAccept(RemoteInspectorSocketEndpoint& endpoint, PlatformSocketType socket)
+ {
+     ASSERT(!isMainThread());
++    Locker locker { m_lifecycleLock };
++    if (!m_accepting)
++        return std::nullopt;
+ 
+     auto& inspector = RemoteInspector::singleton();
+     if (inspector.isConnected()) {
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.h b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.h
+index 22762a1..d039762 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.h
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorServer.h
+@@ -39,6 +39,7 @@ public:
+     JS_EXPORT_PRIVATE static RemoteInspectorServer& singleton();
+ 
+     JS_EXPORT_PRIVATE bool start(UTF8CStringView address, uint16_t port);
++    JS_EXPORT_PRIVATE void stop();
+     JS_EXPORT_PRIVATE std::optional<uint16_t> getPort() const;
+     bool isRunning() const { return !!m_server; }
+ 
+@@ -49,6 +50,8 @@ private:
+     std::optional<ConnectionID> doAccept(RemoteInspectorSocketEndpoint&, PlatformSocketType) final;
+     void didChangeStatus(RemoteInspectorSocketEndpoint&, ConnectionID, RemoteInspectorSocketEndpoint::Listener::Status) final { };
+ 
++    Lock m_lifecycleLock;
++    bool m_accepting { false };
+     std::optional<ConnectionID> m_server;
+ };
+ 
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocket.cpp b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocket.cpp
+index ae06f62..5452913 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocket.cpp
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocket.cpp
+@@ -63,13 +63,24 @@ void RemoteInspector::connect(ConnectionID id)
+     start();
+ }
+ 
+-void RemoteInspector::didClose(RemoteInspectorSocketEndpoint&, ConnectionID)
++void RemoteInspector::disconnectFrontend()
+ {
+-    ASSERT(isConnected());
++    ASSERT(isMainThread());
++    invalidateFrontendConnection();
++    m_clientConnection.reset();
++    stop();
++}
++
++void RemoteInspector::didClose(RemoteInspectorSocketEndpoint&, ConnectionID id)
++{
++    if (!m_clientConnection || *m_clientConnection != id)
++        return;
+ 
+     m_clientConnection = std::nullopt;
+ 
+-    RunLoop::currentSingleton().dispatch([this] {
++    RunLoop::currentSingleton().dispatch([this, generation = connectionGeneration()] {
++        if (generation != connectionGeneration() || isConnected())
++            return;
+         Locker locker { m_mutex };
+         stopInternal(StopSource::API);
+     });
+diff --git a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocketEndpoint.cpp b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocketEndpoint.cpp
+index 2ba7ebf..b1bd0b9 100644
+--- a/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocketEndpoint.cpp
++++ b/Source/JavaScriptCore/inspector/remote/socket/RemoteInspectorSocketEndpoint.cpp
+@@ -116,6 +116,7 @@ bool RemoteInspectorSocketEndpoint::isListening(ConnectionID id)
+ 
+ int RemoteInspectorSocketEndpoint::pollingTimeout()
+ {
++    Locker locker { m_connectionsLock };
+     std::optional<MonotonicTime> mostRecentWakeup;
+     for (const auto& connection : m_listeners) {
+         if (connection.value->nextRetryTime) {
+@@ -223,13 +224,11 @@ void RemoteInspectorSocketEndpoint::disconnect(ConnectionID id)
+ {
+     Locker locker { m_connectionsLock };
+ 
+-    if (const auto& connection = m_listeners.get(id)) {
+-        m_listeners.remove(id);
++    if (auto connection = m_listeners.take(id)) {
+         Socket::close(connection->socket);
+         locker.unlockEarly();
+         connection->listener.didChangeStatus(*this, id, Listener::Status::Closed);
+-    } else if (const auto& connection = m_clients.get(id)) {
+-        m_clients.remove(id);
++    } else if (auto connection = m_clients.take(id)) {
+         Socket::close(connection->socket);
+         locker.unlockEarly();
+         connection->client.didClose(*this, id);
+@@ -250,6 +249,7 @@ void RemoteInspectorSocketEndpoint::invalidateClient(Client& client)
+         // do not call client.didClose because client is already invalidating phase.
+         return true;
+     });
++    wakeupWorkerThread();
+ }
+ 
+ void RemoteInspectorSocketEndpoint::invalidateListener(Listener& listener)
+@@ -265,6 +265,7 @@ void RemoteInspectorSocketEndpoint::invalidateListener(Listener& listener)
+ 
+         return false;
+     });
++    wakeupWorkerThread();
+ }
+ 
+ std::optional<uint16_t> RemoteInspectorSocketEndpoint::getPort(ConnectionID id) const
+@@ -286,17 +287,19 @@ void RemoteInspectorSocketEndpoint::recvIfEnabled(ConnectionID id)
+         if (auto readSize = Socket::read(connection->socket, recvBuffer.mutableSpan().data(), recvBuffer.size())) {
+             if (*readSize > 0) {
+                 recvBuffer.shrink(*readSize);
++                auto* client = &connection->client;
+                 locker.unlockEarly();
+-                connection->client.didReceive(*this, id, WTF::move(recvBuffer));
++                client->didReceive(*this, id, WTF::move(recvBuffer));
+                 return;
+             }
+         }
+ 
++        auto* client = &connection->client;
+         Socket::close(connection->socket);
+         m_clients.remove(id);
+ 
+         locker.unlockEarly();
+-        connection->client.didClose(*this, id);
++        client->didClose(*this, id);
+     }
+ }
+ 
+@@ -351,14 +354,14 @@ void RemoteInspectorSocketEndpoint::send(ConnectionID id, std::span<const uint8_
+ 
+ void RemoteInspectorSocketEndpoint::acceptInetSocketIfEnabled(ConnectionID id)
+ {
+-    ASSERT(isListening(id));
+-
++    // Stop may remove this listener between polling and taking the lock.
+     Locker locker { m_connectionsLock };
+     if (const auto& connection = m_listeners.get(id)) {
+         if (auto socket = Socket::accept(connection->socket)) {
+-            // Need to unlock before calling createClient as it also attempts to lock.
++            // Stop may remove the connection after unlock. The listener owns its lifetime.
++            auto* listener = &connection->listener;
+             locker.unlockEarly();
+-            if (connection->listener.doAccept(*this, socket.value()))
++            if (listener->doAccept(*this, socket.value()))
+                 return;
+ 
+             Socket::close(*socket);
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
+index e59e5e6..ce13458 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
++++ b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
+@@ -62,6 +62,12 @@ void WKUserContentControllerAddUserScript(WKUserContentControllerRef userContent
+     protect(toImpl(userContentControllerRef))->addUserScript(*protect(toImpl(userScriptRef)), InjectUserScriptImmediately::No);
+ }
+ 
++void WKUserContentControllerRemoveHostUserScript(WKUserContentControllerRef controller, WKUserScriptRef script)
++{
++    if (controller && script)
++        protect(toImpl(controller))->removeUserScript(*protect(toImpl(script)));
++}
++
+ void WKUserContentControllerRemoveAllUserScripts(WKUserContentControllerRef userContentControllerRef)
+ {
+     protect(toImpl(userContentControllerRef))->removeAllUserScripts();
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
+index fbd55b9..a03a053 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
++++ b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
+@@ -38,6 +38,8 @@ WK_EXPORT WKUserContentControllerRef WKUserContentControllerCreate(void);
+ 
+ WK_EXPORT WKArrayRef WKUserContentControllerCopyUserScripts(WKUserContentControllerRef userContentController);
+ WK_EXPORT void WKUserContentControllerAddUserScript(WKUserContentControllerRef userContentController, WKUserScriptRef userScript);
++// Host developer API v1: remove only the owned script, preserving observers.
++WK_EXPORT void WKUserContentControllerRemoveHostUserScript(WKUserContentControllerRef, WKUserScriptRef);
+ WK_EXPORT void WKUserContentControllerRemoveAllUserScripts(WKUserContentControllerRef userContentController);
+ 
+ WK_EXPORT void WKUserContentControllerAddUserContentFilter(WKUserContentControllerRef userContentController, WKUserContentFilterRef userContentFilter);
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+index 0dd11ad..2ae0e52 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -37,6 +37,12 @@
+ #include <cmath>
+ #include <limits>
+ 
++#if ENABLE(REMOTE_INSPECTOR)
++#include <JavaScriptCore/RemoteInspector.h>
++#include <JavaScriptCore/RemoteInspectorServer.h>
++#include <WebCore/WebCoreBundleWin.h>
++#endif
++
+ using namespace WebKit;
+ 
+ WKViewRef WKViewCreate(RECT rect, WKPageConfigurationRef configurationRef, HWND parentWindow)
+@@ -79,6 +85,44 @@ void WKViewSetScrollOffsetOnNextResize(WKViewRef viewRef, WKSize scrollOffset)
+     toImpl(viewRef)->setScrollOffsetOnNextResize(toIntSize(scrollOffset));
+ }
+ 
++unsigned WKViewGetHostDeveloperAPIVersion(void)
++{
++#if ENABLE(REMOTE_INSPECTOR)
++    return 1;
++#else
++    return 0;
++#endif
++}
++
++bool WKInspectorStartHostRemoteServer(WKStringRef address, unsigned short port)
++{
++#if ENABLE(REMOTE_INSPECTOR)
++    if (!address || !port)
++        return false;
++    auto backendCommands = WebCore::webKitBundlePath({ "WebKit.Resources"_s, "WebInspectorUI"_s, "Protocol"_s, "InspectorBackendCommands.js"_s });
++    Inspector::RemoteInspector::singleton().setBackendCommandsPath(backendCommands);
++    return Inspector::RemoteInspectorServer::singleton().start(toWTFString(address).utf8(), port);
++#else
++    return false;
++#endif
++}
++
++void WKInspectorStopHostRemoteServer(void)
++{
++#if ENABLE(REMOTE_INSPECTOR)
++    Inspector::RemoteInspectorServer::singleton().stop();
++#endif
++}
++
++unsigned short WKInspectorGetHostRemoteServerPort(void)
++{
++#if ENABLE(REMOTE_INSPECTOR)
++    return Inspector::RemoteInspectorServer::singleton().getPort().value_or(0);
++#else
++    return 0;
++#endif
++}
++
+ unsigned WKViewGetViewportHostAPIVersion(void)
+ {
+     return 2;
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+index d85786e..69fa046 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -44,6 +44,13 @@ WK_EXPORT void WKViewSetIsInWindow(WKViewRef view, bool isInWindow);
+ WK_EXPORT void WKViewSetUsesOffscreenRendering(WKViewRef view, bool enabled);
+ WK_EXPORT void WKViewSetScrollOffsetOnNextResize(WKViewRef view, WKSize scrollOffset);
+ 
++// Host developer API v1. Main/UI-thread only; native WebKit socket protocol.
++// Start never changes page inspectability. Stop closes the listener and all frontends.
++WK_EXPORT unsigned WKViewGetHostDeveloperAPIVersion(void);
++WK_EXPORT bool WKInspectorStartHostRemoteServer(WKStringRef address, unsigned short port);
++WK_EXPORT void WKInspectorStopHostRemoteServer(void);
++WK_EXPORT unsigned short WKInspectorGetHostRemoteServerPort(void);
++
+ // Host viewport API v2. Insets are logical view coordinates, independent of DPI.
+ // Call on the view's UI thread. These setters use ordinary WebPage IPC and do not require test-only IPC.
+ WK_EXPORT unsigned WKViewGetViewportHostAPIVersion(void);
+
+diff --git a/Source/WTF/wtf/win/Win32HandleSource.h b/Source/WTF/wtf/win/Win32HandleSource.h
+new file mode 100644
+--- /dev/null
++++ b/Source/WTF/wtf/win/Win32HandleSource.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++#include <wtf/Noncopyable.h>
++#include <wtf/win/Win32Handle.h>
++
++namespace WTF {
++
++// A connection owns a narrowly scoped source-process capability. Registrations
++// disappear with that connection; decoders never retain a borrowed raw HANDLE.
++class Win32HandleSource {
++    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(Win32HandleSource);
++    WTF_MAKE_NONCOPYABLE(Win32HandleSource);
++public:
++    WTF_EXPORT_PRIVATE Win32HandleSource(DWORD processID, Win32Handle&&);
++    WTF_EXPORT_PRIVATE ~Win32HandleSource();
++    explicit operator bool() const { return m_processID; }
++private:
++    DWORD m_processID { 0 };
++};
++
++} // namespace WTF
+
+--- a/Source/WTF/wtf/win/Win32Handle.cpp
++++ b/Source/WTF/wtf/win/Win32Handle.cpp
+@@ -25,8 +25,83 @@
+ 
+ #include "config.h"
+ #include <wtf/win/Win32Handle.h>
++#include <wtf/RefPtr.h>
++#include <wtf/ThreadSafeRefCounted.h>
++#include <wtf/win/Win32HandleSource.h>
++#include <wtf/HashMap.h>
++#include <wtf/Lock.h>
++#include <wtf/Locker.h>
++#include <wtf/NeverDestroyed.h>
+ 
+ namespace WTF {
++
++static bool isRealHandle(HANDLE handle)
++{
++    auto value = reinterpret_cast<intptr_t>(handle);
++    return value && (value > 0 || value < -12);
++}
++
++struct SourceCapability : ThreadSafeRefCounted<SourceCapability> {
++    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(SourceCapability);
++public:
++    explicit SourceCapability(Win32Handle&& sourceHandle)
++        : handle(WTF::move(sourceHandle))
++    {
++    }
++
++    Win32Handle handle;
++    unsigned connections { 1 };
++};
++
++static Lock& sourceCapabilityLock()
++{
++    static NeverDestroyed<Lock> lock;
++    return lock;
++}
++
++static HashMap<DWORD, Ref<SourceCapability>>& sourceCapabilities()
++{
++    static NeverDestroyed<HashMap<DWORD, Ref<SourceCapability>>> sources;
++    return sources;
++}
++
++Win32HandleSource::Win32HandleSource(DWORD processID, Win32Handle&& handle)
++{
++    DWORD flags = 0;
++    if (!processID || !isRealHandle(handle.get()) || !::GetHandleInformation(handle.get(), &flags))
++        return;
++    Locker locker { sourceCapabilityLock() };
++    auto entry = sourceCapabilities().find(processID);
++    if (entry != sourceCapabilities().end())
++        ++entry->value->connections;
++    else
++        sourceCapabilities().add(processID, adoptRef(*new SourceCapability(WTF::move(handle))));
++    m_processID = processID;
++}
++
++Win32HandleSource::~Win32HandleSource()
++{
++    if (!m_processID)
++        return;
++    Locker locker { sourceCapabilityLock() };
++    auto entry = sourceCapabilities().find(m_processID);
++    RELEASE_ASSERT(entry != sourceCapabilities().end());
++    if (!--entry->value->connections)
++        sourceCapabilities().remove(entry);
++}
++
++static RefPtr<SourceCapability> copySourceCapability(DWORD processID)
++{
++    Locker locker { sourceCapabilityLock() };
++    auto entry = sourceCapabilities().find(processID);
++    if (entry == sourceCapabilities().end())
++        return { };
++    // Retain the capability under the lock. An in-flight decoder keeps its
++    // HANDLE alive after the last connection unregisters, without another
++    // potentially expensive kernel operation on a process handle.
++    return entry->value.ptr();
++}
++
+ 
+ static void closeHandle(HANDLE handle)
+ {
+@@ -104,14 +179,22 @@
+     };
+ 
+     auto handle = reinterpret_cast<HANDLE>(data.handle);
+-    if (!isValidHandle(handle))
+-        return { };
+-    auto sourceProcess = Win32Handle::adopt(OpenProcess(PROCESS_DUP_HANDLE, FALSE, data.processID));
+-    if (!sourceProcess)
+-        return { };
++    if (!handle || !isValidHandle(handle))
++        return { };
++    auto registered = copySourceCapability(data.processID);
++    Win32Handle sourceProcess;
++    if (!registered) {
++        auto opened = OpenProcess(PROCESS_DUP_HANDLE, FALSE, data.processID);
++        if (!isRealHandle(opened))
++            return { };
++        sourceProcess = Win32Handle::adopt(opened);
++    }
+     HANDLE duplicatedHandle;
+     // Copy the handle into our process and close the handle that the sending process created for us.
+-    if (!DuplicateHandle(sourceProcess.get(), handle, GetCurrentProcess(), &duplicatedHandle, 0, FALSE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
++    auto sourceHandle = registered ? registered->handle.get() : sourceProcess.get();
++    if (!isRealHandle(sourceHandle))
++        return { };
++    if (!DuplicateHandle(sourceHandle, handle, GetCurrentProcess(), &duplicatedHandle, 0, FALSE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
+         // The source process may exit after the above OpenProcess calling.
+         // DuplicateHandle fails with ERROR_INVALID_HANDLE in such a case.
+         return { };
+
+--- a/Source/WTF/wtf/PlatformWin.cmake
++++ b/Source/WTF/wtf/PlatformWin.cmake
+@@ -34,6 +34,7 @@
+     win/SoftLinking.h
+     win/WTFCRTDebug.h
+     win/Win32Handle.h
++    win/Win32HandleSource.h
+ )
+ 
+ list(APPEND WTF_LIBRARIES
+
+--- a/Source/WebKit/UIProcess/Launcher/ProcessLauncher.h
++++ b/Source/WebKit/UIProcess/Launcher/ProcessLauncher.h
+@@ -149,6 +149,9 @@
+ 
+     bool isLaunching() const { return m_isLaunching; }
+     ProcessID processID() const { return m_processID; }
++#if PLATFORM(WIN)
++    std::pair<DWORD, WTF::Win32Handle> duplicateProcessHandleForIPC(DWORD desiredAccess = PROCESS_DUP_HANDLE) const;
++#endif
+ 
+     void terminateProcess(const String& reason = { });
+     void invalidate();
+
+--- a/Source/WebKit/UIProcess/Launcher/win/ProcessLauncherWin.cpp
++++ b/Source/WebKit/UIProcess/Launcher/win/ProcessLauncherWin.cpp
+@@ -29,8 +29,11 @@
+ 
+ #include "Connection.h"
+ #include "IPCUtilities.h"
++#include "Logging.h"
+ #include <shlwapi.h>
+ #include <wtf/RunLoop.h>
++#include <wtf/Scope.h>
++#include <wtf/Vector.h>
+ #include <wtf/text/StringBuilder.h>
+ 
+ namespace WebKit {
+@@ -52,30 +55,54 @@
+ 
+ void ProcessLauncher::launchProcess()
+ {
+-    // First, create the server and client identifiers.
+-    HANDLE serverIdentifier, clientIdentifier;
++    auto launchFailed = [protectedThis = Ref { *this }](DWORD error) {
++        RELEASE_LOG_ERROR(Process, "Windows child process launch failed, error=%lu", error);
++        RunLoop::mainSingleton().dispatch([protectedThis] {
++            protectedThis->didFinishLaunchingProcess(0, IPC::Connection::Identifier { });
++        });
++    };
++    HANDLE serverIdentifier = INVALID_HANDLE_VALUE, clientIdentifier = INVALID_HANDLE_VALUE;
+     if (!IPC::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
+-        // FIXME: What should we do here?
+-        ASSERT_NOT_REACHED();
++        launchFailed(::GetLastError());
++        return;
+     }
++    auto serverHandle = Win32Handle::adopt(serverIdentifier);
++    auto clientHandle = Win32Handle::adopt(clientIdentifier);
++
++    HANDLE rawParentHandle = INVALID_HANDLE_VALUE;
++    if (!::DuplicateHandle(GetCurrentProcess(), GetCurrentProcess(), GetCurrentProcess(),
++        &rawParentHandle, PROCESS_DUP_HANDLE, TRUE, 0)) {
++        launchFailed(::GetLastError());
++        return;
++    }
++    auto parentHandle = Win32Handle::adopt(rawParentHandle);
+ 
+     // Ensure that the child process inherits the client identifier.
+-    ::SetHandleInformation(clientIdentifier, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
++    if (!::SetHandleInformation(clientIdentifier, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
++        launchFailed(::GetLastError());
++        return;
++    }
+ 
+     // To get the full file path to WebKit2WebProcess.exe, we fild the location of WebKit2.dll,
+     // remove the last path component.
+     HMODULE webKitModule = ::GetModuleHandle(L"WebKit2.dll");
+     ASSERT(webKitModule);
+-    if (!webKitModule)
++    if (!webKitModule) {
++        launchFailed(::GetLastError());
+         return;
++    }
+ 
+     WCHAR pathStr[MAX_PATH];
+-    if (!::GetModuleFileName(webKitModule, pathStr, std::size(pathStr)))
++    if (!::GetModuleFileName(webKitModule, pathStr, std::size(pathStr))) {
++        launchFailed(::GetLastError());
+         return;
++    }
+ 
+     ::PathRemoveFileSpec(pathStr);
+-    if (!::PathAppend(pathStr, processName(m_launchOptions.processType)))
++    if (!::PathAppend(pathStr, processName(m_launchOptions.processType))) {
++        launchFailed(::GetLastError());
+         return;
++    }
+ 
+     StringBuilder commandLineBuilder;
+     commandLineBuilder.append("\""_s);
+@@ -87,6 +114,10 @@
+     commandLineBuilder.append(String::number(m_launchOptions.processIdentifier.toUInt64()));
+     commandLineBuilder.append(" -clientIdentifier "_s);
+     commandLineBuilder.append(String::number(reinterpret_cast<uintptr_t>(clientIdentifier)));
++    commandLineBuilder.append(" -parentProcessIdentifier "_s);
++    commandLineBuilder.append(String::number(GetCurrentProcessId()));
++    commandLineBuilder.append(" -parentProcessHandle "_s);
++    commandLineBuilder.append(String::number(reinterpret_cast<uintptr_t>(parentHandle.get())));
+     if (m_client->shouldConfigureJSCForTesting())
+         commandLineBuilder.append(" -configure-jsc-for-testing"_s);
+     if (!m_client->isJITEnabled())
+@@ -95,32 +126,59 @@
+ 
+     auto commandLine = commandLineBuilder.toString().wideCharacters();
+ 
+-    STARTUPINFO startupInfo { };
+-    startupInfo.cb = sizeof(startupInfo);
+-    startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+-    startupInfo.wShowWindow = SW_HIDE;
++    SIZE_T attributeBytes = 0;
++    ::InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeBytes);
++    Vector<uint8_t> attributeStorage(attributeBytes);
++    auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeStorage.mutableSpan().data());
++    if (!::InitializeProcThreadAttributeList(attributes, 1, 0, &attributeBytes)) {
++        launchFailed(::GetLastError());
++        return;
++    }
++    auto destroyAttributes = makeScopeExit([&] { ::DeleteProcThreadAttributeList(attributes); });
++    HANDLE inheritedHandles[] = { clientIdentifier, parentHandle.get() };
++    if (!::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
++        inheritedHandles, sizeof(inheritedHandles), nullptr, nullptr)) {
++        launchFailed(::GetLastError());
++        return;
++    }
++    STARTUPINFOEX startupInfo { };
++    startupInfo.StartupInfo.cb = sizeof(startupInfo);
++    startupInfo.StartupInfo.dwFlags = STARTF_USESHOWWINDOW;
++    startupInfo.StartupInfo.wShowWindow = SW_HIDE;
++    startupInfo.lpAttributeList = attributes;
+     PROCESS_INFORMATION processInformation { };
+-    BOOL result = ::CreateProcess(0, commandLine.mutableSpan().data(), 0, 0, true, 0, 0, 0, &startupInfo, &processInformation);
+-
+-    // We can now close the client identifier handle.
+-    ::CloseHandle(clientIdentifier);
+-
++    BOOL result = ::CreateProcess(0, commandLine.mutableSpan().data(), 0, 0, true,
++        EXTENDED_STARTUPINFO_PRESENT, 0, 0, &startupInfo.StartupInfo, &processInformation);
++    auto launchError = result ? ERROR_SUCCESS : ::GetLastError();
++    parentHandle = { };
++    clientHandle = { };
+     if (!result) {
+-        // FIXME: What should we do here?
+-        ASSERT_NOT_REACHED();
++        launchFailed(launchError);
++        return;
+     }
+-
+-    // Don't leak the thread handle.
+-    ::CloseHandle(processInformation.hThread);
++    auto threadHandle = Win32Handle::adopt(processInformation.hThread);
+ 
+     // We've finished launching the process, message back to the run loop.
+     RefPtr<ProcessLauncher> protectedThis(this);
+     m_hProcess = Win32Handle::adopt(processInformation.hProcess);
+     WTF::ProcessID pid = processInformation.dwProcessId;
+ 
+-    RunLoop::mainSingleton().dispatch([protectedThis, pid, serverIdentifier] {
+-        protectedThis->didFinishLaunchingProcess(pid, IPC::Connection::Identifier { serverIdentifier });
++    RunLoop::mainSingleton().dispatch([protectedThis, pid, serverHandle = WTF::move(serverHandle)]() mutable {
++        if (protectedThis->m_client)
++            protectedThis->didFinishLaunchingProcess(pid, IPC::Connection::Identifier { serverHandle.leak() });
+     });
++}
++
++std::pair<DWORD, Win32Handle> ProcessLauncher::duplicateProcessHandleForIPC(DWORD desiredAccess) const
++{
++    if (!m_hProcess || !m_hProcess.get())
++        return { 0, { } };
++    DWORD processID = ::GetProcessId(m_hProcess.get());
++    HANDLE handle = INVALID_HANDLE_VALUE;
++    if (!processID || !::DuplicateHandle(GetCurrentProcess(), m_hProcess.get(), GetCurrentProcess(),
++        &handle, desiredAccess, FALSE, 0))
++        return { 0, { } };
++    return { processID, Win32Handle::adopt(handle) };
+ }
+ 
+ void ProcessLauncher::terminateProcess(const String&)
+
+--- a/Source/WebKit/UIProcess/AuxiliaryProcessProxy.h
++++ b/Source/WebKit/UIProcess/AuxiliaryProcessProxy.h
+@@ -194,6 +194,12 @@
+     bool isSuspended() const { return m_isSuspended; }
+ 
+     ProcessID processID() const { return m_processLauncher ? m_processLauncher->processID() : 0; }
++#if PLATFORM(WIN)
++    std::pair<DWORD, Win32Handle> duplicateProcessHandleForIPC(DWORD desiredAccess = PROCESS_DUP_HANDLE) const
++    {
++        return m_processLauncher ? m_processLauncher->duplicateProcessHandleForIPC(desiredAccess) : std::pair<DWORD, Win32Handle> { 0, { } };
++    }
++#endif
+ 
+     bool canSendMessage() const { return state() != State::Terminated;}
+     bool sendMessage(UniqueRef<IPC::Encoder>&&, OptionSet<IPC::SendOption>, std::optional<IPC::Connection::AsyncReplyHandler> = std::nullopt, ShouldStartProcessThrottlerActivity = ShouldStartProcessThrottlerActivity::Yes);
+
+--- a/Source/WebKit/Shared/win/AuxiliaryProcessMainWin.cpp
++++ b/Source/WebKit/Shared/win/AuxiliaryProcessMainWin.cpp
+@@ -30,6 +30,8 @@
+ #include <cstring>
+ #include <wtf/text/StringToIntegerConversion.h>
+ #include <wtf/win/WTFCRTDebug.h>
++#include <wtf/win/Win32HandleSource.h>
++#include <optional>
+ 
+ namespace WebKit {
+ 
+@@ -42,17 +44,40 @@
+ 
+ bool AuxiliaryProcessMainCommon::parseCommandLine(int argc, char** argv)
+ {
++    DWORD parentProcessID = 0;
++    HANDLE parentHandle = INVALID_HANDLE_VALUE;
+     for (int i = 0; i < argc; i++) {
+         if (!strcmp(argv[i], "-clientIdentifier") && i + 1 < argc)
+             m_parameters.connectionIdentifier = IPC::Connection::Identifier { reinterpret_cast<HANDLE>(parseIntegerAllowingTrailingJunk<uint64_t>(StringView::fromLatin1(argv[++i])).value_or(0)) };
+         else if (!strcmp(argv[i], "-processIdentifier") && i + 1 < argc)
+             m_parameters.processIdentifier = ObjectIdentifier<WebCore::ProcessIdentifierType>(parseIntegerAllowingTrailingJunk<uint64_t>(StringView::fromLatin1(argv[++i])).value_or(0));
++        else if (!strcmp(argv[i], "-parentProcessIdentifier") && i + 1 < argc)
++            parentProcessID = parseInteger<DWORD>(StringView::fromLatin1(argv[++i])).value_or(0);
++        else if (!strcmp(argv[i], "-parentProcessHandle") && i + 1 < argc)
++            parentHandle = reinterpret_cast<HANDLE>(parseInteger<uintptr_t>(StringView::fromLatin1(argv[++i])).value_or(0));
+         else if (!strcmp(argv[i], "-configure-jsc-for-testing"))
+             JSC::Config::configureForTesting();
+         else if (!strcmp(argv[i], "-disable-jit"))
+             JSC::ExecutableAllocator::disableJIT();
+     }
+-    return true;
++    auto value = reinterpret_cast<intptr_t>(parentHandle);
++    if (!parentProcessID || !value || (value < 0 && value >= -12))
++        return false;
++    auto clientHandle = m_parameters.connectionIdentifier.handle;
++    auto clientValue = reinterpret_cast<intptr_t>(clientHandle);
++    if (!clientValue || (clientValue < 0 && clientValue >= -12))
++        return false;
++    ULONG actualParentID = 0;
++    if (!::GetNamedPipeServerProcessId(clientHandle, &actualParentID) || actualParentID != parentProcessID)
++        return false;
++    auto parent = Win32Handle::adopt(parentHandle);
++    if (!::SetHandleInformation(clientHandle, HANDLE_FLAG_INHERIT, 0))
++        return false;
++    if (!::SetHandleInformation(parent.get(), HANDLE_FLAG_INHERIT, 0))
++        return false;
++    static std::optional<WTF::Win32HandleSource> parentSource;
++    parentSource.emplace(parentProcessID, WTF::move(parent));
++    return !!*parentSource;
+ }
+ 
+ } // namespace WebKit
+
+--- a/Source/WebKit/WebProcess/WebProcess.messages.in
++++ b/Source/WebKit/WebProcess/WebProcess.messages.in
+@@ -25,6 +25,12 @@
+     DispatchedTo=WebContent
+ ]
+ messages -> WebProcess : AuxiliaryProcess WantsAsyncDispatchMessage {
++#if PLATFORM(WIN) && ENABLE(GPU_PROCESS)
++    SetHostGPUProcessHandle(WebKit::GPUProcessConnectionIdentifier identifier, uint32_t processID, uint64_t processHandle) -> (bool processed, bool accepted) CanDispatchOutOfOrder AllowedWhenWaitingForSyncReply
++#endif
++#if PLATFORM(WIN)
++    SetHostNetworkProcessHandle(uint64_t requestIdentifier, uint64_t attemptIdentifier, uint32_t processID, uint64_t processHandle) -> (bool processed, bool accepted) CanDispatchOutOfOrder AllowedWhenWaitingForSyncReply
++#endif
+     InitializeWebProcess(struct WebKit::WebProcessCreationParameters processCreationParameters) -> (WebCore::ProcessIdentity processIdentity)
+     SetWebsiteDataStoreParameters(struct WebKit::WebProcessDataStoreParameters parameters)
+ 
+
+--- a/Source/WebKit/WebProcess/WebProcess.h
++++ b/Source/WebKit/WebProcess/WebProcess.h
+@@ -28,6 +28,10 @@
+ #include "AuxiliaryProcess.h"
+ #include "CacheModel.h"
+ #include "EventDispatcher.h"
++#include "GPUProcessConnectionIdentifier.h"
++#if PLATFORM(WIN)
++#include <wtf/win/Win32HandleSource.h>
++#endif
+ #include "IdentifierTypes.h"
+ #include "NetworkProcessConnection.h"
+ #include "RemoteSnapshotIdentifier.h"
+@@ -140,6 +144,8 @@
+ }
+ 
+ namespace WebKit {
++
++struct NetworkProcessConnectionInfo;
+ 
+ class AudioMediaStreamTrackRendererInternalUnitManager;
+ class AudioSessionRoutingArbitrator;
+@@ -300,6 +306,9 @@
+ 
+     void networkProcessConnectionClosed(NetworkProcessConnection*);
+     NetworkProcessConnection* existingNetworkProcessConnection() { return m_networkProcessConnection.get(); }
++#if PLATFORM(WIN)
++    void setHostNetworkProcessHandle(uint64_t, uint64_t, uint32_t, uint64_t, CompletionHandler<void(bool, bool)>&&);
++#endif
+     WebLoaderStrategy& LEGACY_NODELETE webLoaderStrategy() LIFETIME_BOUND;
+     WebFileSystemStorageConnection& fileSystemStorageConnection();
+ 
+@@ -318,6 +327,9 @@
+     // Fails a snapshot whose root will not be recorded, so that nothing waits for it.
+     void failSnapshot(RemoteSnapshotIdentifier);
+     GPUProcessConnection* existingGPUProcessConnection() { return m_gpuProcessConnection.get(); }
++#if PLATFORM(WIN)
++    void setHostGPUProcessHandle(GPUProcessConnectionIdentifier, uint32_t, uint64_t, CompletionHandler<void(bool, bool)>&&);
++#endif
+     // Returns timeout duration for GPU process connections. Thread-safe.
+     Seconds LEGACY_NODELETE gpuProcessTimeoutDuration() const;
+     void gpuProcessConnectionClosed();
+@@ -850,6 +862,13 @@
+ 
+     String m_uiProcessBundleIdentifier;
+     RefPtr<NetworkProcessConnection> m_networkProcessConnection;
++#if PLATFORM(WIN)
++    NetworkProcessConnectionInfo getNetworkProcessConnection(IPC::Connection&);
++    uint64_t m_hostNetworkRequestGeneration { 0 };
++    uint64_t m_pendingHostNetworkRequestIdentifier { 0 };
++    uint64_t m_pendingHostNetworkAttemptIdentifier { 0 };
++    std::unique_ptr<WTF::Win32HandleSource> m_pendingHostNetworkSource;
++#endif
+     const UniqueRef<WebLoaderStrategy> m_webLoaderStrategy;
+     RefPtr<WebFileSystemStorageConnection> m_fileSystemStorageConnection;
+ 
+
+--- a/Source/WebKit/UIProcess/WebProcessProxy.h
++++ b/Source/WebKit/UIProcess/WebProcessProxy.h
+@@ -242,6 +242,9 @@
+     void didSyncSharedPreferencesForWebProcessWithNetworkProcess(uint64_t syncedPreferencesVersion);
+ #if ENABLE(GPU_PROCESS)
+     void didSyncSharedPreferencesForWebProcessWithGPUProcess(uint64_t syncedPreferencesVersion);
++#if PLATFORM(WIN)
++    Markable<GPUProcessConnectionIdentifier> gpuProcessConnectionIdentifierForHost() const { return m_gpuProcessConnectionIdentifier; }
++#endif
+ #endif
+ #if ENABLE(MODEL_PROCESS)
+     void didSyncSharedPreferencesForWebProcessWithModelProcess(uint64_t syncedPreferencesVersion);
+@@ -274,6 +277,9 @@
+     void disableRemoteWorkers(OptionSet<RemoteWorkerType>);
+ 
+     WebsiteDataStore* websiteDataStore() const { ASSERT(m_websiteDataStore); return m_websiteDataStore.get(); }
++#if PLATFORM(WIN)
++    uint64_t hostNetworkConnectionRequestIdentifier() const { return m_hostNetworkConnectionRequestIdentifier; }
++#endif
+     void setWebsiteDataStore(WebsiteDataStore&);
+     
+     PAL::SessionID LEGACY_NODELETE sessionID() const;
+@@ -780,9 +786,13 @@
+     void shouldTerminate(CompletionHandler<void(bool)>&&);
+     
+     void getNetworkProcessConnection(CompletionHandler<void(NetworkProcessConnectionInfo&&)>&&);
++#if PLATFORM(WIN)
++    void getHostNetworkProcessConnection(uint64_t, CompletionHandler<void(NetworkProcessConnectionInfo&&)>&&);
++#endif
+ 
+ #if ENABLE(GPU_PROCESS)
+     void createGPUProcessConnection(GPUProcessConnectionIdentifier, IPC::Connection::Handle&&);
++
+     void gpuProcessConnectionDidBecomeUnresponsive(GPUProcessConnectionIdentifier);
+     void drawFrameToSnapshot(WebCore::FrameIdentifier, const WebCore::IntRect&, RemoteSnapshotIdentifier, WebCore::RenderingMode);
+ #endif
+@@ -962,6 +972,9 @@
+ 
+     VisibleWebPageCounter m_visiblePageCounter;
+     RefPtr<WebsiteDataStore> m_websiteDataStore;
++#if PLATFORM(WIN)
++    uint64_t m_hostNetworkConnectionRequestIdentifier { 0 };
++#endif
+ 
+     SystemMemoryPressureStatus m_memoryPressureStatus { SystemMemoryPressureStatus::Normal };
+ 
+
+--- a/Source/WebKit/WebProcess/WebProcess.cpp
++++ b/Source/WebKit/WebProcess/WebProcess.cpp
+@@ -1410,17 +1410,54 @@
+ #endif
+ }
+ 
++#if PLATFORM(WIN)
++void WebProcess::setHostNetworkProcessHandle(uint64_t requestIdentifier, uint64_t attemptIdentifier, uint32_t processID, uint64_t rawHandle, CompletionHandler<void(bool, bool)>&& reply)
++{
++    auto value = static_cast<intptr_t>(rawHandle);
++    if (!value || (value < 0 && value >= -12))
++        return reply(true, false);
++    auto capability = Win32Handle::adopt(reinterpret_cast<HANDLE>(rawHandle));
++    if (!processID || requestIdentifier != m_pendingHostNetworkRequestIdentifier || !requestIdentifier || attemptIdentifier <= m_pendingHostNetworkAttemptIdentifier)
++        return reply(true, false);
++    auto source = makeUnique<WTF::Win32HandleSource>(processID, WTF::move(capability));
++    if (!*source)
++        return reply(true, false);
++    // WebsiteDataStore may retry with a new NetworkProcess during this same
++    // synchronous request. Only a newer attempt may replace the pending source.
++    m_pendingHostNetworkSource = WTF::move(source);
++    m_pendingHostNetworkAttemptIdentifier = attemptIdentifier;
++    reply(true, true);
++}
++
++NetworkProcessConnectionInfo WebProcess::getNetworkProcessConnection(IPC::Connection& connection)
++#else
+ static NetworkProcessConnectionInfo getNetworkProcessConnection(IPC::Connection& connection)
++#endif
+ {
+     NetworkProcessConnectionInfo connectionInfo;
+     auto requestConnection = [&]() -> bool {
+         RELEASE_LOG(Process, "getNetworkProcessConnection: Request connection for core identifier %" PRIu64, WebCore::Process::identifier().toUInt64());
++#if PLATFORM(WIN)
++        m_pendingHostNetworkSource = nullptr;
++        m_pendingHostNetworkAttemptIdentifier = 0;
++        RELEASE_ASSERT(++m_hostNetworkRequestGeneration);
++        m_pendingHostNetworkRequestIdentifier = m_hostNetworkRequestGeneration;
++        auto sendResult = connection.sendSync(Messages::WebProcessProxy::GetHostNetworkProcessConnection(m_pendingHostNetworkRequestIdentifier), 0, IPC::Timeout::infinity(), IPC::SendSyncOption::MaintainOrderingWithAsyncMessages);
++        m_pendingHostNetworkRequestIdentifier = 0;
++#else
+         auto sendResult = connection.sendSync(Messages::WebProcessProxy::GetNetworkProcessConnection(), 0, IPC::Timeout::infinity(), IPC::SendSyncOption::MaintainOrderingWithAsyncMessages);
++#endif
+         if (!sendResult.succeeded()) {
+             RELEASE_LOG_ERROR(Process, "getNetworkProcessConnection: Failed to send message or receive invalid message: error %" PUBLIC_LOG_STRING, IPC::errorAsString(sendResult.error()).characters());
+             failedToGetNetworkProcessConnection();
+         }
+         std::tie(connectionInfo) = sendResult.takeReply();
++#if PLATFORM(WIN)
++        if (!connectionInfo.connection || !m_pendingHostNetworkSource) {
++            m_pendingHostNetworkSource = nullptr;
++            return false;
++        }
++#endif
+         return !!connectionInfo.connection;
+     };
+ 
+@@ -1448,7 +1485,11 @@
+     if (!m_networkProcessConnection) {
+         auto connectionInfo = getNetworkProcessConnection(Ref { *parentProcessConnection() });
+ 
+-        m_networkProcessConnection = NetworkProcessConnection::create(IPC::Connection::Identifier { WTF::move(connectionInfo.connection) }, connectionInfo.cookieAcceptPolicy);
++        m_networkProcessConnection = NetworkProcessConnection::create(IPC::Connection::Identifier { WTF::move(connectionInfo.connection) }, connectionInfo.cookieAcceptPolicy
++#if PLATFORM(WIN)
++            , WTF::move(m_pendingHostNetworkSource)
++#endif
++        );
+ #if HAVE(AUDIT_TOKEN)
+         m_networkProcessConnection->setNetworkProcessAuditToken(connectionInfo.auditToken ? std::optional(connectionInfo.auditToken->auditToken()) : std::nullopt);
+ #endif
+@@ -1590,6 +1631,21 @@
+     }
+     return *m_gpuProcessConnection;
+ }
++
++#if PLATFORM(WIN)
++void WebProcess::setHostGPUProcessHandle(GPUProcessConnectionIdentifier identifier, uint32_t processID, uint64_t rawHandle, CompletionHandler<void(bool, bool)>&& reply)
++{
++    auto value = static_cast<intptr_t>(rawHandle);
++    if (!value || (value < 0 && value >= -12))
++        return reply(true, false);
++    // The UI pushed this HANDLE into this process. Adopt before checking the
++    // connection token so rejection also closes the target-owned capability.
++    auto capability = Win32Handle::adopt(reinterpret_cast<HANDLE>(rawHandle));
++    if (!m_gpuProcessConnection || m_gpuProcessConnection->identifier() != identifier)
++        return reply(true, false);
++    reply(true, m_gpuProcessConnection->setHostProcessHandle(processID, WTF::move(capability)));
++}
++#endif
+ 
+ Seconds WebProcess::gpuProcessTimeoutDuration() const
+ {
+
+--- a/Source/WebKit/WebProcess/GPU/GPUProcessConnection.h
++++ b/Source/WebKit/WebProcess/GPU/GPUProcessConnection.h
+@@ -45,6 +45,9 @@
+ #include <wtf/RefCounted.h>
+ #include <wtf/ThreadSafeWeakHashSet.h>
+ #include <wtf/text/WTFString.h>
++#if PLATFORM(WIN)
++#include <wtf/win/Win32HandleSource.h>
++#endif
+ 
+ namespace WebCore {
+ class CAAudioStreamDescription;
+@@ -136,6 +139,9 @@
+ 
+     static constexpr Seconds defaultTimeout = 3_s;
+     bool waitForDidInitialize();
++#if PLATFORM(WIN)
++    bool setHostProcessHandle(uint32_t, Win32Handle&&);
++#endif
+ 
+ private:
+     GPUProcessConnection(Ref<IPC::Connection>&&);
+@@ -164,6 +170,9 @@
+     IPC::MessageReceiverMap m_messageReceiverMap;
+     GPUProcessConnectionIdentifier m_identifier { GPUProcessConnectionIdentifier::generate() };
+     bool m_hasInitialized { false };
++#if PLATFORM(WIN)
++    std::unique_ptr<WTF::Win32HandleSource> m_hostProcessSource;
++#endif
+     const RefPtr<RemoteSharedResourceCacheProxy> m_sharedResourceCache;
+ #if HAVE(AUDIT_TOKEN)
+     std::optional<audit_token_t> m_auditToken;
+
+--- a/Source/WebKit/WebProcess/GPU/GPUProcessConnection.cpp
++++ b/Source/WebKit/WebProcess/GPU/GPUProcessConnection.cpp
+@@ -32,6 +32,7 @@
+ #include "AudioVideoRendererRemoteMessageReceiverMessages.h"
+ #include "GPUConnectionToWebProcessMessages.h"
+ #include "GPUProcessConnectionInfo.h"
++#include "WebProcessMessages.h"
+ #include "GPUProcessConnectionMessages.h"
+ #include "LibWebRTCCodecs.h"
+ #include "LibWebRTCCodecsMessages.h"
+@@ -128,7 +129,7 @@
+ 
+ GPUProcessConnection::~GPUProcessConnection()
+ {
+-    m_connection->invalidate();
++    invalidate();
+ #if PLATFORM(COCOA) && ENABLE(WEB_AUDIO)
+     if (m_audioSourceProviderManager)
+         m_audioSourceProviderManager->stopListeningForIPC();
+@@ -165,12 +166,18 @@
+ 
+ void GPUProcessConnection::invalidate()
+ {
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+     m_connection->invalidate();
+     m_hasInitialized = true;
+ }
+ 
+ void GPUProcessConnection::didClose(IPC::Connection&)
+ {
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+     RELEASE_LOG_ERROR(Process, "%p - GPUProcessConnection::didClose", this);
+     auto protector = Ref { *this };
+     Ref webProcess = WebProcess::singleton();
+@@ -322,8 +329,56 @@
+ #endif
+ }
+ 
++#if PLATFORM(WIN)
++bool GPUProcessConnection::setHostProcessHandle(uint32_t processID, Win32Handle&& handle)
++{
++    if (!m_connection->isValid() || m_hostProcessSource)
++        return false;
++    auto source = makeUnique<WTF::Win32HandleSource>(processID, WTF::move(handle));
++    if (!*source)
++        return false;
++    m_hostProcessSource = WTF::move(source);
++    return true;
++}
++#endif
++
+ bool GPUProcessConnection::waitForDidInitialize()
+ {
++#if PLATFORM(WIN)
++    auto deadline = MonotonicTime::now() + defaultTimeout;
++    // Shared sync-message dispatch can run the handler before the named wait
++    // reports AlreadyDispatched. Only the current connection's state is proof
++    // of readiness; an older token can also consume a matching parent message.
++    while (!m_hostProcessSource && m_connection->isValid()) {
++        auto remaining = deadline - MonotonicTime::now();
++        if (remaining <= 0_s) {
++            invalidate();
++            return false;
++        }
++        auto result = WebProcess::singleton().parentProcessConnection()->waitForAndDispatchImmediately<Messages::WebProcess::SetHostGPUProcessHandle>(0, remaining);
++        if (m_hostProcessSource && m_connection->isValid())
++            break;
++        if (result != IPC::Error::NoError && result != IPC::Error::WaitingOnAlreadyDispatchedMessage) {
++            invalidate();
++            return false;
++        }
++    }
++    while (!m_hasInitialized && m_connection->isValid()) {
++        auto remaining = deadline - MonotonicTime::now();
++        if (remaining <= 0_s) {
++            invalidate();
++            return false;
++        }
++        auto result = m_connection->waitForAndDispatchImmediately<Messages::GPUProcessConnection::DidInitialize>(0, remaining);
++        if (m_hasInitialized && m_connection->isValid())
++            break;
++        if (result != IPC::Error::NoError && result != IPC::Error::WaitingOnAlreadyDispatchedMessage) {
++            invalidate();
++            return false;
++        }
++    }
++    return m_hostProcessSource && m_hasInitialized && m_connection->isValid();
++#else
+     if (!m_hasInitialized) {
+         auto result = m_connection->waitForAndDispatchImmediately<Messages::GPUProcessConnection::DidInitialize>(0, defaultTimeout);
+         if (result != IPC::Error::NoError) {
+@@ -333,6 +388,7 @@
+         }
+     }
+     return m_connection->isValid();
++#endif
+ }
+ 
+ void GPUProcessConnection::didReceiveRemoteCommand(PlatformMediaSession::RemoteControlCommandType type, const PlatformMediaSession::RemoteCommandArgument& argument, std::optional<WebCore::MediaSessionIdentifier> targetSession)
+
+--- a/Source/WebKit/UIProcess/GPU/GPUProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/GPU/GPUProcessProxy.cpp
+@@ -24,6 +24,9 @@
+  */
+ 
+ #include "config.h"
++#if PLATFORM(WIN)
++#include "win/HostProcessCapabilityTransfer.h"
++#endif
+ #include "GPUProcessProxy.h"
+ 
+ #if ENABLE(GPU_PROCESS)
+@@ -534,6 +537,7 @@
+ 
+ std::optional<GPUProcessMediaCodecCapabilities> GPUProcessProxy::s_gpuProcessMediaCodecCapabilities;
+ 
++
+ void GPUProcessProxy::createGPUProcessConnection(WebProcessProxy& webProcessProxy, IPC::Connection::Handle&& connectionIdentifier, GPUProcessConnectionParameters&& parameters)
+ {
+     parameters.mediaCodecCapabilities = s_gpuProcessMediaCodecCapabilities;
+@@ -542,11 +546,90 @@
+         addSession(*store);
+ 
+     RELEASE_LOG(ProcessSuspension, "%p - GPUProcessProxy is taking a background assertion because a web process is requesting a connection", this);
+-    startResponsivenessTimer(UseLazyStop::No);
+-    sendWithAsyncReply(Messages::GPUProcess::CreateGPUConnectionToWebProcess { webProcessProxy.coreProcessIdentifier(), webProcessProxy.sessionID(), WTF::move(connectionIdentifier), WTF::move(parameters) }, [weakThis = WeakPtr { *this }]() mutable {
+-        if (RefPtr protectedThis = weakThis.get())
++#if PLATFORM(WIN)
++    auto [gpuProcessID, gpuCapability] = duplicateProcessHandleForIPC();
++    auto [webProcessID, webCapability] = webProcessProxy.duplicateProcessHandleForIPC();
++    auto [webTargetID, webTarget] = webProcessProxy.duplicateProcessHandleForIPC(PROCESS_DUP_HANDLE | PROCESS_TERMINATE);
++    auto [gpuTargetID, gpuTarget] = duplicateProcessHandleForIPC(PROCESS_DUP_HANDLE | PROCESS_TERMINATE);
++    if (!gpuProcessID || !webProcessID || gpuTargetID != gpuProcessID || webTargetID != webProcessID) {
++        webProcessProxy.terminate();
++        return;
++    }
++    auto webTransfer = HostProcessCapabilityTransfer::push(gpuCapability.get(), WTF::move(webTarget));
++    if (!webTransfer) {
++        webProcessProxy.terminate();
++        return;
++    }
++    auto gpuConnectionIdentifier = *webProcessProxy.gpuProcessConnectionIdentifierForHost();
++    auto connect = [weakThis = WeakPtr { *this }, weakWebProcess = WeakPtr { webProcessProxy }, gpuConnectionIdentifier, gpuProcessID, webProcessID,
++        webCapability = WTF::move(webCapability), gpuTarget = WTF::move(gpuTarget), webTransfer,
++        connectionIdentifier = WTF::move(connectionIdentifier), parameters = WTF::move(parameters)]() mutable {
++        RefPtr protectedThis = weakThis.get();
++        RefPtr webProcess = weakWebProcess.get();
++        if (!protectedThis || !webProcess || webProcess->gpuProcessConnectionIdentifierForHost() != gpuConnectionIdentifier)
++            return;
++        auto [currentGPUProcessID, currentGPUCapability] = protectedThis->duplicateProcessHandleForIPC();
++        auto [currentWebProcessID, currentWebCapability] = webProcess->duplicateProcessHandleForIPC();
++        if (currentGPUProcessID != gpuProcessID || currentWebProcessID != webProcessID) {
++            webTransfer->terminateTarget();
++            return;
++        }
++        auto gpuTransfer = HostProcessCapabilityTransfer::push(webCapability.get(), WTF::move(gpuTarget));
++        if (!gpuTransfer) {
++            webTransfer->terminateTarget();
++            return;
++        }
++        protectedThis->startResponsivenessTimer(UseLazyStop::No);
++        auto replyID = protectedThis->sendWithAsyncReply(Messages::GPUProcess::CreateHostGPUConnectionToWebProcess {
++            webProcess->coreProcessIdentifier(), webProcess->sessionID(), WTF::move(connectionIdentifier), WTF::move(parameters),
++            webProcessID, gpuTransfer->remoteHandle() },
++            [weakThis, weakWebProcess, gpuConnectionIdentifier, gpuTransfer, webTransfer](bool processed, bool accepted) mutable {
++                if (processed)
++                    gpuTransfer->didProcess();
++                if (RefPtr process = weakThis.get())
++                    process->stopResponsivenessTimer();
++                RefPtr webProcess = weakWebProcess.get();
++                if (processed && !accepted && webProcess && webProcess->gpuProcessConnectionIdentifierForHost() == gpuConnectionIdentifier)
++                    webTransfer->terminateTarget();
++            }, 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
++        if (!replyID) {
+             protectedThis->stopResponsivenessTimer();
+-    }, 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
++            webTransfer->terminateTarget();
++        }
++    };
++    // Different IPC connections have no FIFO ordering. The WebProcess must
++    // acknowledge source registration before the GPU receives its IPC pipe.
++    auto bootstrapReply = webProcessProxy.sendWithAsyncReply(Messages::WebProcess::SetHostGPUProcessHandle {
++        gpuConnectionIdentifier, gpuProcessID, webTransfer->remoteHandle() },
++        [connect = WTF::move(connect), weakWebProcess = WeakPtr { webProcessProxy }, gpuConnectionIdentifier, webTransfer](bool processed, bool accepted) mutable {
++            if (processed)
++                webTransfer->didProcess();
++            RefPtr process = weakWebProcess.get();
++            if (!processed || !process || process->gpuProcessConnectionIdentifierForHost() != gpuConnectionIdentifier)
++                return;
++            if (accepted)
++                connect();
++            else
++                webTransfer->terminateTarget();
++        }, 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
++    if (!bootstrapReply)
++        webTransfer->terminateTarget();
++#else
++    auto connect = [weakThis = WeakPtr { *this }, weakWebProcess = WeakPtr { webProcessProxy }, connectionIdentifier = WTF::move(connectionIdentifier), parameters = WTF::move(parameters)]() mutable {
++        RefPtr protectedThis = weakThis.get();
++        RefPtr webProcess = weakWebProcess.get();
++        if (!protectedThis || !webProcess)
++            return;
++        protectedThis->startResponsivenessTimer(UseLazyStop::No);
++        auto replyID = protectedThis->sendWithAsyncReply(Messages::GPUProcess::CreateGPUConnectionToWebProcess { webProcess->coreProcessIdentifier(), webProcess->sessionID(), WTF::move(connectionIdentifier), WTF::move(parameters) }, [weakThis]() mutable {
++            if (RefPtr process = weakThis.get())
++                process->stopResponsivenessTimer();
++        }, 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
++        if (!replyID)
++            protectedThis->stopResponsivenessTimer();
++    };
++    connect();
++#endif
+ }
+ 
+ void GPUProcessProxy::sharedPreferencesForWebProcessDidChange(WebProcessProxy& webProcessProxy, SharedPreferencesForWebProcess&& sharedPreferencesForWebProcess, CompletionHandler<void()>&& completionHandler)
+
+--- a/Source/WebKit/GPUProcess/GPUProcess.messages.in
++++ b/Source/WebKit/GPUProcess/GPUProcess.messages.in
+@@ -30,6 +30,9 @@
+ messages -> GPUProcess : AuxiliaryProcess {
+     InitializeGPUProcess(struct WebKit::GPUProcessCreationParameters processCreationParameters) -> ()
+ 
++#if PLATFORM(WIN)
++    CreateHostGPUConnectionToWebProcess(WebCore::ProcessIdentifier processIdentifier, PAL::SessionID sessionID, IPC::ConnectionHandle connectionHandle, struct WebKit::GPUProcessConnectionParameters parameters, uint32_t sourceProcessID, uint64_t processHandle) -> (bool processed, bool accepted) AllowedWhenWaitingForSyncReply
++#endif
+     CreateGPUConnectionToWebProcess(WebCore::ProcessIdentifier processIdentifier, PAL::SessionID sessionID, IPC::ConnectionHandle connectionHandle, struct WebKit::GPUProcessConnectionParameters parameters) -> () AllowedWhenWaitingForSyncReply
+     SharedPreferencesForWebProcessDidChange(WebCore::ProcessIdentifier processIdentifier, struct WebKit::SharedPreferencesForWebProcess sharedPreferencesForWebProcess) -> ()
+     SecurityFlagsDidChange(struct WebKit::SecurityFlags securityFlags)
+
+--- a/Source/WebKit/GPUProcess/GPUProcess.h
++++ b/Source/WebKit/GPUProcess/GPUProcess.h
+@@ -28,6 +28,9 @@
+ #if ENABLE(GPU_PROCESS)
+ 
+ #include "AuxiliaryProcess.h"
++#if PLATFORM(WIN)
++#include <wtf/win/Win32HandleSource.h>
++#endif
+ #include "GPUProcessPreferences.h"
+ #include "ImageBufferBackendHandle.h"
+ #include "RemoteSerializedImageBufferIdentifier.h"
+@@ -247,7 +250,13 @@
+     void initializeGPUProcess(GPUProcessCreationParameters&&, CompletionHandler<void()>&&);
+     void platformInitializeGPUProcess(GPUProcessCreationParameters&);
+     void updateGPUProcessPreferences(GPUProcessPreferences&&);
++#if PLATFORM(WIN)
++    void createHostGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&, uint32_t, uint64_t, CompletionHandler<void(bool, bool)>&&);
++#endif
+     void createGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&, CompletionHandler<void()>&&);
++#if PLATFORM(WIN)
++    void createGPUConnectionToWebProcessWithHostSource(WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&, CompletionHandler<void()>&&, std::unique_ptr<WTF::Win32HandleSource>&&);
++#endif
+     void sharedPreferencesForWebProcessDidChange(WebCore::ProcessIdentifier, SharedPreferencesForWebProcess&&, CompletionHandler<void()>&&);
+     void securityFlagsDidChange(SecurityFlags&&);
+     void addSession(PAL::SessionID, GPUProcessSessionParameters&&);
+
+--- a/Source/WebKit/GPUProcess/GPUProcess.cpp
++++ b/Source/WebKit/GPUProcess/GPUProcess.cpp
+@@ -112,7 +112,34 @@
+     return gpuProcess.get().get();
+ }
+ 
++#if PLATFORM(WIN)
++void GPUProcess::createHostGPUConnectionToWebProcess(WebCore::ProcessIdentifier identifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters, uint32_t processID, uint64_t rawHandle, CompletionHandler<void(bool, bool)>&& reply)
++{
++    auto value = static_cast<intptr_t>(rawHandle);
++    if (!value || (value < 0 && value >= -12))
++        return reply(true, false);
++    // Adoption precedes every pipe, identity and duplicate-connection check.
++    auto capability = Win32Handle::adopt(reinterpret_cast<HANDLE>(rawHandle));
++    if (!processID || !connectionHandle || m_webProcessConnections.contains(identifier))
++        return reply(true, false);
++    auto source = makeUnique<WTF::Win32HandleSource>(processID, WTF::move(capability));
++    if (!*source)
++        return reply(true, false);
++    createGPUConnectionToWebProcessWithHostSource(identifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters),
++        [reply = WTF::move(reply)]() mutable { reply(true, true); }, WTF::move(source));
++}
++#endif
++
++#if PLATFORM(WIN)
+ void GPUProcess::createGPUConnectionToWebProcess(WebCore::ProcessIdentifier identifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters, CompletionHandler<void()>&& completionHandler)
++{
++    createGPUConnectionToWebProcessWithHostSource(identifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters), WTF::move(completionHandler), nullptr);
++}
++
++void GPUProcess::createGPUConnectionToWebProcessWithHostSource(WebCore::ProcessIdentifier identifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters, CompletionHandler<void()>&& completionHandler, std::unique_ptr<WTF::Win32HandleSource>&& hostSource)
++#else
++void GPUProcess::createGPUConnectionToWebProcess(WebCore::ProcessIdentifier identifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters, CompletionHandler<void()>&& completionHandler)
++#endif
+ {
+     RELEASE_LOG(Process, "%p - GPUProcess::createGPUConnectionToWebProcess: processIdentifier=%" PRIu64, this, identifier.toUInt64());
+ 
+@@ -121,7 +148,11 @@
+     if (!connectionHandle)
+         return;
+ 
+-    auto newConnection = GPUConnectionToWebProcess::create(*this, identifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters));
++    auto newConnection = GPUConnectionToWebProcess::create(*this, identifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters)
++#if PLATFORM(WIN)
++        , WTF::move(hostSource)
++#endif
++    );
+ 
+ #if ENABLE(MEDIA_STREAM)
+     // FIXME: We should refactor code to go from WebProcess -> GPUProcess -> UIProcess when getUserMedia is called instead of going from WebProcess -> UIProcess directly.
+
+--- a/Source/WebKit/GPUProcess/GPUConnectionToWebProcess.h
++++ b/Source/WebKit/GPUProcess/GPUConnectionToWebProcess.h
+@@ -24,6 +24,9 @@
+  */
+ 
+ #pragma once
++#if PLATFORM(WIN)
++#include <wtf/win/Win32HandleSource.h>
++#endif
+ 
+ #if ENABLE(GPU_PROCESS)
+ 
+@@ -140,7 +143,11 @@
+     WTF_DEPRECATED_MAKE_FAST_ALLOCATED(GPUConnectionToWebProcess);
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(GPUConnectionToWebProcess);
+ public:
+-    static Ref<GPUConnectionToWebProcess> create(GPUProcess&, WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&);
++    static Ref<GPUConnectionToWebProcess> create(GPUProcess&, WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&
++#if PLATFORM(WIN)
++        , std::unique_ptr<WTF::Win32HandleSource>&&
++#endif
++    );
+     virtual ~GPUConnectionToWebProcess();
+ 
+     // IPC::Connection::Client, WebCore::NowPlayingManagerClient.
+@@ -303,7 +310,11 @@
+ #endif
+ 
+ private:
+-    GPUConnectionToWebProcess(GPUProcess&, WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&);
++    GPUConnectionToWebProcess(GPUProcess&, WebCore::ProcessIdentifier, PAL::SessionID, IPC::Connection::Handle&&, GPUProcessConnectionParameters&&
++#if PLATFORM(WIN)
++        , std::unique_ptr<WTF::Win32HandleSource>&&
++#endif
++    );
+ 
+ #if ENABLE(WEB_AUDIO)
+     RemoteAudioDestinationManager& remoteAudioDestinationManager();
+@@ -387,6 +398,9 @@
+     const RefPtr<Logger> m_logger;
+ 
+     const Ref<IPC::Connection> m_connection;
++#if PLATFORM(WIN)
++    std::unique_ptr<WTF::Win32HandleSource> m_hostProcessSource;
++#endif
+     IPC::MessageReceiverMap m_messageReceiverMap;
+     const Ref<GPUProcess> m_gpuProcess;
+     const WebCore::ProcessIdentifier m_webProcessIdentifier;
+
+--- a/Source/WebKit/GPUProcess/GPUConnectionToWebProcess.cpp
++++ b/Source/WebKit/GPUProcess/GPUConnectionToWebProcess.cpp
+@@ -307,13 +307,28 @@
+     return identity;
+ }
+ 
+-Ref<GPUConnectionToWebProcess> GPUConnectionToWebProcess::create(GPUProcess& gpuProcess, WebCore::ProcessIdentifier webProcessIdentifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters)
+-{
+-    return adoptRef(*new GPUConnectionToWebProcess(gpuProcess, webProcessIdentifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters)));
+-}
+-
+-GPUConnectionToWebProcess::GPUConnectionToWebProcess(GPUProcess& gpuProcess, WebCore::ProcessIdentifier webProcessIdentifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters)
++Ref<GPUConnectionToWebProcess> GPUConnectionToWebProcess::create(GPUProcess& gpuProcess, WebCore::ProcessIdentifier webProcessIdentifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters
++#if PLATFORM(WIN)
++    , std::unique_ptr<WTF::Win32HandleSource>&& hostSource
++#endif
++)
++{
++    return adoptRef(*new GPUConnectionToWebProcess(gpuProcess, webProcessIdentifier, sessionID, WTF::move(connectionHandle), WTF::move(parameters)
++#if PLATFORM(WIN)
++        , WTF::move(hostSource)
++#endif
++    ));
++}
++
++GPUConnectionToWebProcess::GPUConnectionToWebProcess(GPUProcess& gpuProcess, WebCore::ProcessIdentifier webProcessIdentifier, PAL::SessionID sessionID, IPC::Connection::Handle&& connectionHandle, GPUProcessConnectionParameters&& parameters
++#if PLATFORM(WIN)
++    , std::unique_ptr<WTF::Win32HandleSource>&& hostSource
++#endif
++)
+     : m_connection(IPC::Connection::createClientConnection(IPC::Connection::Identifier { WTF::move(connectionHandle) }))
++#if PLATFORM(WIN)
++    , m_hostProcessSource(WTF::move(hostSource))
++#endif
+     , m_gpuProcess(gpuProcess)
+     , m_webProcessIdentifier(webProcessIdentifier)
+     , m_webProcessIdentity(adjustProcessIdentityIfNeeded(WTF::move(parameters.webProcessIdentity)))
+@@ -397,6 +412,9 @@
+     RELEASE_ASSERT(RunLoop::isMain());
+ 
+     m_connection->invalidate();
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+ 
+ #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
+     m_sampleBufferDisplayLayerManager->close();
+@@ -416,6 +434,9 @@
+ 
+ void GPUConnectionToWebProcess::didClose(IPC::Connection& connection)
+ {
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+     assertIsMainThread();
+ 
+     if (m_isNowPlayingManagerClient)
+
+diff --git a/Source/WebKit/UIProcess/win/HostProcessCapabilityTransfer.h b/Source/WebKit/UIProcess/win/HostProcessCapabilityTransfer.h
+new file mode 100644
+--- /dev/null
++++ b/Source/WebKit/UIProcess/win/HostProcessCapabilityTransfer.h
+@@ -0,0 +1,63 @@
++#pragma once
++
++#if PLATFORM(WIN)
++#include <atomic>
++#include <cstdlib>
++#include <type_traits>
++#include <wtf/Noncopyable.h>
++#include <wtf/RefPtr.h>
++#include <wtf/ThreadSafeRefCounted.h>
++#include <wtf/win/Win32Handle.h>
++
++namespace WebKit {
++
++// A pushed value belongs to the exact child process before IPC delivery. If the
++// handler never acknowledges adoption, ending that process releases the value.
++// Never reclaim a remote numeric HANDLE: the child may have already reused it.
++class HostProcessCapabilityTransfer : public ThreadSafeRefCounted<HostProcessCapabilityTransfer> {
++    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(HostProcessCapabilityTransfer);
++    WTF_MAKE_NONCOPYABLE(HostProcessCapabilityTransfer);
++public:
++    static RefPtr<HostProcessCapabilityTransfer> push(HANDLE sourceCapability, Win32Handle&& targetProcess)
++    {
++        if (!isRealHandle(sourceCapability) || !isRealHandle(targetProcess.get()))
++            return nullptr;
++        HANDLE remote = nullptr;
++        if (!::DuplicateHandle(GetCurrentProcess(), sourceCapability, targetProcess.get(), &remote, 0, FALSE, DUPLICATE_SAME_ACCESS))
++            return nullptr;
++        return adoptRef(*new HostProcessCapabilityTransfer(WTF::move(targetProcess), remote));
++    }
++    ~HostProcessCapabilityTransfer()
++    {
++        if (!m_processed.load())
++            terminateTarget();
++    }
++    uint64_t remoteHandle() const { return reinterpret_cast<uint64_t>(m_remoteHandle); }
++    void didProcess() { m_processed = true; }
++    void terminateTarget() const
++    {
++        // Win32Handle's moved-from value is -1, which is also the current-process
++        // pseudo handle. The guard itself is never moved and rejects every pseudo.
++        if (isRealHandle(m_targetProcess.get()))
++            ::TerminateProcess(m_targetProcess.get(), EXIT_FAILURE);
++    }
++private:
++    static bool isRealHandle(HANDLE handle)
++    {
++        auto value = reinterpret_cast<intptr_t>(handle);
++        return value && (value > 0 || value < -12);
++    }
++    HostProcessCapabilityTransfer(Win32Handle&& targetProcess, HANDLE remoteHandle)
++        : m_targetProcess(WTF::move(targetProcess))
++        , m_remoteHandle(remoteHandle)
++    {
++    }
++    Win32Handle m_targetProcess;
++    HANDLE m_remoteHandle;
++    std::atomic<bool> m_processed { false };
++};
++static_assert(!std::is_copy_constructible_v<HostProcessCapabilityTransfer>);
++static_assert(!std::is_move_constructible_v<HostProcessCapabilityTransfer>);
++
++} // namespace WebKit
++#endif
+
+--- a/Source/WebKit/UIProcess/WebProcessProxy.messages.in
++++ b/Source/WebKit/UIProcess/WebProcessProxy.messages.in
+@@ -33,6 +33,9 @@
+     EnableSuddenTermination()
+     DisableSuddenTermination()
+ 
++#if PLATFORM(WIN)
++    GetHostNetworkProcessConnection(uint64_t requestIdentifier) -> (struct WebKit::NetworkProcessConnectionInfo connectionInfo) Synchronous
++#endif
+     GetNetworkProcessConnection() -> (struct WebKit::NetworkProcessConnectionInfo connectionInfo) Synchronous
+ 
+     WaitForSharedPreferencesForWebProcessToSync(uint64_t sharedPreferencesVersion) -> (bool success) Synchronous
+
+--- a/Source/WebKit/UIProcess/WebProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/WebProcessProxy.cpp
+@@ -1554,6 +1554,22 @@
+ }
+ #endif // !PLATFORM(COCOA)
+ 
++#if PLATFORM(WIN)
++void WebProcessProxy::getHostNetworkProcessConnection(uint64_t requestIdentifier, CompletionHandler<void(NetworkProcessConnectionInfo&&)>&& reply)
++{
++    // A WebProcess has one synchronous network-connection request at a time.
++    // Refuse nested requests rather than replacing the slot of an older reply.
++    if (!requestIdentifier || m_hostNetworkConnectionRequestIdentifier)
++        return reply({ });
++    m_hostNetworkConnectionRequestIdentifier = requestIdentifier;
++    getNetworkProcessConnection([weakThis = WeakPtr { *this }, requestIdentifier, reply = WTF::move(reply)](NetworkProcessConnectionInfo&& info) mutable {
++        if (RefPtr process = weakThis.get(); process && process->m_hostNetworkConnectionRequestIdentifier == requestIdentifier)
++            process->m_hostNetworkConnectionRequestIdentifier = 0;
++        reply(WTF::move(info));
++    });
++}
++#endif
++
+ void WebProcessProxy::getNetworkProcessConnection(CompletionHandler<void(NetworkProcessConnectionInfo&&)>&& reply)
+ {
+     RefPtr dataStore = websiteDataStore();
+
+--- a/Source/WebKit/WebProcess/Network/NetworkProcessConnection.h
++++ b/Source/WebKit/WebProcess/Network/NetworkProcessConnection.h
+@@ -26,6 +26,9 @@
+ #pragma once
+ 
+ #include "Connection.h"
++#if PLATFORM(WIN)
++#include <wtf/win/Win32HandleSource.h>
++#endif
+ #include <JavaScriptCore/ConsoleTypes.h>
+ #include <WebCore/FrameIdentifier.h>
+ #include <WebCore/MessagePortChannelProvider.h>
+@@ -64,9 +67,17 @@
+     WTF_DEPRECATED_MAKE_FAST_ALLOCATED(NetworkProcessConnection);
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(NetworkProcessConnection);
+ public:
+-    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier&& connectionIdentifier, WebCore::HTTPCookieAcceptPolicy httpCookieAcceptPolicy)
++    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier&& connectionIdentifier, WebCore::HTTPCookieAcceptPolicy httpCookieAcceptPolicy
++#if PLATFORM(WIN)
++        , std::unique_ptr<WTF::Win32HandleSource>&& hostSource = nullptr
++#endif
++    )
+     {
+-        return adoptRef(*new NetworkProcessConnection(WTF::move(connectionIdentifier), httpCookieAcceptPolicy));
++        return adoptRef(*new NetworkProcessConnection(WTF::move(connectionIdentifier), httpCookieAcceptPolicy
++#if PLATFORM(WIN)
++            , WTF::move(hostSource)
++#endif
++        ));
+     }
+     ~NetworkProcessConnection();
+ 
+@@ -99,7 +110,11 @@
+     void updateCachedCookiesEnabled();
+     void loadCancelledDownloadRedirectRequestInFrame(WebCore::ResourceRequest&&, WebCore::FrameIdentifier, WebCore::PageIdentifier);
+ private:
+-    NetworkProcessConnection(IPC::Connection::Identifier&&, WebCore::HTTPCookieAcceptPolicy);
++    NetworkProcessConnection(IPC::Connection::Identifier&&, WebCore::HTTPCookieAcceptPolicy
++#if PLATFORM(WIN)
++        , std::unique_ptr<WTF::Win32HandleSource>&&
++#endif
++    );
+ 
+     // IPC::Connection::Client
+     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+@@ -130,6 +145,9 @@
+ 
+     // The connection from the web process to the network process.
+     const Ref<IPC::Connection> m_connection;
++#if PLATFORM(WIN)
++    std::unique_ptr<WTF::Win32HandleSource> m_hostProcessSource;
++#endif
+ #if HAVE(AUDIT_TOKEN)
+     std::optional<audit_token_t> m_networkProcessAuditToken;
+ #endif
+
+--- a/Source/WebKit/WebProcess/Network/NetworkProcessConnection.cpp
++++ b/Source/WebKit/WebProcess/Network/NetworkProcessConnection.cpp
+@@ -83,8 +83,15 @@
+ namespace WebKit {
+ using namespace WebCore;
+ 
+-NetworkProcessConnection::NetworkProcessConnection(IPC::Connection::Identifier&& connectionIdentifier, HTTPCookieAcceptPolicy cookieAcceptPolicy)
++NetworkProcessConnection::NetworkProcessConnection(IPC::Connection::Identifier&& connectionIdentifier, HTTPCookieAcceptPolicy cookieAcceptPolicy
++#if PLATFORM(WIN)
++    , std::unique_ptr<WTF::Win32HandleSource>&& hostSource
++#endif
++)
+     : m_connection(IPC::Connection::createClientConnection(WTF::move(connectionIdentifier)))
++#if PLATFORM(WIN)
++    , m_hostProcessSource(WTF::move(hostSource))
++#endif
+     , m_cookieAcceptPolicy(cookieAcceptPolicy)
+ {
+     m_connection->open(*this);
+@@ -98,6 +105,9 @@
+ NetworkProcessConnection::~NetworkProcessConnection()
+ {
+     m_connection->invalidate();
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+ }
+ 
+ bool NetworkProcessConnection::dispatchMessage(IPC::Connection& connection, IPC::Decoder& decoder)
+@@ -207,6 +217,9 @@
+ 
+ void NetworkProcessConnection::didClose(IPC::Connection&)
+ {
++#if PLATFORM(WIN)
++    m_hostProcessSource = nullptr;
++#endif
+     // The NetworkProcess probably crashed.
+     Ref<NetworkProcessConnection> protector(*this);
+     WebProcess::singleton().networkProcessConnectionClosed(this);
+
+--- a/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp
+@@ -25,6 +25,11 @@
+ 
+ #include "config.h"
+ #include "NetworkProcessProxy.h"
++#if PLATFORM(WIN)
++#include "WebProcessMessages.h"
++#include "MessageFlags.h"
++#include "win/HostProcessCapabilityTransfer.h"
++#endif
+ 
+ #include "APIContentRuleList.h"
+ #include "APICustomProtocolManagerClient.h"
+@@ -350,34 +355,50 @@
+ void NetworkProcessProxy::getNetworkProcessConnection(WebProcessProxy& webProcessProxy, CompletionHandler<void(NetworkProcessConnectionInfo&&)>&& reply)
+ {
+     RELEASE_LOG(ProcessSuspension, "%p - NetworkProcessProxy::getNetworkProcessConnection: Taking a background assertion because web process pid %i (core identifier %" PRIu64 ") is requesting a connection", this, webProcessProxy.processID(), webProcessProxy.coreProcessIdentifier().toUInt64());
+-    startResponsivenessTimer(UseLazyStop::No);
+-    Vector<WebPageProxyIdentifier> allowedWebPageProxyIdentifiers;
+-    Vector<WebPageProxyIdentifier> pagesWithRelaxedThirdPartyCookieBlocking;
+-    for (Ref page : webProcessProxy.pages()) {
+-        allowedWebPageProxyIdentifiers.append(page->identifier());
+-        if (page->configuration().shouldRelaxThirdPartyCookieBlocking() == ShouldRelaxThirdPartyCookieBlocking::Yes)
+-            pagesWithRelaxedThirdPartyCookieBlocking.append(page->identifier());
+-    }
+-    HashMap<WebCore::PageIdentifier, Vector<String>> corsDisablingPatternsPerPage;
+-    for (Ref page : webProcessProxy.mainPages()) {
+-        if (!page->corsDisablingPatterns().isEmpty())
+-            corsDisablingPatternsPerPage.add(page->webPageIDInMainFrameProcess(), page->corsDisablingPatterns());
+-    }
+-    auto& cookiesData = webProcessProxy.allowedFirstPartiesForCookiesData();
+-    NetworkProcessConnectionParameters parameters {
+-        .sharedPreferencesForWebProcess = *webProcessProxy.sharedPreferencesForWebProcess(),
++    auto connect = [weakThis = WeakPtr { *this }, weakWebProcess = WeakPtr { webProcessProxy }, reply = WTF::move(reply)](bool ready, uint32_t expectedNetworkProcessID = 0, uint32_t expectedWebProcessID = 0) mutable {
++        RefPtr protectedThis = weakThis.get();
++        RefPtr webProcess = weakWebProcess.get();
++        if (!ready || !protectedThis || !webProcess)
++            return reply({ });
++#if PLATFORM(WIN)
++        if (expectedNetworkProcessID) {
++            auto [currentNetworkProcessID, currentNetworkCapability] = protectedThis->duplicateProcessHandleForIPC();
++            auto [currentWebProcessID, currentWebCapability] = webProcess->duplicateProcessHandleForIPC();
++            if (currentNetworkProcessID != expectedNetworkProcessID || currentWebProcessID != expectedWebProcessID)
++                return reply({ });
++        }
++#endif
++        // Bootstrap can yield to page/domain updates. Snapshot permissions only
++        // when the peer is verified and its connection is about to be created.
++        auto& webProcessProxy = *webProcess;
++        Vector<WebPageProxyIdentifier> allowedWebPageProxyIdentifiers;
++        Vector<WebPageProxyIdentifier> pagesWithRelaxedThirdPartyCookieBlocking;
++        for (Ref page : webProcessProxy.pages()) {
++            allowedWebPageProxyIdentifiers.append(page->identifier());
++            if (page->configuration().shouldRelaxThirdPartyCookieBlocking() == ShouldRelaxThirdPartyCookieBlocking::Yes)
++                pagesWithRelaxedThirdPartyCookieBlocking.append(page->identifier());
++        }
++        HashMap<WebCore::PageIdentifier, Vector<String>> corsDisablingPatternsPerPage;
++        for (Ref page : webProcessProxy.mainPages()) {
++            if (!page->corsDisablingPatterns().isEmpty())
++                corsDisablingPatternsPerPage.add(page->webPageIDInMainFrameProcess(), page->corsDisablingPatterns());
++        }
++        auto& cookiesData = webProcessProxy.allowedFirstPartiesForCookiesData();
++        NetworkProcessConnectionParameters parameters {
++            .sharedPreferencesForWebProcess = *webProcessProxy.sharedPreferencesForWebProcess(),
+ #if ENABLE(IPC_TESTING_API)
+-        .ignoreInvalidMessageForTesting = webProcessProxy.ignoreInvalidMessageForTesting(),
+-#endif
+-        .pagesWithRelaxedThirdPartyCookieBlocking = WTF::move(pagesWithRelaxedThirdPartyCookieBlocking),
+-        .loadedWebArchive = cookiesData.first,
+-        .allowedFirstPartiesForCookies = cookiesData.second,
+-        .allowedWebPageProxyIdentifiers = WTF::move(allowedWebPageProxyIdentifiers),
+-        .hostedDomains = webProcessProxy.hostedDomains(),
+-        .corsDisablingPatternsPerPage = WTF::move(corsDisablingPatternsPerPage),
+-        .crossOriginIsolation = webProcessProxy.crossOriginIsolation(),
+-    };
+-    sendWithAsyncReply(Messages::NetworkProcess::CreateNetworkConnectionToWebProcess { webProcessProxy.coreProcessIdentifier(), webProcessProxy.sessionID(), parameters }, [weakThis = WeakPtr { *this }, reply = WTF::move(reply)](auto&& identifier, auto cookieAcceptPolicy) mutable {
++            .ignoreInvalidMessageForTesting = webProcessProxy.ignoreInvalidMessageForTesting(),
++#endif
++            .pagesWithRelaxedThirdPartyCookieBlocking = WTF::move(pagesWithRelaxedThirdPartyCookieBlocking),
++            .loadedWebArchive = cookiesData.first,
++            .allowedFirstPartiesForCookies = cookiesData.second,
++            .allowedWebPageProxyIdentifiers = WTF::move(allowedWebPageProxyIdentifiers),
++            .hostedDomains = webProcessProxy.hostedDomains(),
++            .corsDisablingPatternsPerPage = WTF::move(corsDisablingPatternsPerPage),
++            .crossOriginIsolation = webProcessProxy.crossOriginIsolation(),
++        };
++        protectedThis->startResponsivenessTimer(UseLazyStop::No);
++        auto replyID = protectedThis->sendWithAsyncReply(Messages::NetworkProcess::CreateNetworkConnectionToWebProcess { webProcess->coreProcessIdentifier(), webProcess->sessionID(), parameters }, [weakThis, reply = WTF::move(reply)](auto&& identifier, auto cookieAcceptPolicy) mutable {
+         RefPtr protectedThis = weakThis.get();
+         if (!protectedThis) {
+             RELEASE_LOG_ERROR(Process, "NetworkProcessProxy::getNetworkProcessConnection: NetworkProcessProxy deallocated during connection establishment");
+@@ -400,6 +421,50 @@
+         notImplemented();
+ #endif
+     }, 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
++        if (!replyID)
++            protectedThis->stopResponsivenessTimer();
++    };
++#if PLATFORM(WIN)
++    auto requestIdentifier = webProcessProxy.hostNetworkConnectionRequestIdentifier();
++    if (requestIdentifier) {
++        auto [networkProcessID, networkCapability] = duplicateProcessHandleForIPC();
++        auto [webProcessID, webTarget] = webProcessProxy.duplicateProcessHandleForIPC(PROCESS_DUP_HANDLE | PROCESS_TERMINATE);
++        if (!networkProcessID || !webProcessID) {
++            connect(false);
++            return;
++        }
++        auto transfer = HostProcessCapabilityTransfer::push(networkCapability.get(), WTF::move(webTarget));
++        if (!transfer) {
++            connect(false);
++            return;
++        }
++        // This counter spans NetworkProcessProxy replacement during the one UI
++        // retry; a new proxy must not restart the WebProcess attempt ordering.
++        static std::atomic<uint64_t> nextAttemptIdentifier { 0 };
++        auto attemptIdentifier = ++nextAttemptIdentifier;
++        RELEASE_ASSERT(attemptIdentifier);
++        using Bootstrap = Messages::WebProcess::SetHostNetworkProcessHandle;
++        auto encoder = makeUniqueRef<IPC::Encoder>(Bootstrap::name(), 0);
++        Bootstrap { requestIdentifier, attemptIdentifier, networkProcessID, transfer->remoteHandle() }.encode(encoder.get());
++        // This is a prerequisite of the still-pending synchronous GetHost request.
++        // WebsiteDataStore can retry from a later RunLoop task, outside dispatch
++        // of the original sync message; preserve Yes for this one bootstrap only.
++        encoder->setShouldDispatchMessageWhenWaitingForSyncReply(IPC::ShouldDispatchWhenWaitingForSyncReply::Yes);
++        auto bootstrapHandler = IPC::Connection::makeAsyncReplyHandler<Bootstrap>(
++            [weakWebProcess = WeakPtr { webProcessProxy }, requestIdentifier, networkProcessID, webProcessID, transfer, connect = WTF::move(connect)](bool processed, bool accepted) mutable {
++                if (processed)
++                    transfer->didProcess();
++                RefPtr process = weakWebProcess.get();
++                bool currentRequest = process && process->hostNetworkConnectionRequestIdentifier() == requestIdentifier;
++                connect(processed && accepted && currentRequest, networkProcessID, webProcessID);
++            });
++        auto bootstrapSent = webProcessProxy.sendMessage(WTF::move(encoder), IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply, WTF::move(bootstrapHandler));
++        if (!bootstrapSent)
++            transfer->terminateTarget();
++        return;
++    }
++#endif
++    connect(true);
+ }
+ 
+ void NetworkProcessProxy::sharedPreferencesForWebProcessDidChange(WebProcessProxy& webProcessProxy, SharedPreferencesForWebProcess&& sharedPreferencesForWebProcess, CompletionHandler<void()>&& completionHandler)
+
+--- a/Source/WebKit/WebProcess/GPU/graphics/RemoteRenderingBackendProxy.cpp
++++ b/Source/WebKit/WebProcess/GPU/graphics/RemoteRenderingBackendProxy.cpp
+@@ -24,6 +24,9 @@
+  */
+ 
+ #include "config.h"
++#if PLATFORM(WIN)
++#include <wtf/RunLoop.h>
++#endif
+ #include "RemoteRenderingBackendProxy.h"
+ 
+ #if ENABLE(GPU_PROCESS)
+@@ -108,6 +111,11 @@
+ {
+     if (m_connection)
+         return;
++#if PLATFORM(WIN)
++    Ref protectedThis { *this };
++    bool initialized = false;
++    bool callerIsMainRunLoop = RunLoop::isMain();
++#endif
+     constexpr unsigned connectionBufferSizeLog2 = 21u;
+     auto connectionPair = IPC::StreamClientConnection::create(connectionBufferSizeLog2, WebProcess::singleton().gpuProcessTimeoutDuration());
+     if (!connectionPair)
+@@ -121,10 +129,33 @@
+     m_isResponsive = true;
+     callOnMainRunLoopAndWait([&, serverHandle = WTF::move(serverHandle)]() mutable {
+         Ref gpuProcessConnection = WebProcess::singleton().ensureGPUProcessConnection();
++#if PLATFORM(WIN)
++        // The isolated stream dispatcher cannot pump the parent bootstrap while
++        // waiting for its first Canvas reply. Complete both handshake phases on
++        // the main dispatcher before entering that stream's synchronous path.
++        if (!gpuProcessConnection->waitForDidInitialize())
++            return;
++        // A main-run-loop wait may reenter and replace this stream. A worker
++        // caller's owning dispatcher is blocked by callOnMainRunLoopAndWait.
++        if (callerIsMainRunLoop && m_connection.get() != streamConnection.ptr())
++            return;
++#endif
+         gpuProcessConnection->createRenderingBackend(m_identifier, WTF::move(serverHandle));
+         m_gpuProcessConnection = gpuProcessConnection.get();
+         m_sharedResourceCache = gpuProcessConnection->sharedResourceCache();
++#if PLATFORM(WIN)
++        initialized = gpuProcessConnection->connection().isValid();
++#endif
+     });
++#if PLATFORM(WIN)
++    if (!initialized || m_connection.get() != streamConnection.ptr()) {
++        // Cleanup belongs to the stream's original dispatcher, not the main
++        // closure. Never disconnect a replacement created by a reentrant close.
++        streamConnection->invalidate();
++        if (m_connection.get() == streamConnection.ptr())
++            disconnectGPUProcess();
++    }
++#endif
+ }
+ 
+ template<typename T, typename U, typename V>

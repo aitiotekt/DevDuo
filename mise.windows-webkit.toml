@@ -1,0 +1,27 @@
+# Optional native WebKit build environment. Normal app development does not
+# install these tools. Visual Studio C++ and Windows SDK remain system inputs.
+[settings]
+lockfile = true
+lockfile_platforms = ["windows-x64"]
+
+[tools]
+cmake = "latest"
+ninja = "latest"
+ruby = "latest"
+"github:microsoft/vcpkg-tool" = { version = "latest", asset_pattern = "vcpkg.exe" }
+"github:StrawberryPerl/Perl-Dist-Strawberry" = { version = "latest", asset_pattern = "strawberry-perl-*-64bit-portable.zip", bin_path = "perl/bin" }
+
+# The Windows build uses the native GnuWin32 generator also selected by vcpkg.
+# Its portable Windows distribution has no newer release; verify that artifact.
+"http:gperf" = { version = "3.0.1", url = "https://sourceforge.net/projects/gnuwin32/files/gperf/3.0.1/gperf-3.0.1-bin.zip/download", format = "zip", bin_path = "bin", checksum = "sha512:3f2d3418304390ecd729b85f65240a9e4d204b218345f82ea466ca3d7467789f43d0d2129fcffc18eaad3513f49963e79775b10cc223979540fa2e502fe7d4d9" }
+
+[tools."http:pkgconf"]
+version = "latest"
+url = "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-pkgconf-1~{{ version }}-1-any.pkg.tar.zst"
+version_list_url = "https://mirror.msys2.org/mingw/mingw64/"
+version_regex = 'mingw-w64-x86_64-pkgconf-1~(\d+\.\d+\.\d+)-1-any\.pkg\.tar\.zst'
+version_order = "semver"
+format = "tar.zst"
+bin_path = "mingw64/bin"
+# Refresh with the selected artifact's published MSYS2 checksum on deliberate upgrades.
+checksum = "sha256:430c96143ec00912cab2bdb257dd84baf2d583e38681a0d6b552d07b43c95ce1"

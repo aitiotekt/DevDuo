@@ -1,22 +1,29 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readdirSync } from "node:fs";
 import {
   assemble,
   verifyArtifacts,
   verifyPublished,
 } from "./lib/release-artifacts.mts";
 import {
+  dryRun,
+  ensureTag,
+  publishRelease,
+  repositoryName,
+} from "./lib/release-github.mts";
+import {
   checkReleaseConfiguration,
   checksMatrix,
   currentVersion,
   releasePlan,
 } from "./lib/release-policy.mts";
-import { run } from "./lib/release-process.mts";
+import { preflightApplicationRelease } from "./lib/release-preflight.mts";
 import {
   bumpVersion,
   checkVersion,
   setVersion,
   syncVersion,
 } from "./lib/version.mts";
+import { checkWebKitConfiguration } from "./lib/webkit-release.mts";
 
 try {
   const command = process.argv[2];
@@ -28,11 +35,12 @@ try {
     console.log(`Version synchronized to ${syncVersion()}.`);
   else if (command === "check-version")
     console.log(`Version ${checkVersion()} matches devduo-metadata.toml.`);
-  else if (command === "check")
+  else if (command === "check") {
+    checkWebKitConfiguration();
     console.log(
       `Release configuration for ${checkReleaseConfiguration()} is consistent.`,
     );
-  else if (command === "checks-matrix") {
+  } else if (command === "checks-matrix") {
     const matrix = checksMatrix();
     if (process.env.GITHUB_OUTPUT)
       appendFileSync(
@@ -47,10 +55,17 @@ try {
       process.env.GITHUB_SHA ?? "",
     );
     if (command === "plan") {
+      checkReleaseConfiguration();
+      checkWebKitConfiguration();
+      const mode = dryRun(
+        process.env.GITHUB_EVENT_NAME ?? "",
+        process.env.RELEASE_DRY_RUN ?? "",
+      );
+      preflightApplicationRelease(plan);
       if (process.env.GITHUB_OUTPUT)
-        for (const [key, value] of Object.entries(plan))
+        for (const [key, value] of Object.entries({ ...plan, dry_run: mode }))
           appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
-      console.log(JSON.stringify(plan, null, 2));
+      console.log(JSON.stringify({ ...plan, dry_run: mode }, null, 2));
     } else if (command === "assemble")
       assemble("temp/release/downloads", "temp/release/final", plan);
     else if (command === "verify")
@@ -58,25 +73,55 @@ try {
     else if (command === "verify-published")
       verifyPublished("temp/release/final", "temp/release/existing", plan);
     else if (command === "ensure-tag") {
-      const ref = `refs/tags/${plan.tag}`;
-      const remote = run(
-        "git",
-        ["ls-remote", "origin", ref, `${ref}^{}`],
-        true,
+      if (
+        !plan.publish ||
+        dryRun(
+          process.env.GITHUB_EVENT_NAME ?? "",
+          process.env.RELEASE_DRY_RUN ?? "",
+        )
+      )
+        throw new Error(
+          "Development and dry-run modes cannot create release tags.",
+        );
+      ensureTag(
+        repositoryName(),
+        plan.tag,
+        plan.sourceSha,
+        plan.channel !== "stable",
       );
-      if (remote) {
-        const lines = remote.split("\n");
-        const resolved = lines.find((line) => line.endsWith("^{}")) ?? lines[0];
-        if (resolved.split(/\s+/)[0] !== plan.sourceSha)
-          throw new Error("Existing release tag belongs to another commit.");
-      } else {
-        if (plan.channel === "stable")
-          throw new Error("Stable tag no longer exists.");
-        run("git", ["push", "origin", `${plan.sourceSha}:${ref}`]);
-      }
+    } else if (command === "publish") {
+      if (
+        !plan.publish ||
+        dryRun(
+          process.env.GITHUB_EVENT_NAME ?? "",
+          process.env.RELEASE_DRY_RUN ?? "",
+        )
+      )
+        throw new Error(
+          "Development and dry-run modes cannot publish a release.",
+        );
+      const directory = "temp/release/final";
+      verifyArtifacts(directory, plan);
+      const outcome = publishRelease({
+        repository: repositoryName(),
+        tag: plan.tag,
+        sha: plan.sourceSha,
+        prerelease: plan.prerelease,
+        mayCreateTag: plan.channel !== "stable",
+        latest: !plan.prerelease,
+        title: `${plan.displayName} ${plan.tag}`,
+        notes: ".github/release-notes.md",
+        directory,
+        files: readdirSync(directory),
+      });
+      if (process.env.GITHUB_STEP_SUMMARY)
+        appendFileSync(
+          process.env.GITHUB_STEP_SUMMARY,
+          `${plan.tag}: ${outcome}; source ${plan.sourceSha}.\n`,
+        );
     } else
       throw new Error(
-        "Use check, checks-matrix, check-version, set-version, bump-version, sync-version, plan, assemble, verify, verify-published or ensure-tag.",
+        "Use check, checks-matrix, check-version, set-version, bump-version, sync-version, plan, assemble, verify, verify-published, ensure-tag or publish.",
       );
   }
 } catch (error) {

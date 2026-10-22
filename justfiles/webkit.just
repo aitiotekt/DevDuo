@@ -1,0 +1,30 @@
+# Engine publication is independent from the application release workflow.
+check-webkit-release:
+    node scripts/webkit-release.mts check
+
+test-webkit-release-tools:
+    node --test scripts/__tests__/webkit-release.test.mts
+
+plan-webkit-release:
+    node scripts/webkit-release.mts plan
+
+# Read-only remote validation; requires a real published metadata pin.
+preflight-webkit-release:
+    node scripts/webkit-release.mts preflight
+
+release-preflight: release-check preflight-webkit-release
+
+[windows]
+package-webkit-release:
+    node scripts/webkit-release.mts package
+
+publish-webkit-release:
+    node scripts/webkit-release.mts publish
+
+[windows]
+fetch-windows-webkit-runtime:
+    node scripts/webkit-release.mts fetch
+
+[windows]
+bundle-windows-webkit-runtime:
+    node scripts/webkit-release.mts bundle
