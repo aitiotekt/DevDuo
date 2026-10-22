@@ -50,6 +50,10 @@ build-native-tests: prepare-debugging
 test-macos: build-native-tests
     temp/build/native-tests/native-layout-tests
 
+[macos]
+test-macos-bundle:
+    node --test scripts/__tests__/macos-bundle.test.mts
+
 # Opens the real Avalonia/WebKit host; requires an unlocked desktop and the source-built runtime.
 [windows]
 test-windows: prepare-debugging

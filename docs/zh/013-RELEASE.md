@@ -57,7 +57,7 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 
 推送到 `release` 或 `v*` tag 继续触发**自动正式发布**。手动触发默认 `dry-run=true`，仍执行验证、签名公证、组装、来源证明和 Actions 产物上传，但跳过创建 tag 和公开 Release；手动正式发布须明确设置 `dry-run=false`。演练选项不会抑制另一次推送触发的发布。手动触发使用所选 ref 及其 `github.sha`，所有任务检出该触发提交。平台构建前，计划阶段要求 metadata 的 WebKit 版本已发布且含资产。macOS 签名任务在构建前检查六个环境输入及 SDK；检查存在性不代表证书或 Apple 凭据有效。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
 
-正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。先签全部内嵌 Mach-O，再签应用，然后公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
+正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接、签名顺序和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 
 ## 产物和重试
 

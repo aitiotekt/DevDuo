@@ -2,14 +2,16 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { copyMacOSIcons } from "./lib/app-icons.mts";
-import { macosBundlePlist } from "./lib/macos-bundle.mts";
+import {
+  macosBundlePlist,
+  relocateMacOSResources,
+  signMacOSBundle,
+} from "./lib/macos-bundle.mts";
 import { loadMetadata } from "./lib/metadata.mts";
 import { repoRoot } from "./lib/paths.mts";
 import {
@@ -101,6 +103,7 @@ try {
     for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.md", "PRIVACY.md"])
       copyFileSync(join(repoRoot, file), join(notices, file));
     if (target === "osx-arm64") {
+      relocateMacOSResources(app);
       copyMacOSIcons(notices);
       writeFileSync(
         join(app, "Contents/Info.plist"),
@@ -123,49 +126,7 @@ try {
       repoRoot,
       "config/macos-release.entitlements.plist",
     );
-    // Re-sign all bundled native code with one identity; do not rely on codesign --deep for signing.
-    const signFiles = (directory: string): void => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = join(directory, entry.name);
-        if (entry.isDirectory()) signFiles(path);
-        else if (entry.isFile()) {
-          const magic = readFileSync(path).subarray(0, 4).toString("hex");
-          if (
-            [
-              "cffaedfe",
-              "cefaedfe",
-              "feedfacf",
-              "feedface",
-              "cafebabe",
-              "bebafeca",
-            ].includes(magic)
-          )
-            run("codesign", [
-              "--force",
-              "--options",
-              "runtime",
-              "--timestamp",
-              "--entitlements",
-              entitlements,
-              "--sign",
-              identity,
-              path,
-            ]);
-        }
-      }
-    };
-    signFiles(app);
-    run("codesign", [
-      "--force",
-      "--options",
-      "runtime",
-      "--timestamp",
-      "--entitlements",
-      entitlements,
-      "--sign",
-      identity,
-      app,
-    ]);
+    signMacOSBundle(app, name, identity, entitlements);
     run("codesign", ["--verify", "--deep", "--strict", app]);
     const submission = join(stage, "notarization.zip");
     run("ditto", ["-c", "-k", "--keepParent", app, submission]);
