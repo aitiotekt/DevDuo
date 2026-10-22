@@ -57,6 +57,7 @@ $env:WEBKIT_OUTPUTDIR = $build
 $python = (Get-Command python).Source
 $arguments = @('-S', $source, '-B', $build, '-G', 'Ninja', '-DPORT=Win', '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_NINJA_FORCE_RESPONSE_FILE=ON',
     ('-DCMAKE_C_COMPILER=' + $clang), ('-DCMAKE_CXX_COMPILER=' + $clang),
+    ('-DCMAKE_MAKE_PROGRAM=' + $selectedTools['ninja']),
     ('-DCMAKE_TOOLCHAIN_FILE=' + (Join-Path $vcpkgRoot 'scripts/buildsystems/vcpkg.cmake')),
     '-DVCPKG_TARGET_TRIPLET=x64-windows-devduo', '-DVCPKG_HOST_TRIPLET=x64-windows-devduo-host',
     ('-DVCPKG_OVERLAY_TRIPLETS=' + (Join-Path $PSScriptRoot 'triplets')),

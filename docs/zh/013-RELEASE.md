@@ -30,13 +30,9 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 
 `.github/workflows/webkit-release.yml` **仅接受 `workflow_dispatch`**，并限定 metadata 配置的分支。计划在托管 runner 执行，编译使用配置标签对应的自托管 Windows/x64 runner。工作流文件须先进入默认分支，才能手动触发。现有基础设施配置已将原生 Windows 服务 runner 直接注册到本仓库，并使用持久工作目录。Metadata 选择其默认 `["self-hosted", "Windows", "X64"]` 标签，不依赖私人机器标签，也无需再次注册 runner。本仓库可用且匹配全部标签的 runner 均可接收任务；以后增加 runner 时，可通过 IaC 管理的能力标签收紧 `runner_labels`。[GitHub 默认标签匹配说明](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow#using-default-labels-to-route-jobs)。
 
-工作区应长期保留并使用稳定绝对路径。Windows 作业在检出前用 `git config --global` 同时打开 `core.symlinks` 和 `core.longpaths`，只写入该作业账号。runner 工作目录加上引擎树会超过 `MAX_PATH`，因此主机还须已启用 Windows 长路径，编译器才能创建这些路径。runner 账户须具备真实符号链接权限，安装 Git for Windows/Bash、Windows PowerShell、mise，以及系统级 Visual Studio C++/Clang 和 Windows SDK。当前服务配置使用 LocalSystem，依赖须对此服务账户可见，不能只安装在交互用户的配置中。便携引擎工具及 GitHub CLI 由 mise 管理。公开配置不记录私人服务器名。普通 PR 和应用发布不会触发引擎流水线或在这台 runner 上执行。
+自托管 Windows runner 的部署与工作目录由 **aitiotekt-infra** 管理，使用较短的真实路径，并向 LocalSystem 提供构建工具。Windows/Git 长路径设置仍须启用；`CMAKE_OBJECT_PATH_MAX` 不能扩大编译器自身的路径支持。迁移时保留原工作区和缓存。
 
-Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改过的已跟踪输入，完成后再次检查工作区。任务之间不要对这个构建工作区执行 `just clean`。Ninja 输出保留在 `temp/build/windows-webkit-host/`；下载、源码 pin、vcpkg 二进制包和已应用补丁记录保留在 `temp/cache/windows-webkit/`。上游 revision、编译器哈希或 Windows SDK/VC 工具版本变化时，构建树在 `temp/build/windows-webkit-trees/` 下保存和恢复。缺少该身份记录的旧构建树另存保留，首次需要重新构建。补丁更新只撤销精确记录的旧补丁，不丢弃额外源码改动；遇到意外状态明确失败。历史构建树会占用磁盘，须明确清理，不承诺自动永久保存。编译步骤限制为 22 小时，整个任务限制为 23 小时，低于 [GitHub token 的 24 小时有效期](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)。冷构建超时后，对同一持久工作区重跑可继续 Ninja 构建，不要先清理缓存。
-
-缓存目录存在不等于源码 checkout 成功。首次 fetch/checkout 中断后，若 `HEAD` 尚未建立且没有索引文件记录，会复用已有 Git 对象继续初始化。重试普通 checkout 前，将残留工作文件（包括未知改动）完整移到旁边的 `<cache-name>.incomplete-<timestamp>-<id>`，须审查后再清理。内层源码和 vcpkg 仓库自行设置 Git 长路径与符号链接选项。已有提交但 revision/origin 不符、未完成缓存包含索引文件记录、Git 锁及非仓库目录仍明确失败，须手动处理或保留，不能通过 reset 或删除绕过。
-
-构建任务在 Windows 上先执行 `test-webkit-release-tools`，再安装引擎工具并编译。2026-10-24 的 SSH 恢复已建立固定源码的 `HEAD`，完整保留 7,525 个残留文件并核对 SHA-256，两个已有对象包也均保留。维护补丁同步和固定 vcpkg 初始化连续验证通过，Windows 打包/构建树与源码恢复回归测试也已通过。这些检查不代表 CMake 完整配置、引擎完整编译或运行时发布通过。
+Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改过的已跟踪输入，完成后再次检查工作区。任务之间不要对这个构建工作区执行 `just clean`。Ninja 输出保留在 `temp/build/windows-webkit-host/`；下载、源码 pin、vcpkg 二进制包和已应用补丁记录保留在 `temp/cache/windows-webkit/`。上游 revision、编译器哈希、Windows SDK/VC 工具版本变化时，构建树在 `temp/build/windows-webkit-trees/` 下保存和恢复。缺少该身份记录的旧构建树另存保留，首次需要重新构建。补丁更新只撤销精确记录的旧补丁，不丢弃额外源码改动；遇到意外状态明确失败。历史构建树会占用磁盘，须明确清理，不承诺自动永久保存。编译步骤限制为 22 小时，整个任务限制为 23 小时，低于 [GitHub token 的 24 小时有效期](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)。冷构建超时后，对同一持久工作区重跑可继续 Ninja 构建，不要先清理缓存。
 
 发布顺序：
 
@@ -46,8 +42,6 @@ Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改�
 4. 普通 Windows 应用打包按精确 Release tag/资产下载，核对锁定归档摘要，再验证 revision、补丁/源码指纹、API 能力及全部运行时文件，最后放入 `DevDuo/webkit/`。匹配的本地下载缓存可以复用；不查找 `latest`，不自动编译引擎，不回退到会过期的 artifact 或官方测试运行时。
 
 使用 `mise exec -- just check-webkit-release` 和 `test-webkit-release-tools` 检查策略与完整性；后者在 Windows 上还执行真实 ZIP 及合成持久缓存检查。`package-webkit-release` 打包匹配的原生构建；`fetch-windows-webkit-runtime` 下载并校验 metadata pin；`publish-webkit-release` 是流水线发布入口。`just release-preflight` 在配置检查后只读查询 GitHub：固定引擎必须已公开发布，资产集完整，源码 tag、补丁指纹、归档 pin 和校验报告一致。首次 pin 为空时会有意失败。Windows 消费端进一步检查实际归档及每个解压文件；下载或解压失败不会形成可复用的完整缓存。Release 资产作为长期依赖，Actions artifact 只在任务间传递。参考 [GitHub 自托管 runner 行为](https://docs.github.com/en/actions/concepts/runners/self-hosted-runners)及[工作流产物保留规则](https://docs.github.com/en/actions/tutorials/store-and-share-data)。
-
-流水线不从 runner 服务中执行交互桌面验收。运行时清单保留明确的原生验收状态，导出、编译和哈希不代表渲染、输入或 DPI 通过。首次托管任务及后续 SSH 排查已确认 runner 可接收任务，并完成源码缓存准备；服务账户下的完整构建、GitHub 上传/下载及使用已发布 pin 的应用发布仍未验收。保留声明及源码来源本身不代表完成[第三方说明](THIRD_PARTY_NOTICES.md)要求的再分发审查。
 
 ## 版本和触发规则
 
@@ -79,27 +73,12 @@ Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改�
 
 发布暂存位于忽略的 `temp/build/release/`，最终包和报告位于 `temp/release/`。独立的 `packages.net10.0.osx-arm64.lock.json`、`packages.net10.0-windows.win-x64.lock.json` 锁定发布运行时依赖，不改变日常开发还原。需要主动更新时，使用 `dotnet restore`，分别传入 `-p:RuntimeIdentifier=osx-arm64` 或 `-p:RuntimeIdentifier=win-x64 -p:DevDuoWindows=true -p:EnableWindowsTargeting=true`，再加 `--force-evaluate`，审查依赖变化。
 
-## 首次发布清单
-
-当前应用与引擎候选版本均为 **0.1.0-beta.1**，发布门槛和未来版本更新仍各自独立。[首次托管 WebKit 运行](https://github.com/aitiotekt/DevDuo/actions/runs/40045146774)于 2026-10-24 到达构建步骤，但因不含 `HEAD` 的未完成源码缓存失败，整体运行随后被取消。这证明 workflow 已可用，不代表完整引擎构建通过。`[webkit].archive_sha256` 仍为空。发布规划正确地拒绝继续，包括 dry run；必须先实际发布并固定引擎。在配置的发布分支应用审查后的缓存恢复修复，再重试构建。
-
-三个命名环境已存在，但当前 GitHub 凭据查询签名 secrets 和仓库 runner 时返回 HTTP 403；其就绪状态是**未核实**，不能据此认定缺失。此次托管构建失败已证明有 Windows runner 接收任务。本地准备和随后 SSH 排查均未触发 workflow、创建标签、上传或发布。[macOS 集成记录](015-PLATFORM-PARITY.md#beta-集成记录-2026-10-24)区分实际原生观察与平台缺口；构建通过不代表这些项目已验收。
-
-1. 将工作流和完整原生源码、补丁输入放到默认分支；本次本地准备不会自动提交或推送。确认本仓库专用的 Windows runner 在线，服务账户可见 Git/Bash、mise、Visual Studio C++/Clang、Windows SDK，并具备符号链接权限。检查源码、依赖和归档构建树所需磁盘空间。
-2. 核对 IaC 管理的 `release-signing`、`stable-release`、`github-pages` 环境和签名 secret 名称，不输出值。Runner/SDK 可用性和 secret 内容需要实际远端验收。
-3. 执行 `mise exec -- just release-check` 和发布工具测试；先演练 WebKit 手动构建，再明确正式发布。以托管发布任务成功后的摘要为准，将归档 SHA-256 写入 metadata，不得只凭演练候选哈希设置 pin。
-4. 使用已认证的 GitHub CLI 执行 `mise exec -- just release-preflight`。引擎发布与应用消费之间保持引擎源码、补丁和工具 pin 一致，否则发布新的引擎版本。维护双语变更日志，检查声明及再分发状态。
-5. **推送编号版本到 `release` 之前完成上述准备**，因为该推送会自动正式发布。稳定版还要求精确版本 tag 和环境审批。可对已经符合条件的 ref 手动演练，但演练选项不会关闭另一次推送触发的正式发布。
-6. 检查最终报告、两个平台 ZIP、`release-manifest.json`、`SHA256SUMS` 和来源证明。在干净目标机器分别验证解压、启动及固定引擎初始化；CI 编译和签名不能替代这些验收。Windows 仍需原生工具链对应的 Microsoft Visual C++ x64 运行库，.NET 自包含包不提供全部 C++ 依赖，见 [Microsoft 部署说明](https://learn.microsoft.com/en-us/cpp/windows/deployment-in-visual-cpp)。原生场景、输入及 DPI 验收仍独立记录。
-
-本地检查不会触发工作流或发布 Release。首次云端运行、Apple 签名公证、干净机器启动和公开资产往返下载在实际执行前仍属未验收。
-
 ## GitHub 管理与文档
 
 独立的 **aitiotekt-infra** 仓库通过 `meta/github-repositories.yml` 中的 DevDuo 条目管理默认只读工作流权限、`release` 分支保护、审批/签名/Pages 环境及 Pages 配置。Maintain/Admin 可绕过合并检查直接推送，但不能跳过发布工作流验证；独立安全规则禁止强推和删除。PR 合并要求 `Checks report` 状态。应用脚本不重复管理这些设置。
 
 `release-signing` 环境仅接受 `release` 和 `v*` tag，需要 `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_PASSWORD` 和 `APPLE_TEAM_ID`。基础设施通过 SOPS 和 OpenBao 引用共享 Developer ID 证书，凭据不得进入本仓库。正式版审批允许唯一维护者自行审批，禁止管理员绕过。
 
-文档配置为 **https://dev-duo.aitiotekt.com/**，VitePress base 为 `/`。文档安装锁定的 Python 审计工具，在打包 Pages artifact 前拒绝私人数据及发布输入违规，并在 `main`、`release` 和 PR 上构建；仅 `main` 通过 `github-pages` 环境部署。基础设施管理指向 `aitiotekt.github.io` 的仅 DNS CNAME 和 Pages 自定义域名。运行发布前需应用配置并配置环境密钥。GitHub 签发证书后再启用 Pages 强制 HTTPS。源码中的配置本身不证明远端已部署、已签发证书或已有 Release。
+文档配置为 **https://dev-duo.aitiotekt.com/**，VitePress base 为 `/`。文档安装锁定的 Python 审计工具，在打包 Pages artifact 前拒绝私人数据及发布输入违规，并在 `main`、`release` 和 PR 上构建；仅 `main` 通过 `github-pages` 环境部署。基础设施管理指向 `aitiotekt.github.io` 的仅 DNS CNAME 和 Pages 自定义域名。运行发布前需应用配置并配置环境密钥。GitHub 签发证书后再启用 Pages 强制 HTTPS。
 
 [English](../en/013-RELEASE.md) | [中文](013-RELEASE.md)

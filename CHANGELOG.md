@@ -6,6 +6,8 @@
 
 First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
 
+- Select the top-level Ninja executable explicitly from the mise environment.
+
 - Align the initial Windows WebKit candidate with application version `0.1.0-beta.1`. Resume interrupted source-cache initialization without discarding downloaded Git objects or partial files; preserve unrelated cache states and test recovery on Windows PowerShell.
 
 - Complete the Windows-to-macOS integration review, record scoped native results and first-publication prerequisites, and synchronize the candidate version. Fix asynchronous macOS Inspector docking so it cannot shrink the measured viewport, and route Inspector shortcuts through the focused native browser. Run the AppKit assertions in CI; retain explicit platform gaps in the handoff.
