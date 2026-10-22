@@ -9,13 +9,13 @@ importers:
   .:
     devDependencies:
       '@biomejs/biome':
-        specifier: 2.5.14
+        specifier: ^2.5.14
         version: 2.5.14
       '@types/node':
-        specifier: 26.4.0
+        specifier: ^26
         version: 26.4.0
       '@types/semver':
-        specifier: 7.8.0
+        specifier: ^7.8.0
         version: 7.8.0
       chii:
         specifier: 1.15.5
