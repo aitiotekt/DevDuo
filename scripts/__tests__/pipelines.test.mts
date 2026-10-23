@@ -144,8 +144,14 @@ test("untrusted changes stay on hosted read-only runners at the exact triggering
   const runs = JSON.stringify([checks.jobs.portable, checks.jobs.native]);
   assert.doesNotMatch(
     runs,
-    /secrets\.|build-windows-webkit-runtime|test-windows|test-macos/,
+    /secrets\.|build-windows-webkit-runtime|test-windows/,
   );
+  const appKit = checks.jobs.native.steps.filter((step: { run?: string }) =>
+    step.run?.includes("test-macos"),
+  );
+  assert.equal(appKit.length, 1);
+  assert.equal(appKit[0].if, "runner.os == 'macOS'");
+  assert.match(appKit[0].run, /just build test-macos$/);
 });
 
 test("documentation PRs share portable checks and deployment cancels superseded commits", () => {

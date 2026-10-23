@@ -1,6 +1,6 @@
 # 平台能力对照与 macOS 原生交接
 
-本文供 macOS Agent 执行交接，依据当前源码、[Windows 交接](009-WINDOWS-HANDOFF.md)与[校准流程](003-CALIBRATION-WORKFLOW.md)中的限定记录编写，不新增任何原生验收通过结论。对照目标是[已接受的场景矩阵](005-SAFARI-SCENES.md)，不是 Windows 桌面呈现。保留 macOS 系统 WKWebView、生产 Windows WebKit Port，以及 Safari/沉浸容器。
+本文跟踪 Windows 实施向 macOS 的集成，依据[Windows 交接](009-WINDOWS-HANDOFF.md)与[校准流程](003-CALIBRATION-WORKFLOW.md)中的限定记录编写。下文列出本次实际原生检查，未测项目仍待验收。对照目标是[已接受的场景矩阵](005-SAFARI-SCENES.md)，不是 Windows 桌面呈现。保留 macOS 系统 WKWebView、生产 Windows WebKit Port，以及 Safari/沉浸容器。
 
 分别记录四种状态：**已实现**（存在源码）、**已编译**（该平台构建了精确版本）、**已原生检查**（对该二进制执行了限定交互）及**待验证/不支持**。共享测试、Windows 通过、旧 macOS 构建或模拟器观察不能填入当前 macOS 原生通过栏。校准文档中较早的 macOS 布局、材质和语言观察仍是历史记录；后续开发工具、身份/标题及 fixed-container Swift 修改需要当前 macOS 编译与呈现检查。
 
@@ -14,7 +14,7 @@
 | 标题/引导页：`Browser/PageTitleState.cs`、`Browser/WelcomePage.cs`、`macos/WebViewBridge.swift` | 按文档确认门控选中示意标签标题，提供离线引导页与应用自有文本本地化 | Swift 独立按 committed/已观察文档身份门控标题。引导页更新自有文本节点而不导航。检查动态/空/长标题及延迟 provisional 加载；共享标题测试不验证原生 KVO 顺序。 |
 | 呈现：`Browser/NativeWebView.cs`、`Host/MainWindow.cs` | 旋转/配置更新现有浏览器 | `devduo_update_scene`/`devduo_configure` 更新现有容器。旋转、语言、Fit、轮廓、外观必须保持文档；新合法范围可能夹紧滚动。折叠和容器模式切换会有意重建容器及历史。 |
 | 延伸绘制 | 生产四侧 inset/绘制路径，Windows 限定结果见 009/014 | 支持的系统在 Closed 侧栏布局使用完整视图 obscured inset；Open 顶栏仍是预留 frame 近似，不是相同四侧引擎路径。侧边/根背景填充与系统材质必须保留近似标签。 |
-| 本地 Inspector | 独立原生前端，已有 Windows F12/Ctrl+Shift+I 窗口观察 | 使用运行时检查的私有 `_inspector`/developer-extras selector，先 detach 再 show，并限制连接重试。缺少能力应显示已有明确错误。WKWebView 持有焦点时通过原生菜单提供 F12、Ctrl+Shift+I，实际路由待验收。 |
+| 本地 Inspector | 独立原生前端，已有 Windows F12/Ctrl+Shift+I 窗口观察 | 运行时检查私有 Inspector/attachment selector，以隐藏的附着目标禁止停靠，不再允许 Inspector 改动被测浏览器尺寸。有限等待核实真实可见状态，缺少能力明确报错。除宿主菜单外，WKWebView 直接处理 F12/Ctrl+Shift+I。 |
 | 原生远程检查（WIP） | 显式、无认证的 WebKit Inspector TCP listener，与 CDP 分开 | `isInspectable`（macOS 13.3+）提供 Safari Develop 发现。宿主不创建 Windows TCP listener；地址/端口/LAN 字段不配置 Safari 发现。分别验证本地 Inspector 冲突与停止后的发现移除。 |
 | CDP/chii：`DeveloperTools/`、`macos/DeveloperWebViewBridge.swift` | 页面插桩加独立系统 WebView2 前端 | 相同的 token 保护页面 CDP 服务；前端使用独立、非持久系统 WKWebView 和自有工具 UA，不得替换被测页面或共享其存储。实际 chii 兼容性待验证。JavaScript CDP 子集不等于引擎调试、性能分析或完整网络覆盖。 |
 | 代理 | system、direct、无认证自定义 HTTP/HTTPS/SOCKS5 | macOS 14+ 通过 `WKWebsiteDataStore.proxyConfigurations` 提供 system/custom；UI 禁用 direct，桥接明确拒绝。没有认证代理支持。首次加载前应用，后续请求验证路由，不重载当前文档。默认存储在被测视图之间共享。 |
@@ -22,6 +22,23 @@
 | 滚动指示器 | 原生资格/CSS/输入状态，加宿主绘制的临时屏幕边缘滑块 | 遥测明确报告 `host-scene-policy-unavailable; native-acceptance-pending`。保留系统 WKWebView 滚动条与用户系统偏好，没有对应的宿主屏幕边缘策略；仅能滚动不能认定对齐。 |
 
 表内源码名相对 `src/DevDuo/`，其余路径相对仓库根目录。测量布局、系统能力和实际观察像素是不同输入。
+
+## Beta 集成记录：2026-10-24
+
+源码基线为 `43161d9e535ae1fafce80308c46c999a20b2c09e`，另加尚未提交的 `0.1.0-beta.1` 准备差异。私有回执、截图、记录器源码及哈希位于 `captures/desktop-validation/platform-parity/20261023T221413Z-macos/`。本会话使用独立宿主偏好与受控回环 origin，并未隔离网站数据存储。环境：macOS 27.0.1（26A434）、Xcode 27.1、macOS SDK 27.0、系统 WebKit 22625.1.29.11.28、.NET SDK 10.0.402、arm64、backing scale 2。
+
+| 范围 | 结果与边界 |
+| --- | --- |
+| 构建/检查 | `just verify`、`just build-windows`、`just test-macos` 通过。自包含 macOS 候选包构建并在未设置 `DOTNET_ROOT` 时实际启动，加载库检查确认使用包内 CoreCLR；这是未正式签名的本地候选，不是签名/公证验收。交叉编译检查 Windows 托管源码，不再要求本机生成 C++ compositor；Windows 原生构建仍生成并打包该组件。macOS CI 现在执行 AppKit 断言。 |
+| M01/M02 | 离线欢迎页、真实地址输入和重定向正常。Safari 与沉浸容器的首次请求、重定向目标、子资源和 fetch 的 UA 请求头均与 `navigator.userAgent` 一致。 |
+| M03 | 正常关闭并重启后，同一 origin 的测试 localStorage、IndexedDB 与另行写入的持久 cookie 保留。服务重启后保持关闭，开发者分组重新折叠。工具配置的非持久存储已有断言，完整跨存储隔离验收仍待进行。 |
+| M04 | 八个初始机身映射得到预期视口类别，同一折叠形态内保留文档/表单。Closed 保持 scrollY 400；Open 在会话中也出现过 400→340 移动，不能据此认定普遍保留滚动位置。完整 24 态过渡仍待验收。Open 单标签开关保留文档，纵向机身视口由 951 × 543 变为 951 × 589。 |
+| M05 | 复现异步 Inspector 停靠将页面挤为 951 × 169：`isConnected` 为真早于后端恢复停靠。隐藏附着目标修复此竞态，实际独立 Inspector 窗口保持 951 × 589 视口及文档身份。随后 F12、Ctrl+Shift+I 都从原生页面焦点实际打开了该窗口，另有 AppKit 断言检查分发。 |
+| M07 | 原生注入与 token 保护的 CDP `Runtime.evaluate` 往返正常。工具窗口最初 DOM 已就绪却绘制为空白；显式的原生 flipped 布局容器修复合成呈现，实际离线前端显示 DOM、样式与盒模型，Console 求值 `1+1` 返回 `2`。另有原生布局断言检查 resize 与非持久存储。导航/重连、完整协议覆盖和 CSP/HTTPS 案例仍待验收。 |
+| M12/呈现 | 复现 90.3446% Fit 将要求的 669 点高度变为 668.9999999999999，导致视口截成 668 CSS 像素。原生子视图现使用精确场景单位，仅由祖先承担缩放。新增回归先失败，修复后在 100%、90.3446%、94%、75%、50% 通过；实际窗口约 90% Fit 保持 951 × 669 DOM/visual 视口。中文切换英语也保留文档身份、视口和滚动。其他显示器/DPI 与输入案例仍待验收。 |
+| M09–M13 | 本机系统报告 fixed-container 扩展不可用；旧实色页脚/根背景仍是近似，不能支持 alpha/dialog 延伸。Open 延伸、屏幕外缘指示器、可信 HTTPS/代理路由、完整 Fit/输入/无障碍与生命周期并未由这些检查认证。 |
+
+Inspector 修复依据 WebKit 的[异步连接/停靠实现](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/Inspector/WebInspectorUIProxy.cpp)及 [macOS 附着资格判断](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/Inspector/mac/WebInspectorUIProxyMac.mm)。各受支持系统版本仍需私有 SPI 能力检查。
 
 ## 准备 macOS 运行
 
@@ -38,9 +55,9 @@ mise exec -- just verify
 mise exec -- just test-macos
 ```
 
-把退出码和完整日志保存在新本地会话。macOS 上 `verify` 会编译应用桥接。`build-native-tests` 编译包含两份 Swift 桥接文件的原生 harness；CI 编译不执行其断言，也不建立桌面验收结论。`test-macos` 依赖此构建并运行针对 AppKit 几何/输入策略的聚焦测试，不是浏览器端到端验收，不覆盖所有开发工具、首次请求 UA、持久存储、遮罩或最终显示。目前没有与 Windows 专项原生浏览器 harness 模式对应的 macOS 命令；执行下列交互案例，再按需要添加维护的自动化。
+把退出码和完整日志保存在新本地会话。macOS 上 `verify` 会编译应用桥接，`build-native-tests` 编译包含两份 Swift 桥接文件的原生 harness。macOS CI 执行 `test-macos`，这是 AppKit 几何/输入策略的聚焦测试，并非浏览器端到端验收，不覆盖所有开发工具、首次请求 UA、持久存储、遮罩或最终显示。目前没有与 Windows 专项原生浏览器 harness 模式对应的 macOS 命令；执行下列交互案例，再按需要添加维护的自动化。
 
-`NativeLayoutTests.swift` 现在先按实际系统能力检查旧页脚 surface 是否让位，再仅在测试内临时关闭能力 flag，独立检查 fallback 几何、被动命中与移除，最后恢复 flag，替代原先无条件要求 fallback 可见的预期。变更后的测试与构建 recipe 仍待 macOS 编译/执行；强制测试分支不认证系统扩展像素。呈现应用必须另行记录实际能力分支。
+`NativeLayoutTests.swift` 按实际系统能力检查旧页脚 surface 是否让位，再临时关闭能力 flag，检查 fallback 几何、被动命中与移除，最后恢复 flag；另检查隐藏的 Inspector 附着目标与原生快捷键分发。这些断言已在 beta 集成会话通过；强制 fallback 分支不认证系统扩展像素。呈现应用必须另行记录实际能力分支。
 
 在新终端建立独立宿主偏好/证据会话：
 

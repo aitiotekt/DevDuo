@@ -113,6 +113,14 @@ Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；�
 
 标识符与代码注释使用英语。评审说明改后行为、相关检查与未验证平台。原生变更需平台构建及真实 UI 验收；Windows 交叉编译不能替代运行。区分模拟器坐标和硬件尺寸，保留证据哈希；修改标定数据前阅读[测量约定](002-MEASUREMENT-CONTRACT.md)。未经请求不 commit 或推送。
 
+包含 Codex 协助内容的提交保留维护者为主要作者，在说明后空一行，添加一次以下共同作者标记。保留其他真实共同作者；纯人工改动无需这项署名。
+
+```text
+Co-authored-by: Codex <noreply@openai.com>
+```
+
+此身份关联 [Codex](https://github.com/codex) 账号。GitHub 按关联邮箱识别[共同作者标记](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors)，发布并进入默认分支的有效提交才会进入贡献者统计。添加这项约定不会修改 Git 作者配置、重写既有历史，也不代表获准提交或推送。
+
 | 修改范围 | 按需阅读 |
 | --- | --- |
 | 原生浏览器组合、宿主布局 | [架构与容器](001-ARCHITECTURE.md) |

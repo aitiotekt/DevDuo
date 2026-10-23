@@ -6,6 +6,27 @@ struct NativeLayoutTests {
     @MainActor
     static func main() {
         _ = NSApplication.shared
+        let toolsPointer="about:blank".withCString { developerWebViewCreate($0)! }
+        let tools=Unmanaged<DeveloperWebViewHost>.fromOpaque(toolsPointer).takeUnretainedValue()
+        for size in [NSSize(width:1100,height:780),NSSize(width:600,height:400)] {
+            tools.setFrameSize(size)
+            tools.layoutSubtreeIfNeeded()
+            precondition(tools.web.frame==tools.bounds,"Tools browser must follow the arranged native host")
+        }
+        precondition(!tools.web.configuration.websiteDataStore.isPersistent,"Tools must not share persistent page storage")
+        developerWebViewDestroy(toolsPointer)
+        let fitHost=CalibrationContainer(url:"about:blank",svg:"",width:951,height:669,
+            options:["mode":"app-webview","logicalWidth":951,"logicalHeight":669],observer:"")
+        defer { fitHost.invalidate() }
+        for scale in [1.0,0.90344636085961,0.94,0.75,0.5] {
+            let size=NSSize(width:951*scale,height:669*scale)
+            fitHost.clipView.contentSize=size
+            fitHost.clipView.setFrameSize(size)
+            fitHost.clipView.needsLayout=true
+            fitHost.clipView.layoutSubtreeIfNeeded()
+            precondition(fitHost.web.frame.size==NSSize(width:951,height:669),
+                         "Fractional Fit changed the logical WebKit frame: \(scale), \(fitHost.web.frame)")
+        }
         let host = CalibrationContainer(
             url: "about:blank", svg: "M 0 0 L 466 0 L 466 678 L 0 678 Z",
             width: 466, height: 678,
@@ -13,6 +34,22 @@ struct NativeLayoutTests {
             observer: ""
         )
         defer { host.invalidate() }
+        if host.detachedInspectorAvailable {
+            let attachment=host.web.perform(NSSelectorFromString("_inspectorAttachmentView"))?.takeUnretainedValue() as? NSView
+            precondition(attachment === host.inspectorAttachment && attachment?.isHidden == true,
+                         "Inspector docking must target a hidden view, never the measured browser")
+        }
+        var inspectorShortcuts=0
+        host.web.onInspectorShortcut={inspectorShortcuts+=1}
+        for (code,characters,modifiers) in [(UInt16(111),"",NSEvent.ModifierFlags()),
+                                             (UInt16(34),"I",[.control,.shift])] {
+            let event=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:modifiers,timestamp:0,
+                                      windowNumber:0,context:nil,characters:characters,
+                                      charactersIgnoringModifiers:characters,isARepeat:false,keyCode:code)!
+            precondition(host.web.performKeyEquivalent(with:event),"Inspector shortcut did not reach the native web host")
+        }
+        precondition(inspectorShortcuts==2)
+        host.web.onInspectorShortcut=nil
         host.clipView.contentSize = NSSize(width: 466, height: 678)
         host.clipView.contentOffset = NSPoint(x: 41, y: 73)
         // Mirror NativeControlHost resizing its clip after the explicit viewport was configured.
@@ -89,6 +126,6 @@ struct NativeLayoutTests {
         host.clock.stringValue="stale-clock"
         host.clockTimer?.fire()
         precondition(host.clock.stringValue.range(of:"^[0-9]{2}:[0-9]{2}$",options:.regularExpression) != nil,"A static page clock refreshes without scrolling")
-        print("Native layout checks passed: clip resize, logical bounds, insets, passive footer color, four presentation rotations, coordinate round trips, native scroll intent and independent appearance")
+        print("Native layout checks passed: tools host resize/ephemeral store, Inspector attachment/shortcuts, fractional Fit, clip resize, logical bounds, insets, passive footer color, four presentation rotations, coordinate round trips, native scroll intent and independent appearance")
     }
 }

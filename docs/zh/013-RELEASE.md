@@ -11,7 +11,7 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 | 触发 / 任务 | 工作 | 上限与边界 |
 | --- | --- | --- |
 | Checks：`main`、PR、手动、可复用 | 单个 Ubuntu 跨平台任务执行 Python/JS、Core/Localization/CDP 服务测试、lint、typecheck、发布一致性和严格文档构建 | 30 分钟；跨平台初始化不还原应用后端 |
-| Checks：原生矩阵 | metadata 启用的 macOS/Windows 编译应用、原生 bridge 和原生测试工具 | 各 30 分钟；不启动 UI、不用私人截图、不下载引擎、不编译 WebKit 源码 |
+| Checks：原生矩阵 | metadata 启用的 macOS/Windows 编译应用、原生 bridge 和原生测试工具，macOS 另执行 AppKit 几何断言 | 各 30 分钟；不进行交互式浏览器验收、不用私人截图、不下载引擎、不编译 WebKit 源码 |
 | 文档推送 / 手动 | `main`/`release` 相关路径构建部署输入；仅 `main` 部署 | 构建 30 分钟、部署 15 分钟；PR 文档已由 Checks 覆盖 |
 | 应用 Release | 可复用 Checks 通过后才打包、签名 | macOS 120 分钟、Windows 60 分钟、组装/发布各 30 分钟 |
 | 手动 WebKit 发布 | 持久自托管 Windows runner 增量编译完整引擎 | 编译步骤 22 小时、完整任务 23 小时；托管计划/发布任务不编译 WebKit |
@@ -76,6 +76,10 @@ Checkout 使用 `clean: false`，在 checkout 可能重置文件前拒绝修改�
 发布暂存位于忽略的 `temp/build/release/`，最终包和报告位于 `temp/release/`。独立的 `packages.net10.0.osx-arm64.lock.json`、`packages.net10.0-windows.win-x64.lock.json` 锁定发布运行时依赖，不改变日常开发还原。需要主动更新时，使用 `dotnet restore`，分别传入 `-p:RuntimeIdentifier=osx-arm64` 或 `-p:RuntimeIdentifier=win-x64 -p:DevDuoWindows=true -p:EnableWindowsTargeting=true`，再加 `--force-evaluate`，审查依赖变化。
 
 ## 首次发布清单
+
+当前应用候选版本为 **0.1.0-beta.1**，引擎仍独立使用 **0.1.0-alpha.1**。截至 2026-10-24 的只读核查，GitHub 尚无已发布 Release，`[webkit].archive_sha256` 为空。发布规划正确地拒绝继续，包括 dry run；必须先实际发布并固定引擎。默认分支尚未暴露 **WebKit runtime release** workflow，手动触发前需先合入审查后的引擎输入与 workflow。
+
+三个命名环境已存在，但当前 GitHub 凭据查询签名 secrets 和仓库 runner 时返回 HTTP 403；其就绪状态是**未核实**，不能据此认定缺失。触发前须由具备权限的管理者核验。本次本地准备没有触发远程 workflow、创建标签、上传或发布。[macOS 集成记录](015-PLATFORM-PARITY.md#beta-集成记录-2026-10-24)区分实际原生观察与平台缺口；构建通过不代表这些项目已验收。
 
 1. 将工作流和完整原生源码、补丁输入放到默认分支；本次本地准备不会自动提交或推送。确认本仓库专用的 Windows runner 在线，服务账户可见 Git/Bash、mise、Visual Studio C++/Clang、Windows SDK，并具备符号链接权限。检查源码、依赖和归档构建树所需磁盘空间。
 2. 核对 IaC 管理的 `release-signing`、`stable-release`、`github-pages` 环境和签名 secret 名称，不输出值。Runner/SDK 可用性和 secret 内容需要实际远端验收。

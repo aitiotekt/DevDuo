@@ -7,6 +7,7 @@ This file is the repository source of truth for coding-agent behavior. Read `REA
 - Converse in the user's language. Use English identifiers, code comments and canonical engineering documentation; maintain the matching Simplified Chinese documentation.
 - Complete authorized work, including relevant verification and documentation. Resolve routine reversible implementation choices without extra approval steps.
 - Preserve existing working-tree and index changes. Do not stage, commit, push, publish, release, discard changes or contact another task unless requested. Start agents only when delegation is requested.
+- When an authorized commit contains Codex-assisted work, include `Co-authored-by: Codex <noreply@openai.com>` exactly once in the final commit-message trailer block. Preserve the maintainer's author identity and other genuine co-authors. Attribution does not authorize a commit, push or history rewrite.
 - Report what changed, why, what was actually checked and what remains unverified. Compilation, simulation and native runtime acceptance are different claims.
 - Ask only for information that materially affects the task. Never configure an interactive question to resolve automatically because of a timeout or inactivity; wait for an explicit answer when an answer is required.
 - Use an OS temporary directory or the calling chat's scratch directory for one-off validation checkouts, edit scripts, backups and review logs. Remove disposable copies after verification; do not leave them in the repository merely because they are ignored.

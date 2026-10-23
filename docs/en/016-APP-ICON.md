@@ -13,6 +13,8 @@ After changing the master, run `mise exec -- just sync-icons` on macOS with full
 
 See [Apple's Icon Composer guide](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer). Format workflow follows the reference project's separate modern catalog and safe-zone legacy resource; its artwork is not reused.
 
+Verification on 2026-10-24 against icon commit `338c76c`: all seven ICO sizes decoded, the compiled catalog contained `AppIcon`, and the packaged macOS icon bytes and plist references matched the source. The Avalonia URI loaded the exact PNG from both macOS and Windows assemblies. Finder's thumbnail and Get Info preview displayed the new mark on macOS 27.0.1. Windows cross-compilation passed. The maintainer subsequently confirmed that the Windows implementation agent had already verified the Windows icon; that native validation was not repeated on this Mac. Other macOS appearance variants remain unverified. Private receipts are retained under `captures/desktop-validation/app-icons/`.
+
 ## Final generation prompt
 
 Create one finished DevDuo app icon as immaculate flat vector-style raster artwork. Square canvas, full-bleed deep navy background reaching all four edges, no rounded tile mask. Fuse the Duo symbol (thick white open circular arc and five separated white circular dots in a shallow curve across the bottom) with the developer code symbol `</>` centered inside the arc instead of Wi-Fi. White brackets and bright cyan slash; clean gaps, smooth curves, substantial strokes, no words. The system supplies the platform mask and effects. The generated square was resized to the 1024-pixel master; no original measurement captures were modified.

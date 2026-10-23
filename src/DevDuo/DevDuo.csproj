@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <Product>DevDuo</Product>
     <Description>Pesudo iPhone Duo Viewport Simulator for Web Developers</Description>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-beta.1</Version>
     <RepositoryUrl>https://github.com/aitiotekt/DevDuo</RepositoryUrl>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -30,7 +30,8 @@
     <AvaloniaResource Include="../../assets/icons/app-icon.png" Link="Assets/app-icon.png" />
     <None Update="WebAssets/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../temp/build/debugging/**" Link="debugging/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Condition="'$(TargetFramework)' == 'net10.0-windows'" Include="../../temp/build/windows-compositor/DevDuo.Windows.Compositor.dll" Link="DevDuo.Windows.Compositor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Cross-compilation checks managed Windows code; the C++ compositor is built and bundled on Windows. -->
+    <None Condition="'$(TargetFramework)' == 'net10.0-windows' And $([MSBuild]::IsOSPlatform('Windows'))" Include="../../temp/build/windows-compositor/DevDuo.Windows.Compositor.dll" Link="DevDuo.Windows.Compositor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Condition="'$(TargetFramework)' == 'net10.0'" Include="$(DevDuoNativeDirectory)/libDevDuoWebView.dylib" Link="libDevDuoWebView.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

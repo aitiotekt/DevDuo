@@ -13,6 +13,8 @@
 
 格式流程参考用户指定项目的现代资源目录与旧版安全边距分离方式，未复用其图案。参见 [Apple Icon Composer 指南](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)。
 
+2026-10-24 对图标提交 `338c76c` 的验证：ICO 七档尺寸均成功解码，编译目录包含 `AppIcon`，macOS 包内图标字节与 plist 引用均匹配源文件。Avalonia URI 从 macOS、Windows 两种程序集加载到相同 PNG。macOS 27.0.1 的 Finder 缩略图和“显示简介”预览实际显示新标志，Windows 交叉编译通过。随后维护者确认 Windows 实施 Agent 已完成 Windows 图标验证；该原生验证未在本机复跑。其他 macOS 外观变体仍未验证。私有回执保存在 `captures/desktop-validation/app-icons/`。
+
 ## 最终生成提示词
 
 生成一枚完整 DevDuo 图标：深蓝底铺满正方形，不预先加圆角；将 Duo 白色开口圆环与底部浅弧上的五个独立圆点，融合为内部的开发者 `</>` 符号，替换 Wi-Fi。括号为白色，斜杠为明亮青色；留出清楚间隙，使用平滑曲线和清晰粗线，不添加文字。平台遮罩和效果交给系统。生成图缩放为 1024 像素主图，原始测量采集未修改。

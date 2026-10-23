@@ -2,7 +2,14 @@
 
 <!-- Unreleased -->
 
-## 0.1.0
+## 0.1.0-beta.1
+
+First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
+
+- Complete the Windows-to-macOS integration review, record scoped native results and first-publication prerequisites, and synchronize the candidate version. Fix asynchronous macOS Inspector docking so it cannot shrink the measured viewport, and route Inspector shortcuts through the focused native browser. Run the AppKit assertions in CI; retain explicit platform gaps in the handoff.
+- Give the macOS tools WKWebView an arranged native host so the offline Chrome DevTools frontend paints its composited widgets; verify DOM/styles and Console evaluation in the presented window.
+- Keep exact logical viewport dimensions at fractional macOS Fit scales instead of forwarding floating-point bounds drift to WebKit; add a regression for the observed one-pixel loss.
+- Allow managed Windows cross-compilation without a locally built C++ compositor, while retaining native Windows bundling. Accept compatible mise-managed Python patch versions in an existing uv environment.
 
 ### Viewport workbench
 

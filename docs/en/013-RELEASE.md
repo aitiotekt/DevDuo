@@ -11,7 +11,7 @@ The release workflow builds self-contained .NET 10 packages for **macOS 27 arm64
 | Trigger / job | Work | Limit and boundary |
 | --- | --- | --- |
 | Checks: `main`, PR, manual, reusable | One Ubuntu portable job runs Python/JS, Core/Localization/CDP service tests, lint, typecheck, release consistency and strict docs build | 30 minutes; portable setup never restores an application backend |
-| Checks: native matrix | Metadata-enabled macOS and Windows compile the app, native bridge and native test harness | 30 minutes each; no UI, private captures, engine download or WebKit source build |
+| Checks: native matrix | Metadata-enabled macOS and Windows compile the app, native bridge and native test harness; macOS also executes AppKit geometry assertions | 30 minutes each; no interactive browser acceptance, private captures, engine download or WebKit source build |
 | Documentation push / manual | Relevant `main`/`release` paths build deployment inputs; only `main` deploys | Build 30 minutes, deploy 15 minutes; PR docs are already covered by Checks |
 | Application Release | Reusable Checks must pass before platform packaging/signing | macOS 120, Windows 60, assembly/publication 30 minutes each |
 | Manual WebKit release | Incremental full engine build on the persistent self-hosted Windows runner | Build step 22 hours, complete job 23 hours; hosted planning/publication never compiles WebKit |
@@ -76,6 +76,10 @@ Assembly requires exactly both platform reports and archives. Publication verifi
 Release staging uses ignored `temp/build/release/`; final archives and reports use `temp/release/`. Separate `packages.net10.0.osx-arm64.lock.json` and `packages.net10.0-windows.win-x64.lock.json` keep release runtime dependencies locked without changing ordinary development restores. To deliberately regenerate them, use `dotnet restore` with `-p:RuntimeIdentifier=osx-arm64` or `-p:RuntimeIdentifier=win-x64 -p:DevDuoWindows=true -p:EnableWindowsTargeting=true`, plus `--force-evaluate`; review dependency changes.
 
 ## First publication checklist
+
+The current application candidate is **0.1.0-beta.1**. Its engine remains independently versioned at **0.1.0-alpha.1**. As of the 2026-10-24 read-only audit, GitHub has no published Releases and `[webkit].archive_sha256` is empty. Application planning correctly refuses even a dry run until a real engine is published and pinned. The default branch does not yet expose the **WebKit runtime release** workflow. Merge the reviewed engine inputs/workflow there before attempting manual dispatch.
+
+The three named environments exist. The current GitHub credential cannot list environment signing secrets or repository runners (HTTP 403); their readiness is **unverified**, not evidence that they are absent. Obtain an authorized administration check before dispatch. No remote workflow, tag, upload or publication was triggered during local preparation. The [macOS integration record](015-PLATFORM-PARITY.md#beta-integration-record-2026-10-24) distinguishes native observations and remaining platform gaps; passing builds alone does not close them.
 
 1. Make the workflow files and complete native source/patch inputs available on the default branch. This local preparation does not commit or push them. Confirm that the repository-scoped Windows runner is online and that its service account sees Git/Bash, mise, the required Visual Studio C++/Clang components, Windows SDK and symlink privileges. Confirm free disk capacity for source, dependencies and archived build trees.
 2. Verify the infrastructure-managed `release-signing`, `stable-release` and `github-pages` environments. Check signing secret names without printing their values. Runner/SDK availability and secret contents require actual remote validation.

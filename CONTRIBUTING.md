@@ -111,6 +111,14 @@ Update English and Chinese sources together, with language-local links and a bid
 
 Keep identifiers/comments in English. Describe changed behavior, relevant checks and untested platforms in a review. Native changes need platform builds and actual UI acceptance; Windows cross compilation is insufficient. Keep simulator coordinates distinct from hardware dimensions, preserve evidence hashes, and review the [measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) before changing calibrated data. Do not commit or push unless requested.
 
+For a commit containing Codex-assisted work, retain the maintainer as the author and add this trailer once, separated from the description by a blank line. Preserve other genuine co-authors; purely human changes do not need this attribution.
+
+```text
+Co-authored-by: Codex <noreply@openai.com>
+```
+
+This identity maps to [Codex](https://github.com/codex). GitHub recognizes [co-author trailers](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors) through account-associated email addresses. Contributor statistics reflect eligible commits on the default branch after publication. Adding this convention does not change Git author settings, rewrite existing history or authorize a commit/push.
+
 | When changing… | Read on demand |
 | --- | --- |
 | Native browser composition or host layout | [Architecture and containers](docs/en/001-ARCHITECTURE.md) |

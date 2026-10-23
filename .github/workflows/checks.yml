@@ -87,7 +87,11 @@ jobs:
         with:
           native-only: 'true'
       - name: Compile application and native bridge without building WebKit
+        if: runner.os != 'macOS'
         run: mise exec node pnpm just dotnet -- just build build-native-tests
+      - name: Build application and check AppKit layout and coordinate transforms
+        if: runner.os == 'macOS'
+        run: mise exec node pnpm just dotnet -- just build test-macos
 
   report:
     name: Checks report

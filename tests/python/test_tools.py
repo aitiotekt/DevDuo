@@ -57,11 +57,27 @@ class ToolsTest(unittest.TestCase):
         configuration = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(configuration["tool"]["uv"]["python-downloads"], "never")
         self.assertEqual(os.environ.get("UV_PYTHON_DOWNLOADS", "never"), "never")
-        managed = subprocess.run(
-            ["mise", "which", "python"], cwd=ROOT, capture_output=True, text=True, check=True
+        selected = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))["tools"][
+            "python"
+        ]
+        self.assertEqual(".".join(map(str, sys.version_info[:2])), selected)
+        installed = subprocess.run(
+            ["mise", "ls", "python", "--installed", "--json"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        self.assertEqual(
-            Path(sys._base_executable).resolve(), Path(managed.stdout.strip()).resolve()
+        # uv may retain a compatible mise interpreter when the selected patch changes.
+        # Verify its managed origin without forcing another environment per patch.
+        base = Path(sys._base_executable).resolve()
+        self.assertTrue(
+            any(
+                entry["version"].startswith(f"{selected}.")
+                and base.is_relative_to(Path(entry["install_path"]).resolve())
+                for entry in json.loads(installed.stdout)
+            ),
+            "The uv interpreter must come from a compatible installed mise Python",
         )
 
     def test_every_command_has_help(self):

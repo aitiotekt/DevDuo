@@ -80,6 +80,14 @@ struct NativeScrollState {
 }
 final class ShellWebView:WKWebView {
     var onScrollInput:((Int,String)->Void)?
+    var onInspectorShortcut:(()->Void)?
+    override func performKeyEquivalent(with event:NSEvent)->Bool {
+        let modifiers=event.modifierFlags.intersection([.command,.control,.option,.shift])
+        let inspectorKey=(event.keyCode==111 && modifiers.isEmpty) ||
+            (event.charactersIgnoringModifiers?.lowercased()=="i" && modifiers==[.control,.shift])
+        if inspectorKey,let onInspectorShortcut {onInspectorShortcut();return true}
+        return super.performKeyEquivalent(with:event)
+    }
     override func scrollWheel(with event:NSEvent){
         if event.scrollingDeltaY != 0 {onScrollInput?(event.scrollingDeltaY<0 ? 1:-1,"native wheel/momentum")}
         super.scrollWheel(with:event)
@@ -257,6 +265,11 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
     let clock=NSTextField(labelWithString:"")
     let camera=PassiveView(),wifi=WifiStatusView(),sideBackground=PassiveView()
     let fixedBottomBackground=PassiveView()
+    // WebKit restores docking asynchronously, after connect() already reports a
+    // frontend. A hidden attachment target makes docking unavailable without ever
+    // giving the inspector permission to resize the measured WKWebView.
+    let inspectorAttachment=NSView(frame:.zero)
+    var detachedInspectorAvailable=false
     var nativeFixedContainerColorsAvailable=false
     let tabStrip=TabStripView()
     var buttons:[NSButton]=[]
@@ -315,6 +328,13 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         // request. App WebView has no separately measured identity in this cohort.
         web.customUserAgent=options["userAgent"] as? String
         super.init(frame:.zero);autoresizesSubviews=false;wantsLayer=true
+        let attachmentSelector=NSSelectorFromString("_setInspectorAttachmentView:")
+        if web.responds(to:attachmentSelector),let implementation=web.method(for:attachmentSelector) {
+            inspectorAttachment.isHidden=true
+            typealias AttachmentSetter=@convention(c)(AnyObject,Selector,NSView)->Void
+            unsafeBitCast(implementation,to:AttachmentSetter.self)(web,attachmentSelector,inspectorAttachment)
+            detachedInspectorAvailable=true
+        }
         nativeFixedContainerColorsAvailable=fixedColorPreferenceAvailable && web.responds(to:NSSelectorFromString("_updateFixedColorExtensionViews"))
         developerError=initialProxyError ?? ""
         clipView.content=self;clipView.addSubview(self)
@@ -327,6 +347,10 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         addSubview(web)
         web.onScrollInput={ [weak self] direction,source in
             self?.nativeScroll.record(direction,now:ProcessInfo.processInfo.systemUptime,source:source)
+        }
+        web.onInspectorShortcut={ [weak self] in
+            guard let self else{return}
+            _=self.setInspectorVisible(!(self.inspectorRequested || self.inspectorFlag("isVisible")))
         }
         applyShellAppearance()
         fixedBottomBackground.wantsLayer=true;fixedBottomBackground.isHidden=true;addSubview(fixedBottomBackground)
@@ -403,25 +427,22 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         developerError=""
         guard !invalidated else{developerError="The native browser has been disposed.";return false}
         if visible && remoteInspectionEnabled {developerError="Stop native remote inspection before opening the local Web Inspector.";return false}
-        guard let inspector=nativeInspector(),["connect","detach","show","close","isConnected","isVisible"].allSatisfy({inspector.responds(to:NSSelectorFromString($0))})
+        guard detachedInspectorAvailable,let inspector=nativeInspector(),["show","close","isConnected","isVisible"].allSatisfy({inspector.responds(to:NSSelectorFromString($0))})
         else{developerError="This system WebKit does not expose the required native Web Inspector interface.";return false}
         inspectorWork?.cancel();inspectorWork=nil;inspectorRequested=visible
         if !visible {_=inspector.perform(NSSelectorFromString("close"));return true}
-        _=inspector.perform(NSSelectorFromString("connect"))
+        _=inspector.perform(NSSelectorFromString("show"))
         showDetachedInspector(attempt:0)
         return true
     }
     func showDetachedInspector(attempt:Int) {
-        guard !invalidated,inspectorRequested,let inspector=nativeInspector() else{return}
-        if inspectorFlag("isConnected") {
-            // Detach before showing, so restored docking never changes the viewport.
-            _=inspector.perform(NSSelectorFromString("detach"))
-            _=inspector.perform(NSSelectorFromString("show"))
+        guard !invalidated,inspectorRequested,nativeInspector() != nil else{return}
+        if inspectorFlag("isConnected") && inspectorFlag("isVisible") {
             inspectorRequested=false;inspectorWork=nil
         } else if attempt<100 {
             let work=DispatchWorkItem{[weak self] in self?.showDetachedInspector(attempt:attempt+1)}
             inspectorWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+0.05,execute:work)
-        } else {inspectorRequested=false;developerError="Native Web Inspector did not connect before the timeout."}
+        } else {inspectorRequested=false;developerError="Native Web Inspector did not become visible before the timeout."}
     }
     func setRemoteInspection(_ enabled:Bool)->Bool {
         developerError=""
@@ -541,14 +562,17 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         invalidated=true;navigationCallback=nil;navigationContext=nil
         clockTimer?.invalidate();clockTimer=nil
         navigationObservations.forEach{$0.invalidate()};navigationObservations=[]
-        snapshotWork?.cancel();web.onScrollInput=nil;web.stopLoading();web.configuration.userContentController.removeScriptMessageHandler(forName:"devduoShell");web.navigationDelegate=nil
+        snapshotWork?.cancel();web.onScrollInput=nil;web.onInspectorShortcut=nil;web.stopLoading();web.configuration.userContentController.removeScriptMessageHandler(forName:"devduoShell");web.navigationDelegate=nil
     }
     override func layout(){
         super.layout()
         // Scale the native coordinate space, keeping CSS layout at the calibrated scene size.
         let sceneSize=CGSize(width:d("logicalWidth",466),height:d("logicalHeight",678))
         if bounds.size != sceneSize {setBoundsSize(sceneSize)}
-        let w=bounds.width,h=bounds.height
+        // AppKit can round a scaled bounds height to e.g. 668.9999999999999.
+        // WebKit truncates that to 668 CSS px. Arrange children in the exact
+        // requested scene units; the ancestor transform owns presentation scale.
+        let w=sceneSize.width,h=sceneSize.height
         guard w>0,h>0 else{return}
         if let mask=originalMask {var t=CGAffineTransform(scaleX:w/canvas.width,y:h/canvas.height);let layerMask=CAShapeLayer();layerMask.frame=bounds;layerMask.path=mask.copy(using:&t);layer?.mask=layerMask}
         let logicalW=d("logicalWidth",466),logicalH=d("logicalHeight",678),sx=w/logicalW,sy=h/logicalH
@@ -565,7 +589,7 @@ final class CalibrationContainer:FlippedView,WKScriptMessageHandler,WKNavigation
         // Keep native painting behind closed-mode floating chrome. The page's
         // unobscured viewport is defined by WebKit, not a smaller backing view.
         let nativeUnderChrome=safari && side
-        let nextWebFrame=nativeUnderChrome ? bounds:frame(viewport.minX,viewport.minY,viewport.width,viewport.height)
+        let nextWebFrame=nativeUnderChrome ? NSRect(origin:.zero,size:sceneSize):frame(viewport.minX,viewport.minY,viewport.width,viewport.height)
         if web.frame != nextWebFrame {web.frame=nextWebFrame}
         if #available(macOS 26.0,*) {
             if nativeUnderChrome {
