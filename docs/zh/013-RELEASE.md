@@ -20,7 +20,7 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 
 应用与引擎发布各有一个全局串行组，设置 `queue: max`、`cancel-in-progress: false`。GitHub 最多允许 100 个等待任务，队列满后拒绝新运行；顺序按进入等待队列的时间，而非触发时间，见 [GitHub 并发语义](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)。当前 actionlint 1.7.12 尚无新 `queue` schema；`.github/actionlint.yaml` 仅对这两份文件的精确错误提供兼容例外，同时由 YAML 测试验证完整并发配置。工具支持该语法后删除这些窄范围例外。
 
-中间平台、引擎和文档预览 artifact 仅保留**一天**，最终应用 artifact 保留**七天**。ZIP 上传关闭重复压缩；主分支文档仅上传 Pages 所需 artifact。持久引擎缓存在自托管磁盘上，不放进托管缓存。短保留期降低存储占用时间，但不能保证首次大型运行时上传符合账户剩余额度；触发前检查实际用量，并通过仓库管理清理过期临时 artifact。Release 资产仍是长期运行时依赖。托管执行、存储和缓存有不同计费与限制，参阅当前 [Actions 计费规则](https://docs.github.com/en/billing/concepts/product-billing/github-actions)和[运行器/资源限制](https://docs.github.com/en/actions/reference/limits)，不能因为公开仓库执行免费就假定全部存储无限。
+中间平台、引擎和文档预览 artifact 仅保留**一天**，最终应用 artifact 保留**七天**。ZIP 上传关闭重复压缩；主分支文档仅上传 Pages 所需 artifact。持久引擎缓存和 mise 工具安装留在自托管磁盘上。自托管任务不读写 GitHub Actions 缓存；GitHub 托管任务仍使用该缓存。短保留期降低存储占用时间，但不能保证首次大型运行时上传符合账户剩余额度；触发前检查实际用量，并通过仓库管理清理过期临时 artifact。Release 资产仍是长期运行时依赖。托管执行、存储和缓存有不同计费与限制，参阅当前 [Actions 计费规则](https://docs.github.com/en/billing/concepts/product-billing/github-actions)和[运行器/资源限制](https://docs.github.com/en/actions/reference/limits)，不能因为公开仓库执行免费就假定全部存储无限。
 
 ## Windows WebKit 运行时发布
 

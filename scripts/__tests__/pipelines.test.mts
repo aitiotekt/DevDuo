@@ -50,6 +50,19 @@ test("application pushes publish automatically while manual workflows default to
   );
 });
 
+test("self-hosted jobs install mise locally and do not use the GitHub Actions cache", () => {
+  const action = parse(
+    readFileSync(
+      join(repoRoot, ".github/actions/setup-workspace/action.yml"),
+      "utf8",
+    ),
+  );
+  const install = action.runs.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("jdx/mise-action@"),
+  );
+  assert.equal(install.with.cache, "${{ runner.environment != 'self-hosted' }}");
+});
+
 test("persistent engine jobs retain caches, reject workspace edits before checkout and finish within token lifetime", () => {
   const engine = workflow("webkit-release"),
     build = engine.jobs.build;

@@ -23,7 +23,9 @@ runs:
       with:
         install: true
         install_args: ${{ inputs.native-only == 'true' && 'node pnpm just gh dotnet' || (inputs.docs-only == 'true' || inputs.tooling-only == 'true') && 'node pnpm just gh' || '' }}
-        cache: true
+        # Ephemeral GitHub-hosted runners restore tools from the Actions cache.
+        # A self-hosted runner keeps mise installs on its own disk and must not read or write that cache.
+        cache: ${{ runner.environment != 'self-hosted' }}
     - name: Setup locked workspace and check symlink privileges
       if: inputs.docs-only != 'true' && inputs.tooling-only != 'true' && inputs.portable-only != 'true' && inputs.native-only != 'true'
       shell: bash
