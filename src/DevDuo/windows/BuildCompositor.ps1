@@ -11,7 +11,7 @@ function Get-SourceHash([string]$path) {
     try { return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
     finally { $stream.Dispose(); $algorithm.Dispose() }
 }
-$records = foreach ($relative in @('src/DevDuo/windows/HostCompositor.cpp', 'src/DevDuo/windows/HostCompositor.h', 'src/DevDuo/windows/DevDuo.Windows.Compositor.vcxproj', 'src/DevDuo/windows/BuildCompositor.ps1')) {
+$records = foreach ($relative in @('src/DevDuo/windows/HostCompositor.cpp', 'src/DevDuo/windows/HostCompositor.h', 'src/DevDuo/windows/WindowCapture.cpp', 'src/DevDuo/windows/DevDuo.Windows.Compositor.vcxproj', 'src/DevDuo/windows/BuildCompositor.ps1')) {
     [ordered]@{ path = $relative; sha256 = Get-SourceHash (Join-Path $repository $relative) }
 }
 [ordered]@{ schemaVersion = 1; apiVersion = 4; presentationApiVersion = 1; sources = @($records); binarySha256 = Get-SourceHash (Join-Path $output 'DevDuo.Windows.Compositor.dll'); nativeAcceptancePassed = $false } |

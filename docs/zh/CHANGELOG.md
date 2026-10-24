@@ -2,6 +2,13 @@
 
 <!-- Unreleased -->
 
+## 0.1.0-beta.3
+
+原生截图候选版本。Windows WebKit 继续使用 `0.1.0-beta.1`；更新后的截图桥接与宿主合成器随应用提供。
+
+- 新增 REST 原生视口/完整设备截图，支持 PNG/JPEG、像素元数据及现有 CDP 的 `Page.captureScreenshot`。保留 viewport、滚动与 fixed 布局，明确报告裁切或截图期间变化。
+- 修正 macOS Closed 270° 视口截图坐标，避免重复叠加左侧遮挡 inset。核对原生 fixed 标记像素，并验证八种姿态下文档、viewport、滚动及 fixed 几何保持不变。
+
 ## 0.1.0-beta.2
 
 第二个 beta 候选版本。应用包含更新后的原生宿主合成器；Windows WebKit 引擎源码及补丁未变，继续使用 `0.1.0-beta.1`。

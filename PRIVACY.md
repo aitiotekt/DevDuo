@@ -20,4 +20,6 @@ Custom page proxies receive website traffic according to the native engine's pro
 
 The optional REST control service exposes current URL/navigation, host settings and native/page telemetry to local clients. Its separate port and optional bearer token persist in preferences; the token has the same plaintext storage, masked display and diagnostic-exclusion policy as the CDP token. Enablement is never saved. Swagger UI keeps entered authorization only in memory; refreshing/closing it clears that entry. Documentation assets are offline and external specification validation is disabled.
 
+Native screenshot requests return webpage-viewport or composed-device image bytes to the requesting REST/CDP client without saving a server-side image. Device capture is restricted to the current process's window and crops the phone canvas; it does not capture other applications. Images can contain page content and should be reviewed before sharing.
+
 [English](PRIVACY.md) | [中文](docs/zh/PRIVACY.md)

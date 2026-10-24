@@ -3,7 +3,7 @@
   "info": {
     "title": "DevDuo Local Control API",
     "version": "1.0.0",
-    "description": "Opt-in IPv4 loopback-only control service. Default port 9224 is configurable. No listener auto-start, remote shell, filesystem access, native screenshot endpoint or bundled MCP server. Bodies are limited to 64 KiB. Browser cross-origin requests are rejected; no CORS. Configured bearer credentials are sent only in Authorization request headers."
+    "description": "Opt-in IPv4 loopback-only control service. Default port 9224 is configurable. No listener auto-start, remote shell, filesystem access or bundled MCP server. Bodies are limited to 64 KiB. Browser cross-origin requests are rejected; no CORS. Configured bearer credentials are sent only in Authorization request headers."
   },
   "servers": [
     {
@@ -301,6 +301,108 @@
         },
         "security": []
       }
+    },
+    "/api/screenshot": {
+      "post": {
+        "operationId": "captureScreenshot",
+        "summary": "Capture native page viewport or the complete composed device",
+        "description": "Read-only capture: never resizes the viewport, scrolls, changes fixed layout, fits the preview or stitches the document. viewport produces one image pixel per CSS pixel, upright without Safari chrome. device captures the complete visible phone including Safari chrome, screen mask and enabled outline in its presented body orientation at desktop pixel scale. Device must fit fully inside the preview; minimize, clipping, layout/navigation changes and unavailable native capture return 409. Only this application window can be captured; no file is written.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenshotRequest"
+              },
+              "examples": {
+                "viewport": {
+                  "value": {
+                    "target": "viewport",
+                    "format": "png"
+                  }
+                },
+                "device": {
+                  "value": {
+                    "target": "device",
+                    "format": "jpeg",
+                    "quality": 85
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Encoded native image. Pixel dimensions, target and scale are included in response headers.",
+            "headers": {
+              "X-DevDuo-Width": {
+                "description": "Encoded image width.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-DevDuo-Height": {
+                "description": "Encoded image height.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-DevDuo-Target": {
+                "description": "Capture target.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "viewport",
+                    "device"
+                  ]
+                }
+              },
+              "X-DevDuo-Pixel-Scale": {
+                "description": "Viewport: 1 pixel/CSS px. Device: desktop pixels/DIP; preview Fit remains applied.",
+                "schema": {
+                  "type": "number"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -548,6 +650,37 @@
         "properties": {
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "ScreenshotRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "viewport",
+              "device"
+            ],
+            "default": "viewport"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpeg"
+            ],
+            "default": "png"
+          },
+          "quality": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "JPEG only, default 80; omit for PNG."
           }
         }
       }

@@ -145,6 +145,7 @@ Check(service.BaseUri == root, "restarting preserves the configured connection a
 await service.StopAsync();
 await CdpAuthenticationChecks.Run(assets, Check);
 await ControlApiChecks.Run(assets, Check);
+await ScreenshotChecks.Run(assets, Check);
 Console.WriteLine("All CDP and control API transport checks passed. Native injection and actual chobitsu domain support require platform acceptance.");
 
 static void Check(bool condition, string name)

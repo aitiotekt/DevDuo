@@ -11,13 +11,14 @@ using System.Threading.Channels;
 
 namespace DevDuo;
 
-// Hosts the unmodified chii frontend and a page-scoped chobitsu CDP transport.
+// Hosts chii, a page-scoped chobitsu transport and native viewport screenshots.
 // This is a JavaScript protocol subset, not an engine debugging endpoint.
 public sealed class CdpDebuggingService : IAsyncDisposable
 {
     private const int MaximumMessageBytes = 16 * 1024 * 1024;
     private readonly Func<string, Task> _sendCommand;
     private readonly string _assetsDirectory;
+    private readonly Func<JsonElement, CancellationToken, Task<object>>? _captureScreenshot;
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private readonly ConcurrentDictionary<TcpClient, Task> _connections = new();
     private readonly object _pageLock = new();
@@ -34,10 +35,12 @@ public sealed class CdpDebuggingService : IAsyncDisposable
     private string _pageTitle = "DevDuo";
     private long _nextCommandId;
 
-    public CdpDebuggingService(Func<string, Task> sendCommand, string? assetsDirectory = null)
+    public CdpDebuggingService(Func<string, Task> sendCommand, string? assetsDirectory = null,
+        Func<JsonElement, CancellationToken, Task<object>>? captureScreenshot = null)
     {
         _sendCommand = sendCommand;
         _assetsDirectory = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "debugging");
+        _captureScreenshot = captureScreenshot;
     }
 
     public event Action<string>? Error;
@@ -301,7 +304,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
                 targets = _documentId is null ? Array.Empty<object>() : new object[] { new
                 {
                     id = "devduo", type = "page", title = _pageTitle, url = _pageUrl,
-                    description = "chobitsu JavaScript CDP subset; engine debugging is unavailable.",
+                    description = _captureScreenshot is null ? "chobitsu JavaScript CDP subset; engine debugging is unavailable." : "chobitsu CDP subset plus native viewport screenshots; full engine CDP is unavailable.",
                     webSocketDebuggerUrl = $"ws://{authority.Authority}/devtools/page/devduo",
                     devtoolsFrontendUrl = CreateFrontendUri(authority.Authority).PathAndQuery,
                 } };
@@ -431,6 +434,12 @@ public sealed class CdpDebuggingService : IAsyncDisposable
                 !parsed.RootElement.TryGetProperty("id", out var originalId) || !originalId.TryGetInt64(out var id))
                 throw new JsonException("CDP commands require a method and integer ID.");
             if (session.Pending.Count >= 4096) throw new WebSocketException("Too many pending CDP commands.");
+            if (method.GetString() == "Page.captureScreenshot")
+            {
+                parsed.RootElement.TryGetProperty("params", out var parameters);
+                await CaptureScreenshotAsync(session, id, parameters, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             var transportId = Interlocked.Increment(ref _nextCommandId);
             session.Pending[transportId] = id;
             var command = JsonNode.Parse(text)!.AsObject();
@@ -444,6 +453,33 @@ public sealed class CdpDebuggingService : IAsyncDisposable
                 Error?.Invoke("Cannot dispatch CDP command: " + exception.Message);
                 return;
             }
+        }
+    }
+
+    private async Task CaptureScreenshotAsync(ClientSession session, long id, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        object response;
+        try
+        {
+            if (_captureScreenshot is null)
+            {
+                response = new { id, error = new { code = -32601, message = "Native screenshots are unavailable." } };
+            }
+            else
+            {
+                var result = await _captureScreenshot(parameters, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+                response = new { id, result };
+            }
+        }
+        catch (Exception error) when (error is ArgumentException or JsonException or InvalidOperationException or FormatException)
+        { response = new { id, error = new { code = -32602, message = error.Message } }; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        { response = new { id, error = new { code = -32000, message = error.Message } }; }
+        lock (_pageLock)
+        {
+            if (_session == session && _documentId == session.DocumentId && !cancellationToken.IsCancellationRequested)
+                session.Outgoing.Writer.TryWrite(JsonSerializer.Serialize(response));
         }
     }
 

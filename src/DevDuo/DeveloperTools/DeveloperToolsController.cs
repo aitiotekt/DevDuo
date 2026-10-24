@@ -102,7 +102,8 @@ internal sealed class DeveloperToolsController : IDeveloperToolsController, IDis
                 return;
             }
             var script = CdpDebuggingService.CreateInjectionScript();
-            next = new CdpDebuggingService(command => DispatchCommandAsync(command, revision));
+            next = new CdpDebuggingService(command => DispatchCommandAsync(command, revision),
+                captureScreenshot: (parameters, token) => CaptureScreenshotAsync(parameters, token, revision));
             next.TargetChanged += () => Dispatcher.UIThread.Post(() =>
             {
                 if (disposed || revision != cdpRevision) return;
@@ -152,6 +153,20 @@ internal sealed class DeveloperToolsController : IDeveloperToolsController, IDis
             if (disposed || revision != cdpRevision || !view.DeveloperViewReady) return;
             await view.EvaluateRemoteDebuggingScriptAsync(
                 "window.__devduoRemoteDebugging?.dispatch(" + JsonSerializer.Serialize(command) + ");");
+        });
+    }
+
+    private async Task<object> CaptureScreenshotAsync(JsonElement parameters, CancellationToken token, int revision)
+    {
+        var request = ScreenshotRequest.ParseCdp(parameters);
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            token.ThrowIfCancellationRequested();
+            if (disposed || revision != cdpRevision || !view.DeveloperViewReady)
+                throw new ControlApiException(409, "The CDP page is no longer available.");
+            var image = await view.CaptureScreenshotAsync(request, cancellationToken: token);
+            if (disposed || revision != cdpRevision) throw new ControlApiException(409, "The CDP target changed during capture.");
+            return (object)new { data = Convert.ToBase64String(image.Data) };
         });
     }
 

@@ -22,9 +22,9 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        if (args.Length > 1 || args.Length == 1 && args[0] is not ("--initialization-failure" or "--presented" or "--presented-color" or "--presented-left" or "--safari-reference" or "--storage-write" or "--storage-read" or "--browser-tools" or "--browser-performance" or "--developer-tools" or "--presentation-damage" or "--presentation-insets" or "--navigation-latency" or "--navigation-latency-inline" or "--navigation-latency-network-retry" or "--browser-identity" or "--fixed-overlay" or "--scroll-indicators" or "--interaction"))
+        if (args.Length > 1 || args.Length == 1 && args[0] is not ("--initialization-failure" or "--presented" or "--presented-color" or "--presented-left" or "--safari-reference" or "--storage-write" or "--storage-read" or "--browser-tools" or "--browser-performance" or "--developer-tools" or "--presentation-damage" or "--presentation-insets" or "--navigation-latency" or "--navigation-latency-inline" or "--navigation-latency-network-retry" or "--browser-identity" or "--fixed-overlay" or "--scroll-indicators" or "--interaction" or "--screenshots"))
         {
-            Console.Error.WriteLine("Usage: DevDuo.Windows.Tests [--initialization-failure|--presented|--presented-color|--presented-left|--safari-reference|--storage-write|--storage-read|--browser-tools|--browser-performance|--developer-tools|--presentation-damage|--presentation-insets|--navigation-latency|--navigation-latency-inline|--navigation-latency-network-retry|--browser-identity|--fixed-overlay|--scroll-indicators|--interaction]");
+            Console.Error.WriteLine("Usage: DevDuo.Windows.Tests [--initialization-failure|--presented|--presented-color|--presented-left|--safari-reference|--storage-write|--storage-read|--browser-tools|--browser-performance|--developer-tools|--presentation-damage|--presentation-insets|--navigation-latency|--navigation-latency-inline|--navigation-latency-network-retry|--browser-identity|--fixed-overlay|--scroll-indicators|--interaction|--screenshots]");
             return 2;
         }
         InitializationFailure = args.Contains("--initialization-failure");

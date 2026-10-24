@@ -69,6 +69,31 @@ chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观�
 
 代理更改保留文档、视口和滚动，为后续请求配置原生网站数据存储。Windows 支持系统、直连和自定义。macOS 通过公开 `WKWebsiteDataStore.proxyConfigurations` 支持系统/自定义，空列表恢复系统行为，不能强制直连，因此直连明确报告不支持。自定义 `http`、`https` 或 `socks5` 端点带端口，不含凭据、query 或 fragment；认证/PAC 不在此 UI 范围。已有连接可能按原生网络规则继续使用。macOS Inspector、注入及代理更改仍需 macOS 原生验收。
 
+## 原生截图管线
+
+`Browser/NativeWebView.Screenshots.cs` 提供统一异步截图边界，`DeveloperTools/ControlApiScreenshot.cs` 校验请求并承载编码图片。REST 返回二进制及像素元数据；`CdpDebuggingService` 在交给 chobitsu 前由宿主处理 `Page.captureScreenshot`，以原始命令 ID 返回 base64。停止/取消及文档/客户端代次会拒绝过期结果。API 不接受输出文件名，也不写文件系统。
+
+视口截图保持网页正向，每 CSS 像素输出一个像素。macOS 用 `WKWebView.takeSnapshot` 从零开始的未遮挡内容坐标读取；再次叠加原生左 inset 会让 Closed 270° 内容被裁两次。Windows 通过 `WM_PRINTCLIENT` 读取固定版本 WebKit 的离屏绘制器，按与呈现相同的硬裁剪边缘截取，并将 backing 像素归一到 CSS 尺寸。不调整 viewport、页面缩放、滚动、文档样式或 fixed 元素。此页面路径不代表栏下延伸或 Safari 玻璃效果验收。
+
+设备截图读取最终原生窗口合成，再截取当前手机画布，包含已启用的外壳。macOS 使用 ScreenCaptureKit 的 `SCShareableContent.currentProcess` 和独立于桌面的本进程窗口过滤器；Windows 用 Windows Graphics Capture 读取经确认属于本进程的 HWND。两端都不枚举/截取桌面或其他应用内容。原生 GPU、子窗口与玻璃像素进入结果；Avalonia `RenderTargetBitmap` 或 DOM 重画无法替代这条路径。设备输出保留机身方向、适应预览和桌面 backing scale；排除系统鼠标，已显示的宿主触摸圆点属于合成内容。
+
+手机必须完整显示在可见预览区内。裁切、最小化/隐藏、原生捕获不可用及文档/viewport/呈现变化均明确报错；截图不会自动适应或移动视图。原生回调检查销毁状态，C# 检查容器/呈现代次，并在捕获前后读取真实页面几何。这些检查检测布局/滚动变化，但不冻结动画，也不承诺 DOM/像素是原子事务。截图仅为临时输出，不用于应用渲染。示例及格式约定归[使用指南](004-USAGE.md#原生截图)维护。
+
+### CDP 后续能力
+
+固定版本 [chobitsu 1.8.6 注册表](https://github.com/liriliri/chobitsu/blob/v1.8.6/src/index.ts)的源码审查区分了真实实现和兼容空操作。成功返回 `{}` 不代表命令生效；本次原生截图不会改变其他命令。
+
+| 优先级 | 当前限制 | 保留 WebKit 时可补充的方向 |
+| --- | --- | --- |
+| 下一步 | Runtime 的按值序列化/context 语义不完整，对象释放注册含空操作。 | 修正序列化/错误边界，释放长时间 agent 会话追踪的对象与分组。 |
+| 下一步 | `DOM.getBoxModel` 为空操作，frame/context 路由不完整。 | 补 DOM 几何和选择器，明确 transform、滚动和 frame 坐标。 |
+| 下一步 | 输入依靠合成 JS，无法等同原生焦点、默认行为和 IME。 | 桥接经验证的原生点击/输入/滚轮/触控，并保留场景/Fit 映射。 |
+| 下一步 | 导航/历史/资源为页面近似，没有能力清单。 | 复用原生导航，暴露真实布局指标/生命周期及逐方法的实现/近似/不支持状态。 |
+| 后续 | Network hook 无法补回早期请求、主导航或完整资源/cookie；缓存/配额响应存在占位。 | 明确接入原生网络/存储，不能把页面 JS 当成 HttpOnly cookie 或完整流量来源。 |
+| 独立项目 | 断点、Target 自动附加、Emulation 含空操作；缺少 CPU/heap profile、原生 AX、真实 worker/browser 会话。 | 评估 WebKit Inspector Protocol/JSC 适配及平台/版本边界；JS 注入无法提供这些引擎能力。 |
+
+优先完成状态 → DOM/几何 → 原生输入/导航 → 截图的 agent 闭环。DevDuo 专用 MCP 可封装已验证的 REST/CDP 操作，不必伪装成 Chromium。[Playwright 的 CDP 连接](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)仅支持 Chromium；其 [WebKit 后端](https://playwright.dev/docs/browsers#webkit)依赖补丁，不能直接附着系统 WKWebView。完整 CDP/Playwright 兼容不属于已验收能力。
+
 ## 悬浮组件下方绘制
 
 已验证的 macOS 27 折叠模式保留完整 WKWebView，通过公开 `obscuredContentInsets` 调整页面视口。466 × 678 原生框设置侧边 84、底部 98，得到 382 × 580 页面视口；紧凑底部 80 得到 382 × 598。普通流继续绘制到地址栏下方，fixed-bottom 保持在较小视口内；270° 场景将侧边 inset 移到左侧。

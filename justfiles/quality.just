@@ -39,7 +39,7 @@ test-debugging: prepare-debugging
 [macos]
 build-native-tests:
     mkdir -p temp/build/native-tests temp/cache/swift-tests
-    xcrun swiftc -parse-as-library src/DevDuo/macos/DeveloperWebViewBridge.swift src/DevDuo/macos/WebViewBridge.swift tests/macos/NativeLayoutTests.swift -module-cache-path temp/cache/swift-tests -framework AppKit -framework WebKit -framework QuartzCore -o temp/build/native-tests/native-layout-tests
+    xcrun swiftc -parse-as-library src/DevDuo/macos/DeveloperWebViewBridge.swift src/DevDuo/macos/WebViewBridge.swift src/DevDuo/macos/ScreenshotBridge.swift tests/macos/NativeLayoutTests.swift -module-cache-path temp/cache/swift-tests -framework AppKit -framework WebKit -framework QuartzCore -framework ScreenCaptureKit -o temp/build/native-tests/native-layout-tests
 
 # Compile the interactive harness without claiming an available desktop or runtime.
 [windows]
@@ -86,6 +86,11 @@ test-windows-presentation: prepare-debugging
 [windows]
 test-windows-fixed-overlay: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/fixed-overlay-tests -p:RestoreLockedMode=true -- --fixed-overlay
+
+# Native screenshot REST/CDP pixels and geometry preservation; opens Windows UI.
+[windows]
+test-windows-screenshots: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/screenshot-tests -p:RestoreLockedMode=true -- --screenshots
 
 [windows]
 test-windows-interaction: prepare-debugging

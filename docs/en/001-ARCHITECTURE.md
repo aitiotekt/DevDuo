@@ -69,6 +69,31 @@ chobitsu offers DOM/CSS, Console/Runtime, storage and observed network operation
 
 Proxy changes preserve the document, viewport and scroll and configure the native website data store for later requests. Windows supports system, direct and custom modes. macOS uses public `WKWebsiteDataStore.proxyConfigurations` for system/custom; an empty list restores system behavior and cannot force direct access, so direct mode reports unsupported. Custom `http`, `https` or `socks5` endpoints have a port and no credentials, query or fragment; authentication/PAC are outside this UI. Existing connections may survive under native networking rules. macOS Inspector, injection and proxy changes still require native acceptance on macOS.
 
+## Native screenshot pipeline
+
+`Browser/NativeWebView.Screenshots.cs` provides a shared asynchronous capture boundary. `DeveloperTools/ControlApiScreenshot.cs` validates requests and carries encoded images. REST sends binary bytes with pixel metadata; `CdpDebuggingService` handles `Page.captureScreenshot` on the host before chobitsu dispatch and returns base64 with the original command ID. Stop/cancellation and document/client generations reject stale replies. The API owns neither an output filename nor a filesystem write.
+
+Viewport capture is upright at one pixel per CSS pixel. macOS uses `WKWebView.takeSnapshot` in unobscured content coordinates starting at zero. Reapplying the native left inset would crop the Closed 270° content twice. Windows reads the pinned offscreen WebKit painter through `WM_PRINTCLIENT`, crops using the same hard-clip edges as presentation and normalizes backing pixels to CSS dimensions. No viewport resize, page zoom, scrolling, document-style injection or fixed-element adjustment is used. This page-only path does not establish under-inset or Safari-glass appearance.
+
+Device capture instead reads the final native window composition and crops the displayed phone canvas, including enabled exterior artwork. macOS uses ScreenCaptureKit `SCShareableContent.currentProcess` and a desktop-independent own-window filter; Windows uses Windows Graphics Capture for a verified current-process HWND. Neither path enumerates/captures the desktop or another application's content. Native GPU/child-window/glass pixels are included; Avalonia `RenderTargetBitmap` or a reconstructed DOM would omit native content. Device output retains body orientation, Fit and desktop backing scale; the OS cursor is excluded, while a visible host touch marker remains part of composition.
+
+The full phone must fit in the visible preview. Cropping, minimized/hidden windows, unsupported native capture and changing document/viewport/presentation produce an explicit error. Capture never auto-fits or moves the view. Native callbacks check disposal, C# checks container/presentation generations, and direct page geometry is compared before/after capture. These checks detect layout/scroll changes without freezing live animation or promising an atomic DOM/pixel transaction. Native captures are transient and are not used to render the application. [Usage and parameter contract](004-USAGE.md#native-screenshots) owns examples and supported formats.
+
+### CDP capability follow-up
+
+A source audit of the pinned [chobitsu 1.8.6 registry](https://github.com/liriliri/chobitsu/blob/v1.8.6/src/index.ts) distinguishes actual implementations from compatibility no-ops. Successful `{}` responses are not proof that a command worked. The native screenshot addition does not change unrelated commands.
+
+| Priority | Current limitation | Feasible follow-up while retaining WebKit |
+| --- | --- | --- |
+| Next | Runtime by-value serialization/context semantics are incomplete; object-release registrations include no-ops. | Correct serialization/error boundaries and release tracked objects/groups for long agent sessions. |
+| Next | `DOM.getBoxModel` is a no-op; frame/context routing is incomplete. | Implement measured DOM geometry and selectors with explicit transform/scroll/frame coordinates. |
+| Next | Input is synthetic JS; native focus/default actions and IME are not equivalent. | Bridge verified native click/type/wheel/touch paths and preserve scene/Fit mapping. |
+| Next | Navigation/history/resources are page approximations; no capability manifest. | Reuse native navigation, expose real layout metrics/lifecycle and method-level implemented/approximate/unsupported capabilities. |
+| Later | Network hooks miss earlier requests, main navigation and complete resource/cookie data; cache/quota responses include placeholders. | Add explicit native network/storage integrations; do not claim HttpOnly cookies or complete traffic from page JS. |
+| Separate project | Breakpoints/Target auto-attach/Emulation include no-ops; CPU/heap profiling, native AX and real worker/browser sessions are absent. | Evaluate WebKit Inspector Protocol/JSC adapters and their platform/version limits; JS injection cannot supply these engine capabilities. |
+
+Prioritize the agent loop of state → DOM/geometry → native input/navigation → screenshot. A DevDuo-specific MCP adapter can use verified REST/CDP operations without pretending to expose Chromium. [Playwright's CDP connection](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp) is Chromium-only; its [WebKit backend](https://playwright.dev/docs/browsers#webkit) relies on patches and cannot simply attach to system WKWebView. Complete CDP/Playwright compatibility is not an accepted capability.
+
 ## Drawing below floating chrome
 
 On the validated macOS 27 runtime, Closed mode keeps a full-size WKWebView and sets public `obscuredContentInsets`. A 466 × 678 native frame with side 84 / bottom 98 insets has a 382 × 580 page viewport; compact bottom 80 yields 382 × 598. Normal document flow continues below the address bar, while fixed-bottom elements stay within the smaller viewport. The 270° scene moves the side inset to the left.

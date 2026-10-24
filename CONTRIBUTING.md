@@ -74,6 +74,7 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-presentation` | Physical WebKit bounds, repaint damage and live raster checks across maximize/Inspector/restore; opens Windows UI |
 | `just test-windows-presentation-insets` | Isolated live-source checks for unmodified color-page pixels exposed by compact chrome; opens Windows UI, separate from final DWM acceptance |
 | `just test-windows-fixed-overlay` | Native modal-overlay viewport alpha, inset colors and geometry preservation; opens Windows UI, not full Safari optical acceptance |
+| `just test-windows-screenshots` | Native REST/CDP screenshots, eight poses and unchanged scroll/fixed geometry; opens Windows UI |
 | `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI, without claiming exact Safari thickness or fade timing |
 | `just test-windows-run-loop` | Actual pinned WTF timers under an external Windows message pump and WTF's own loop; requires the native runtime build |
 | `just test-debugging` | Real loopback CDP HTTP/WebSocket discovery, token/origin/lifecycle checks; does not certify native page injection |

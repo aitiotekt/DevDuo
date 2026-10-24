@@ -65,7 +65,7 @@ curl -H "Authorization: Bearer $DEVDUO_CDP_TOKEN" http://127.0.0.1:9222/json/lis
 
 The variable above belongs to the client; it does not configure the app. Public bundled frontend assets need no credential. The built-in tools panel uses a separate per-start socket capability because browser WebSockets cannot attach a custom Authorization header. It continues to work when header authentication is enabled; its internal frontend URL may contain that temporary capability, while the copied agent address stays fixed. Credential storage and exposure are described in [Privacy](../../PRIVACY.md) and [Security](../../SECURITY.md).
 
-This is an endpoint for a compatible agent/MCP/skill client, not a bundled MCP server or a complete Chromium CDP implementation. Select the desired fold/orientation in DevDuo, then use supported DOM/CSS/Runtime operations to inspect the page and viewport. Host fold/rotation commands, native screenshots and full browser/engine operations are not exposed by this page bridge.
+This is an endpoint for a compatible agent/MCP/skill client, not a bundled MCP server or a complete Chromium CDP implementation. Select the desired fold/orientation in DevDuo, then use supported DOM/CSS/Runtime operations to inspect the page and viewport. The host handles `Page.captureScreenshot` using native viewport pixels. Fold/rotation controls and full browser/engine operations remain separate from this page bridge.
 
 ## REST control API
 
@@ -83,6 +83,7 @@ Enable **REST control API** under **Developer** when needed. It starts **off on 
 | `/api/settings` | PATCH | Change fold, absolute body angle, Safari/App mode, illustrative tab strip, touch/mouse interaction, preview scale/outline, theme, language and material tunables. Only supplied fields change; null material values restore defaults. |
 | `/api/navigation` | POST | `navigate` with an http/https `url`; or `back`, `forward`, `reload`, `stop`, `home`, `color-demo`, `calibration`. |
 | `/api/inspector` | PUT | Set native Inspector `visible` to true/false. |
+| `/api/screenshot` | POST | Return PNG/JPEG bytes; `target` selects `viewport` (default) or `device` including Safari shell and enabled outline. |
 | `/api/proxy` | PUT | Set proxy `mode`; custom mode takes an unauthenticated `endpoint`. macOS direct bypass remains unsupported. |
 
 ```sh
@@ -97,7 +98,37 @@ curl -X POST http://127.0.0.1:9224/api/navigation \
 
 With authentication, add the same bearer header to each control request. Settings use canonical English identifiers in both UI languages. Unknown fields, invalid values and duplicate fields are rejected. The JSON contract documents ranges and failure responses. Request bodies are limited to 64 KiB; cross-origin browser access and CORS are unavailable.
 
-A successful response returns current host state; page loading and native layout can still be pending. Poll `/api/state` and compare `settings` with actual `telemetry`/`navigation`, rather than assuming requested dimensions have rendered. Fold/container changes recreate the page and reset scroll/history, as in the UI. Rotation, preview, material and language changes keep the document. The recorded Closed 180° rotation-history qualification still applies; an angle command does not certify a native scene. Tab-strip control remains illustrative, not real tab management. Use CDP separately for page DOM/CSS/evaluation/scroll operations; this API does not provide native screenshots, remote shell, filesystem access or a bundled MCP server.
+Except for binary screenshot responses, a successful response returns current host state; page loading and native layout can still be pending. Poll `/api/state` and compare `settings` with actual `telemetry`/`navigation`, rather than assuming requested dimensions have rendered. Fold/container changes recreate the page and reset scroll/history, as in the UI. Rotation, preview, material and language changes keep the document. The recorded Closed 180° rotation-history qualification still applies; an angle command does not certify a native scene. Tab-strip control remains illustrative, not real tab management. Use CDP separately for page DOM/CSS/evaluation/scroll operations; this API does not provide remote shell, filesystem access or a bundled MCP server.
+
+## Native screenshots
+
+Enable the REST API, then choose the capture target in the JSON body:
+
+```sh
+curl -X POST http://127.0.0.1:9224/api/screenshot \
+  -H 'Content-Type: application/json' \
+  -d '{"target":"viewport","format":"png"}' --output viewport.png
+curl -X POST http://127.0.0.1:9224/api/screenshot \
+  -H 'Content-Type: application/json' \
+  -d '{"target":"device","format":"jpeg","quality":85}' --output device.jpg
+```
+
+Add the configured bearer header as for other control requests. `format` defaults to `png`; JPEG `quality` is 0–100, default 80, and must be omitted for PNG. The response is image bytes, not JSON or a saved server-side file. `X-DevDuo-Width`, `X-DevDuo-Height`, `X-DevDuo-Target` and `X-DevDuo-Pixel-Scale` describe the encoded image.
+
+| Target | Captured pixels |
+| --- | --- |
+| `viewport` | Current webpage viewport, upright, one image pixel per CSS pixel. Excludes Safari chrome, exterior artwork and the host touch pointer. Fit and desktop DPI do not change output dimensions. |
+| `device` | Final native composition of the whole presented phone, including Safari chrome, under-chrome continuation, screen mask and enabled outline. Uses current body orientation, Fit and desktop backing scale. Excludes the real host address bar/settings and OS cursor; a visible simulated touch pointer is part of the device composition. App WebView mode has no Safari shell. |
+
+Capture never changes viewport, scroll, fixed layout, insets or preview scale and never stitches a full document. Device capture requires the entire phone to fit inside the visible preview; select Fit yourself if needed. Hidden/minimized windows, clipping, unavailable native capture or a viewport/document/presentation change during capture return `409`. Retry after layout settles. Live animations are not frozen, and before/after geometry checks do not make DOM observations and pixel capture atomic. See [native implementation](001-ARCHITECTURE.md#native-screenshot-pipeline).
+
+On the existing page WebSocket, `Page.captureScreenshot` returns `{"data":"<base64 image>"}` using the same **viewport** path:
+
+```json
+{"id":1,"method":"Page.captureScreenshot","params":{"format":"png","fromSurface":true,"captureBeyondViewport":false}}
+```
+
+PNG/JPEG and JPEG quality are supported. Omit `clip`; region/full-document capture, WebP and `fromSurface:false` are unsupported and return `-32602`. `captureBeyondViewport` without a clip still captures only the current viewport; `optimizeForSpeed` is accepted as a hint. Native capture failures return `-32000`. This addition does not make the page bridge a complete CDP or a Playwright browser endpoint.
 
 ## Page proxy
 

@@ -65,7 +65,7 @@ curl -H "Authorization: Bearer $DEVDUO_CDP_TOKEN" http://127.0.0.1:9222/json/lis
 
 这里的环境变量属于客户端，不会配置应用。随包前端静态资源无需凭据。由于浏览器 WebSocket 不能附加自定义 Authorization 请求头，内置面板使用每次启动独立生成的 socket 访问能力，启用请求头鉴权后仍可使用。其内部前端 URL 可能包含这份临时凭据，但复制给 agent 的地址始终固定。凭据存储和暴露范围见[隐私](PRIVACY.md)与[安全](SECURITY.md)。
 
-这是供兼容 agent/MCP/skill 客户端使用的端点，并非内置 MCP 服务，也不是完整 Chromium CDP。先在 DevDuo 中选择设备形态/方向，再用已支持的 DOM/CSS/Runtime 操作检查页面与视口；页面桥目前不提供宿主折叠/旋转命令、原生截图或完整浏览器/引擎操作。
+这是供兼容 agent/MCP/skill 客户端使用的端点，并非内置 MCP 服务，也不是完整 Chromium CDP。先在 DevDuo 中选择设备形态/方向，再用已支持的 DOM/CSS/Runtime 操作检查页面与视口；宿主直接处理 `Page.captureScreenshot`，返回原生视口像素；折叠/旋转控制及完整浏览器/引擎操作仍独立于该页面桥。
 
 ## REST 控制 API
 
@@ -83,6 +83,7 @@ curl -H "Authorization: Bearer $DEVDUO_CDP_TOKEN" http://127.0.0.1:9222/json/lis
 | `/api/settings` | PATCH | 修改折叠、绝对机身角度、Safari/App 模式、示意标签栏、触控/鼠标交互、预览缩放/外壳、主题、语言和材质参数。仅修改提供的字段；材质值为 null 时恢复默认值。 |
 | `/api/navigation` | POST | `navigate` 搭配 http/https `url`；或 `back`、`forward`、`reload`、`stop`、`home`、`color-demo`、`calibration`。 |
 | `/api/inspector` | PUT | 将原生 Inspector 的 `visible` 设为 true/false。 |
+| `/api/screenshot` | POST | 返回 PNG/JPEG 字节；`target` 选择 `viewport`（默认）或包含 Safari shell 与已启用边框的 `device`。 |
 | `/api/proxy` | PUT | 设置代理 `mode`；自定义模式使用无认证的 `endpoint`。macOS 仍不支持强制直连。 |
 
 ```sh
@@ -97,7 +98,37 @@ curl -X POST http://127.0.0.1:9224/api/navigation \
 
 启用鉴权后，为每个控制请求附加相同的 Bearer 请求头。两种界面语言均使用英文规范标识符。未知字段、非法值和重复字段会被拒绝；参数范围和错误响应见 JSON 规范。请求体限制为 64 KiB，不开放浏览器跨源访问或 CORS。
 
-成功响应返回当前宿主状态，页面加载和原生布局仍可能尚未完成。轮询 `/api/state`，对照 `settings` 与真实 `telemetry`/`navigation`，不要把请求尺寸当成已经绘制的尺寸。与 UI 一致，切换折叠或容器会重建页面并重置滚动/历史；旋转、预览、材质和语言修改保留文档。Closed 180° 的旋转历史限定仍然适用，角度命令不等于原生场景验收。标签栏仍为示意，不是真实多标签管理。页面 DOM/CSS/执行/滚动继续使用独立的 CDP；控制 API 不提供原生截图、远程 shell、文件系统访问或内置 MCP 服务。
+除截图的二进制响应外，成功响应返回当前宿主状态，页面加载和原生布局仍可能尚未完成。轮询 `/api/state`，对照 `settings` 与真实 `telemetry`/`navigation`，不要把请求尺寸当成已经绘制的尺寸。与 UI 一致，切换折叠或容器会重建页面并重置滚动/历史；旋转、预览、材质和语言修改保留文档。Closed 180° 的旋转历史限定仍然适用，角度命令不等于原生场景验收。标签栏仍为示意，不是真实多标签管理。页面 DOM/CSS/执行/滚动继续使用独立的 CDP；控制 API 不提供远程 shell、文件系统访问或内置 MCP 服务。
+
+## 原生截图
+
+启用 REST API 后，通过 JSON 参数选择截图范围：
+
+```sh
+curl -X POST http://127.0.0.1:9224/api/screenshot \
+  -H 'Content-Type: application/json' \
+  -d '{"target":"viewport","format":"png"}' --output viewport.png
+curl -X POST http://127.0.0.1:9224/api/screenshot \
+  -H 'Content-Type: application/json' \
+  -d '{"target":"device","format":"jpeg","quality":85}' --output device.jpg
+```
+
+配置鉴权时照常添加 Bearer 请求头。`format` 默认 `png`；JPEG 的 `quality` 范围为 0–100，默认 80，PNG 须省略该参数。响应直接返回图片字节，不是 JSON，也不会在服务端保存文件。`X-DevDuo-Width`、`X-DevDuo-Height`、`X-DevDuo-Target` 和 `X-DevDuo-Pixel-Scale` 描述输出图片。
+
+| 范围 | 截取内容 |
+| --- | --- |
+| `viewport` | 当前网页视口，保持网页正向，每 CSS 像素输出一个图片像素。不含 Safari 栏、外壳和宿主圆形触摸指针；适应预览和桌面 DPI 不改变输出尺寸。 |
+| `device` | 整台手机的最终原生合成画面，包含 Safari 栏、栏下延伸区、屏幕蒙版及已启用的外壳。保留当前机身方向、适应预览缩放和桌面 backing scale。不包含宿主真实地址栏/设置或系统鼠标；若圆形模拟触摸指针可见，它属于设备合成内容。App WebView 模式没有 Safari shell。 |
+
+截图不修改 viewport、滚动、fixed 布局、inset 或预览缩放，不滚动拼接整页。设备截图要求手机完整显示在可见预览区内，必要时由使用者先选择适应预览。窗口隐藏/最小化、设备被裁切、原生捕获不可用，或截图期间视口/文档/呈现变化时返回 `409`，可待布局稳定后重试。不冻结动画；前后几何检查不代表 DOM 观测和像素捕获是原子操作。实现见[原生截图管线](001-ARCHITECTURE.md#原生截图管线)。
+
+现有页面 WebSocket 的 `Page.captureScreenshot` 使用同一条**视口**路径，返回 `{"data":"<base64 image>"}`：
+
+```json
+{"id":1,"method":"Page.captureScreenshot","params":{"format":"png","fromSurface":true,"captureBeyondViewport":false}}
+```
+
+支持 PNG/JPEG 及 JPEG 质量。请省略 `clip`；区域/整文档截图、WebP 和 `fromSurface:false` 不受支持，返回 `-32602`。不带 clip 时，`captureBeyondViewport` 仍只截当前视口；`optimizeForSpeed` 作为提示接受。原生截图失败返回 `-32000`。这不代表页面桥已经兼容完整 CDP 或 Playwright 的浏览器端点。
 
 ## 页面代理
 

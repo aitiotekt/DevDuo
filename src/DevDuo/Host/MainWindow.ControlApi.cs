@@ -88,13 +88,20 @@ public sealed partial class MainWindow
         finally { updatingDeveloperControls = previous; }
     }
 
-    private async Task<object> DispatchControlApiAsync(ControlApiRequest request, CancellationToken cancellationToken) =>
-        await Dispatcher.UIThread.InvokeAsync(() =>
+    private async Task<object> DispatchControlApiAsync(ControlApiRequest request, CancellationToken cancellationToken)
+    {
+        // The priority+cancellation overload returns the delegate's Task as its
+        // result. Await both stages so Kestrel receives an image, never a Task.
+        var operation = await Dispatcher.UIThread.InvokeAsync(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (controlApiClosed || !ready) throw new ControlApiException(503, "The application window is not ready.");
-            return HandleControlApi(request);
+            if (request.Path == "/api/screenshot")
+                return CaptureControlScreenshotAsync(ScreenshotRequest.Parse(request.Body), cancellationToken);
+            return Task.FromResult(HandleControlApi(request));
         }, DispatcherPriority.Normal, cancellationToken);
+        return await operation;
+    }
 
     private object HandleControlApi(ControlApiRequest request)
     {

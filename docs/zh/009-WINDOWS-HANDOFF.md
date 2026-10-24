@@ -179,4 +179,6 @@ Windows 顶层窗口不透明。原生 D3D11/DirectComposition 桥接 WebKit HWN
 
 触控/鼠标输入在已解锁桌面运行 `mise exec -- just test-windows-interaction`，覆盖文档起始仿真、轻点/滑动、原生滚轮拦截/恢复，不重建文档的 REST/UI 模式切换，以及网页与 Safari 栏上的圆形指针和离开手机后的普通指针恢复。既有滚轮驱动验收明确选择鼠标模式。fixed-overlay 矩阵同时检查交角的侧边优先。这些新增原生场景需要在 Windows 执行，交叉编译不等于像素/输入通过。
 
+原生截图：重建应用/宿主合成器后，在已解锁桌面运行 `mise exec -- just test-windows-screenshots`。覆盖八个姿态、REST 视口/设备 PNG、fixed/滚动不变量和原生 CDP JPEG；引擎运行时未改动。macOS 另行验收本进程窗口捕获。
+
 [English](../en/009-WINDOWS-HANDOFF.md) | [中文](009-WINDOWS-HANDOFF.md)

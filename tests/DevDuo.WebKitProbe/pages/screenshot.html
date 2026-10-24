@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DevDuo native screenshot fixture</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #d1e9ff; }
+  main { height: 2400px; padding: 16px; background: repeating-linear-gradient(#d1e9ff 0 80px, #ffe2a8 80px 160px); }
+  footer { position: fixed; bottom: 0; left: 0; width: 100%; height: 32px; background: #791ac2; color: white; }
+  #marker { position: fixed; top: 48px; right: 16px; width: 40px; height: 40px; background: #19b569; }
+  #mask { position: fixed; inset: 0; background: rgb(0 0 0 / .5); display: none; }
+</style>
+<main>Native WebKit pixels · scroll, viewport and fixed geometry must remain unchanged.<br><canvas width="64" height="64"></canvas></main>
+<div id="marker"></div><footer id="footer">FIXED BOTTOM</footer><div id="mask"></div>
+<script>
+  const context = document.querySelector('canvas').getContext('2d');
+  context.fillStyle = '#f43325'; context.fillRect(0, 0, 64, 64);
+  context.fillStyle = '#192eff'; context.fillRect(16, 16, 32, 32);
+  window.screenshotFixtureState = () => ({
+    document: performance.timeOrigin, width: innerWidth, height: innerHeight,
+    x: scrollX, y: scrollY, scrollHeight: document.documentElement.scrollHeight,
+    fixed: ['footer', 'marker', 'mask'].map(id => {
+      const rect = document.getElementById(id).getBoundingClientRect();
+      return { id, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    })
+  });
+</script>
+</html>

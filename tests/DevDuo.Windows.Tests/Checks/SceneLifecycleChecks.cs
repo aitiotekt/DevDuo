@@ -11,6 +11,11 @@ internal sealed partial class WindowsChecks
 {
     internal async Task Run()
     {
+        if (Environment.GetCommandLineArgs().Contains("--screenshots"))
+        {
+            await CheckScreenshots();
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--interaction"))
         {
             await CheckInteraction();

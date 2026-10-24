@@ -178,4 +178,6 @@ The initial macOS comparison exposed a separate gray canvas/no-footer-extension 
 
 For touch/mouse input, run `mise exec -- just test-windows-interaction` on an unlocked desktop. It exercises document-start emulation, tap/pan, native wheel suppression/restoration, REST/UI mode changes without replacing the document, and circular-pointer visibility over both the page and Safari chrome with restoration outside the phone. Existing wheel-driven acceptance scenarios explicitly select Mouse. The fixed-overlay matrix also checks side-over-horizontal corner priority. These new native cases require execution on Windows; cross-compilation is not a pixel/input pass.
 
+Native screenshots: run `mise exec -- just test-windows-screenshots` on an unlocked desktop after rebuilding the app/host compositor. The harness checks eight poses, REST viewport/device PNG, fixed/scroll invariants and native CDP JPEG; the engine runtime is unchanged. macOS has separate own-window native acceptance.
+
 [English](009-WINDOWS-HANDOFF.md) | [中文](../zh/009-WINDOWS-HANDOFF.md)

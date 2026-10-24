@@ -74,6 +74,7 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-presentation` | 检查 WebKit 物理窗口尺寸、重绘区域及最大化/Inspector/恢复后的实时像素，会打开 Windows 窗口 |
 | `just test-windows-presentation-insets` | 单独检查工具栏收起后新露出的未经修改颜色页源像素；会打开 Windows 窗口，与最终 DWM 验收分开 |
 | `just test-windows-fixed-overlay` | 原生弹窗遮罩视口 alpha、inset 颜色及几何保持检查；会打开 Windows 窗口，不代表完整 Safari 光学验收 |
+| `just test-windows-screenshots` | 原生 REST/CDP 截图、八种姿态及滚动/fixed 几何保持；会打开 Windows 窗口 |
 | `just test-windows-scroll-indicators` | 原生输入、淡出、CSS 抑制及屏幕外缘指示器像素与页面几何保持检查；会打开 Windows 窗口，不声明 Safari 精确线宽或淡出时长 |
 | `just test-windows-run-loop` | 在外部 Windows 消息泵和 WTF 自有循环下检查实际固定版本 WTF 定时器；需要已构建的原生运行时 |
 | `just test-debugging` | 真实回环 CDP HTTP/WebSocket 发现、token/Origin/生命周期检查，不证明原生页内注入 |

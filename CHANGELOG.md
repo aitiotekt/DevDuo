@@ -2,6 +2,13 @@
 
 <!-- Unreleased -->
 
+## 0.1.0-beta.3
+
+Native screenshot release candidate. Windows WebKit remains at `0.1.0-beta.1`; the updated capture bridge and host compositor ship with the application.
+
+- Add native viewport and composed-device screenshots through REST, with PNG/JPEG, pixel metadata and `Page.captureScreenshot` on the existing CDP bridge. Preserve viewport, scroll and fixed layout; report clipped or changing captures explicitly.
+- Correct macOS Closed 270° viewport screenshot coordinates so the left obscured inset is not applied twice. Check native fixed-marker pixels and preserve document, viewport, scroll and fixed geometry across all eight poses.
+
 ## 0.1.0-beta.2
 
 Second beta candidate. The application includes an updated native host compositor; Windows WebKit remains at `0.1.0-beta.1` because its engine source and patches are unchanged.

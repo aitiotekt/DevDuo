@@ -117,6 +117,7 @@ public sealed class ControlApiService(Func<ControlApiRequest, CancellationToken,
                 "/api/state" => "GET",
                 "/api/settings" => "PATCH",
                 "/api/navigation" => "POST",
+                "/api/screenshot" => "POST",
                 "/api/inspector" or "/api/proxy" => "PUT",
                 _ => throw new ControlApiException(404, "Unknown API resource.")
             };
@@ -137,7 +138,7 @@ public sealed class ControlApiService(Func<ControlApiRequest, CancellationToken,
                     _ => throw new ControlApiException(404, "Unknown documentation asset.")
                 };
                 if (!File.Exists(file)) throw new ControlApiException(503, "Offline API documentation asset is missing; rebuild the application.");
-                response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
+                response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
                 response.ContentType = contentType;
                 await response.SendFileAsync(file, lifetime.Token).ConfigureAwait(false);
                 return;
@@ -159,6 +160,16 @@ public sealed class ControlApiService(Func<ControlApiRequest, CancellationToken,
                 body = document.RootElement.Clone();
             }
             var result = await dispatch(new ControlApiRequest(method, path, body), lifetime.Token).ConfigureAwait(false);
+            if (result is ScreenshotImage image)
+            {
+                response.ContentType = image.ContentType;
+                response.Headers["X-DevDuo-Width"] = image.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                response.Headers["X-DevDuo-Height"] = image.Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                response.Headers["X-DevDuo-Target"] = image.Target;
+                response.Headers["X-DevDuo-Pixel-Scale"] = image.PixelScale.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                await response.Body.WriteAsync(image.Data, lifetime.Token).ConfigureAwait(false);
+                return;
+            }
             await response.WriteAsJsonAsync(result, ControlApiJson.Options, lifetime.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
