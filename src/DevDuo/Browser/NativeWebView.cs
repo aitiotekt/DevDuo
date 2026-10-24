@@ -55,6 +55,16 @@ public sealed partial class NativeWebView(DeviceProfile profile, string initialU
 #endif
     }
 
+    // Use explicit visibility for API PUTs, including closing a not-yet-visible Inspector.
+    internal void SetInspectorVisible(bool visible)
+    {
+#if WINDOWS
+        panel?.Browser.SetInspectorVisible(visible);
+#else
+        if (native != IntPtr.Zero) CheckDeveloperResult(MacSetInspectorVisible(native, visible ? 1 : 0));
+#endif
+    }
+
     public void UpdateScene(DeviceProfile geometry, SafariContainerOptions current)
     {
         profile = geometry;
@@ -92,7 +102,7 @@ public sealed partial class NativeWebView(DeviceProfile profile, string initialU
         PrepareDeveloperProfile();
         if (OperatingSystem.IsMacOS())
         {
-            native = MacCreate(InitialBuiltinPage == BuiltinPageKind.None ? initialUrl : "", profile.ScreenMaskPath ?? "", profile.MaskCanvasWidth, profile.MaskCanvasHeight, options.ToJson(), observer);
+            native = MacCreate(InitialBuiltinPage == BuiltinPageKind.None ? initialUrl : "", profile.ScreenMaskPath ?? "", profile.MaskCanvasWidth, profile.MaskCanvasHeight, options.ToJson(), observer, PageInteraction.Source);
             if (native == IntPtr.Zero)
                 throw new InvalidOperationException(AppLocalization.Current.Text("Error.NativeCreate"));
             callbackHandle = GCHandle.Alloc(this);
@@ -355,7 +365,7 @@ public sealed partial class NativeWebView(DeviceProfile profile, string initialU
         native = IntPtr.Zero;
     }
     [DllImport("libDevDuoWebView.dylib", EntryPoint = "devduo_create")]
-    private static extern IntPtr MacCreate([MarshalAs(UnmanagedType.LPUTF8Str)] string url, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, double width, double height, [MarshalAs(UnmanagedType.LPUTF8Str)] string options, [MarshalAs(UnmanagedType.LPUTF8Str)] string observer);
+    private static extern IntPtr MacCreate([MarshalAs(UnmanagedType.LPUTF8Str)] string url, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, double width, double height, [MarshalAs(UnmanagedType.LPUTF8Str)] string options, [MarshalAs(UnmanagedType.LPUTF8Str)] string observer, [MarshalAs(UnmanagedType.LPUTF8Str)] string inputSource);
     [DllImport("libDevDuoWebView.dylib", EntryPoint = "devduo_evaluate")]
     private static extern void MacEvaluate(IntPtr view, [MarshalAs(UnmanagedType.LPUTF8Str)] string script);
     [DllImport("libDevDuoWebView.dylib", EntryPoint = "devduo_navigate")]

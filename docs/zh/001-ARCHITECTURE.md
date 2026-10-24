@@ -52,7 +52,7 @@ Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。�
 
 ## 开发工具与页面代理
 
-开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存；旧 JSON 的 `developerExpanded` 作为未知字段兼容忽略。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。两项远程服务每次启动均关闭；监听/局域网偏好和代理配置会保存，启用状态及 token 不保存。
+开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存；旧 JSON 的 `developerExpanded` 作为未知字段兼容忽略。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。两项远程服务每次启动均关闭；监听/局域网偏好、代理配置和明确填写的 CDP 请求头令牌会保存，启用状态和临时前端凭据不保存。
 
 | 路径 | 传输与范围 |
 | --- | --- |
@@ -61,7 +61,7 @@ Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。�
 | macOS 原生远程 | 通过公开 `WKWebView.isInspectable` 启用 Safari 开发菜单发现，不创建自定义端口或局域网监听。 |
 | 页面 CDP | `DeveloperTools/CdpDebuggingService.cs` 提供 HTTP/前端/发现及单页面 WebSocket。`WebAssets/Scripts/remote-debugging.js` 包装 chobitsu 1.8.6，`scripts/package-debugging.mts` 打包 chii 1.15.5；安装后不需要 Node 进程或 CDN。 |
 
-CDP 默认只绑定回环，显式选择局域网后才开放活动 IPv4 接口。每次启动改变 256 位随机 token，作为全部路由前缀。相对于显示的基础地址，`json/list` 和 `json/version` 提供带范围说明的发现，`devtools/page/devduo` 接收原始 CDP WebSocket 消息，`front_end/chii_app.html` 提供真实 chii 前端。未知 Host 和跨源浏览器 WebSocket 会被拒绝；第二个调试器会被拒绝，避免共享 ID。报告的协议版本只是传输约定，不代表完整 CDP 支持。
+CDP 默认只绑定回环，显式选择局域网后才开放活动 IPv4 接口。基础地址及路由固定；回环监听可留空可选请求头令牌，局域网 CDP 必须设置。配置凭据后，发现接口和页面 socket 要求 Authorization bearer 请求头。公开前端静态资源不含目标页数据，内置前端另获每次启动独立的同源 socket 访问能力，不使用持久令牌作为 URL 参数。相对于显示的基础地址，`json/list` 和 `json/version` 提供带范围说明的发现，`devtools/page/devduo` 接收原始 CDP WebSocket 消息，`front_end/chii_app.html` 提供真实 chii 前端。未知 Host 和跨源浏览器 WebSocket 会被拒绝；第二个调试器会被拒绝，避免共享 ID。报告的协议版本只是传输约定，不代表完整 CDP 支持。
 
 完整离线脚本在原生 document start 安装，并立即在当前页执行。响应/事件走专用原生 script-message handler，命令由原生求值投递到消息桥。目标页不创建调试 WebSocket，也不加载远程调试脚本，因此不依赖 HTTPS 混合内容或 `connect-src` 放行；单项操作仍可能受 CSP、跨源资源及上游实现限制。这是 page world 插桩，不是浏览器安全边界。
 
@@ -92,5 +92,7 @@ macOS 通过同一贝塞尔遮罩裁剪 WKWebView 和兄弟 AppKit 视图，避�
 **颜色演示**是用于主题色及内容取色的独立夹具。**保存状态**和 `window.devduoContainerTelemetry` 提供请求/实际框、滚动/chrome 状态、可见与点击边界、颜色来源/RGB 和材质参数。`previewScale` 记录实际呈现比例。源码检出写入 `captures/desktop-validation/container-modes/`，独立安装使用本地应用数据的 `DevDuo/captures`；`DEVDUO_OUTPUT_DIR` 可覆盖位置。
 
 测量语义与来源统一见[测量约定](002-MEASUREMENT-CONTRACT.md)，验收和已有平台边界见[标定与验证](003-CALIBRATION-WORKFLOW.md)。后续宿主控件与实测 Safari 几何分开推进，见[路线图](100-ROADMAP.md)。
+
+宿主窗口拥有的 `ControlApiService` 使用 Kestrel 提供独立、默认关闭的本机 REST 监听。校验后的命令在 Avalonia UI 调度器上调用相同的导航/设置操作，不持有原生句柄，窗口关闭后不再执行。切换设备/容器保留监听。离线 Swagger UI 和 OpenAPI JSON 约定见[使用指南](004-USAGE.md#rest-控制-api)。
 
 [English](../en/001-ARCHITECTURE.md) | [中文](001-ARCHITECTURE.md)

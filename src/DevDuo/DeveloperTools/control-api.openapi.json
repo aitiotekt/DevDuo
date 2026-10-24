@@ -1,0 +1,638 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DevDuo Local Control API",
+    "version": "1.0.0",
+    "description": "Opt-in IPv4 loopback-only control service. Default port 9224 is configurable. No listener auto-start, remote shell, filesystem access, native screenshot endpoint or bundled MCP server. Bodies are limited to 64 KiB. Browser cross-origin requests are rejected; no CORS. Configured bearer credentials are sent only in Authorization request headers."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9224"
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/api/openapi": {
+      "get": {
+        "operationId": "getOpenApiUi",
+        "summary": "Read and try the API in the offline Swagger UI",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Human-readable API documentation. Use Authorize for protected control operations.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/state": {
+      "get": {
+        "operationId": "getState",
+        "summary": "Read requested settings, navigation and actual native telemetry",
+        "responses": {
+          "200": {
+            "description": "Current state after applying the request. Native load/layout can still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "patch": {
+        "operationId": "updateSettings",
+        "summary": "Update device and presentation settings",
+        "responses": {
+          "200": {
+            "description": "Current state after applying the request. Native load/layout can still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "description": "Only supplied fields change. All fields are validated before applying. Fold/container changes recreate the page and reset scroll/history, as in the UI. Body-angle/presentation/language changes preserve the document. Poll /api/state for actual layout readiness; HTTP 200 is not a native rendering acceptance claim.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/navigation": {
+      "post": {
+        "operationId": "navigate",
+        "summary": "Navigate, reload, stop, use history or open a built-in page",
+        "responses": {
+          "200": {
+            "description": "Current state after applying the request. Native load/layout can still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "description": "Navigation is asynchronous. Poll /api/state; use CDP for page DOM, evaluation and scrolling.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NavigationRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inspector": {
+      "put": {
+        "operationId": "setInspector",
+        "summary": "Set native Inspector visibility",
+        "responses": {
+          "200": {
+            "description": "Current state after applying the request. Native load/layout can still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectorRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proxy": {
+      "put": {
+        "operationId": "setProxy",
+        "summary": "Configure subsequent page requests without reloading",
+        "responses": {
+          "200": {
+            "description": "Current state after applying the request. Native load/layout can still be pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProxyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "summary": "Read this OpenAPI document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON with the current server address and authentication requirement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Settings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fold": {
+            "type": "string",
+            "enum": [
+              "closed",
+              "open"
+            ]
+          },
+          "bodyAngle": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ],
+            "description": "Absolute body angle in canvas coordinates; the recorded Closed 180-degree history qualification still applies."
+          },
+          "containerMode": {
+            "type": "string",
+            "enum": [
+              "safari",
+              "app"
+            ]
+          },
+          "showTabStrip": {
+            "type": "boolean",
+            "description": "Illustrative two-tab strip; applies only to Open Safari. Does not create browser tabs."
+          },
+          "previewScale": {
+            "type": "string",
+            "enum": [
+              "native",
+              "fit"
+            ]
+          },
+          "deviceOutline": {
+            "type": "boolean"
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "system",
+              "en",
+              "zh-Hans"
+            ]
+          },
+          "tintAlpha": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Null restores the configured material default."
+          },
+          "glassStrength": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Null restores the configured material default."
+          },
+          "shadowOpacity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 0.5,
+            "description": "Null restores the configured material default."
+          },
+          "cornerRadius": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 40,
+            "description": "Null restores the configured material default."
+          },
+          "interactionMode": {
+            "type": "string",
+            "enum": [
+              "touch",
+              "mouse"
+            ],
+            "default": "touch",
+            "description": "Single-finger DOM emulation: tap and drag-to-pan; native wheel is blocked. Mouse restores normal desktop input. Switching preserves the document and cancels an active contact. Synthetic touch/pointer events have isTrusted=false; no engine CSS pointer-media override, native multi-touch or iOS gesture equivalence."
+          }
+        }
+      },
+      "NavigationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "navigate",
+              "back",
+              "forward",
+              "reload",
+              "stop",
+              "home",
+              "color-demo",
+              "calibration"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Required only for navigate. Only http/https, with the same normalization as the host address bar."
+          }
+        }
+      },
+      "InspectorRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "visible"
+        ],
+        "properties": {
+          "visible": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProxyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "system",
+              "direct",
+              "custom"
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Only for custom: unauthenticated http/https/socks5 URI with explicit port. Direct mode is unavailable on macOS."
+          }
+        }
+      },
+      "State": {
+        "type": "object",
+        "required": [
+          "settings",
+          "navigation",
+          "scene",
+          "telemetry",
+          "nativeReady"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "navigation": {
+            "type": "object",
+            "description": "Current native navigation state: url, title, isLoading, canGoBack, canGoForward and error."
+          },
+          "scene": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "bodyInCanvasDegrees": {
+                "type": "integer"
+              },
+              "contentInBodyDegrees": {
+                "type": "integer"
+              },
+              "sceneInCanvasDegrees": {
+                "type": "integer"
+              }
+            }
+          },
+          "previewScale": {
+            "type": "number"
+          },
+          "inspectorVisible": {
+            "type": "boolean"
+          },
+          "proxy": {
+            "type": "object"
+          },
+          "cdpAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nativeReady": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "telemetry": {
+            "type": "object",
+            "description": "Actual native/page measurements; may be pending after a command. Not inferred from requested settings."
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "Invalid JSON, unknown field or invalid setting. No settings are changed for validation failures.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "Bearer header required or incorrect.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "Unknown Host or cross-origin browser request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "Native operation unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error413": {
+        "description": "Request body exceeds 64 KiB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error415": {
+        "description": "Use application/json.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "Native operation failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "Application window unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

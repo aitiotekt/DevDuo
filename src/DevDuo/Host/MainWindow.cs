@@ -14,7 +14,7 @@ using SukiUI.Enums;
 
 namespace DevDuo;
 
-public sealed class MainWindow : SukiWindow
+public sealed partial class MainWindow : SukiWindow
 {
     private const double PreviewMargin = 24;
     // Keeps scroll bars reachable: the native view is never placed over them.
@@ -101,6 +101,7 @@ public sealed class MainWindow : SukiWindow
         Grid.SetRow(statusBar, 2);
         Content = new Grid { Classes = { "host-root" }, RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { addressBar, body, statusBar } };
 
+        controlApi = new ControlApiService(DispatchControlApiAsync);
         ApplyHostSettingsToControls();
         WireEvents();
         BuildNativeMenu();
@@ -142,6 +143,7 @@ public sealed class MainWindow : SukiWindow
         panel.Inspector.Click += (_, _) => RunCommand(HostCommand.ToggleInspector);
         panel.NativeRemote.IsCheckedChanged += (_, _) => ChangeDeveloperService(native: true);
         panel.Cdp.IsCheckedChanged += (_, _) => ChangeDeveloperService(native: false);
+        WireControlApi();
         panel.ApplyListeners.Click += (_, _) => ApplyDeveloperListeners();
         panel.ApplyProxy.Click += (_, _) => ApplyDeveloperProxy();
         panel.ProxyMode.SelectionChanged += (_, _) => panel.ProxyEndpoint.IsEnabled = panel.ProxyMode.SelectedIndex == 2;
@@ -155,6 +157,7 @@ public sealed class MainWindow : SukiWindow
         };
         panel.ChromeDevTools.Click += (_, _) => OpenChromeDevTools();
         // Presentation changes keep the loaded page.
+        panel.Interaction.SelectionChanged += _ => SettingChanged(Configure);
         panel.Scale.SelectionChanged += _ => SettingChanged(() =>
         {
             ApplyPreviewSize();
@@ -233,11 +236,13 @@ public sealed class MainWindow : SukiWindow
             if (saveTimer.IsEnabled)
                 SavePreferences();
         };
-        Closed += (_, _) =>
+        Closed += async (_, _) =>
         {
             telemetryTimer.Stop();
             resizeTimer.Stop();
             DetachDeveloperTools();
+            controlApiClosed = true;
+            await controlApi.DisposeAsync();
         };
     }
 
@@ -258,6 +263,7 @@ public sealed class MainWindow : SukiWindow
             var fold = Array.FindIndex(profiles, profile => profile.Id == host.Fold);
             panel.Fold.Select(Math.Max(0, fold));
             panel.Mode.Select(host.ContainerMode == "app" ? 1 : 0);
+            panel.Interaction.Select(host.InteractionMode == "mouse" ? 1 : 0);
             panel.Scale.Select(host.PreviewScale == "fit" ? 1 : 0);
             panel.ThemeChoice.Select(Array.IndexOf(HostSettings.Themes, host.Theme));
             panel.Outline.IsChecked = host.DeviceOutline;
@@ -271,6 +277,9 @@ public sealed class MainWindow : SukiWindow
             panel.AllowLan.IsChecked = host.DeveloperAllowLan;
             panel.NativePort.Text = host.NativeRemotePort.ToString(System.Globalization.CultureInfo.InvariantCulture);
             panel.CdpPort.Text = host.CdpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            panel.CdpBearerToken.Text = host.CdpBearerToken;
+            panel.ControlApiPort.Text = host.ControlApiPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            panel.ControlApiBearerToken.Text = host.ControlApiBearerToken;
             panel.ProxyMode.SelectedIndex = host.ProxyMode switch { "direct" => 1, "custom" => 2, _ => 0 };
             panel.ProxyEndpoint.Text = host.ProxyEndpoint;
             panel.ProxyEndpoint.IsEnabled = host.ProxyMode == "custom";
@@ -288,6 +297,7 @@ public sealed class MainWindow : SukiWindow
         double? Tuned(double value, double configured) => Math.Abs(value - configured) < 1e-9 ? null : value;
         host.Fold = profiles[Math.Max(0, panel.Fold.SelectedIndex)].Id;
         host.ContainerMode = HostSettings.ContainerModes[panel.Mode.SelectedIndex];
+        host.InteractionMode = HostSettings.InteractionModes[panel.Interaction.SelectedIndex];
         host.PreviewScale = HostSettings.PreviewScales[panel.Scale.SelectedIndex];
         host.Theme = HostSettings.Themes[Math.Max(0, panel.ThemeChoice.SelectedIndex)];
         host.DeviceOutline = panel.Outline.IsChecked == true;
@@ -319,6 +329,7 @@ public sealed class MainWindow : SukiWindow
     private void ResetSettings()
     {
         DetachDeveloperTools();
+        _ = StopControlApiAsync();
         host = new HostSettings { LastUrl = host.LastUrl };
         rotation = 0;
         ApplyHostSettingsToControls();
@@ -458,6 +469,7 @@ public sealed class MainWindow : SukiWindow
                     ? language.Text("Device." + profile.Id)
                     : profile.Label).ToArray());
             panel.Mode.SetItems([language.Text("Mode.Safari"), language.Text("Mode.App")]);
+            panel.Interaction.SetItems([language.Text("Interaction.Touch"), language.Text("Interaction.Mouse")]);
             panel.Scale.SetItems([language.Text("Sizing.Native"), language.Text("Sizing.Fit")]);
             panel.ThemeChoice.SetItems([language.Text("Theme.System"), language.Text("Theme.Light"), language.Text("Theme.Dark")]);
             panel.Language.ItemsSource = new[] { language.Text("Language.System"), "English", "简体中文" };
@@ -481,6 +493,7 @@ public sealed class MainWindow : SukiWindow
             AutomationProperties.SetName(previewSurface, language.Text("Preview.Name"));
             AutomationProperties.SetName(panel.Fold, language.Text("Control.Fold"));
             AutomationProperties.SetName(panel.Mode, language.Text("Control.Mode"));
+            AutomationProperties.SetName(panel.Interaction, language.Text("Control.Interaction"));
             AutomationProperties.SetName(panel.Scale, language.Text("Control.Sizing"));
             AutomationProperties.SetName(panel.ThemeChoice, language.Text("Control.Theme"));
             AutomationProperties.SetName(panel.Language, language.Text("Language.Label"));
@@ -499,6 +512,7 @@ public sealed class MainWindow : SukiWindow
             UpdateNavigationUi();
             UpdateTelemetry();
             RefreshDeveloperTools();
+            RefreshControlApi();
         }
         finally
         {
@@ -528,6 +542,7 @@ public sealed class MainWindow : SukiWindow
         options.ChromeLayout = profile.Id == "closed" ? "side" : "top";
         options.RotationClockwiseDegrees = profile.RotationClockwiseDegrees;
         options.ReferenceScene = CurrentScene();
+        options.InteractionMode = panel.Interaction.SelectedIndex == 1 ? "mouse" : "touch";
         options.ShowTabStrip = panel.TabStrip.IsChecked == true;
         options.ShellAppearance = ActualThemeVariant == ThemeVariant.Dark ? "dark" : "light";
         options.LogicalWidth = profile.ScreenWidthCssPx;
@@ -642,7 +657,7 @@ public sealed class MainWindow : SukiWindow
             if (nativeRemoteEnabled)
                 developerTools.ApplyNativeRemote(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.NativeRemotePort));
             if (cdpEnabled)
-                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort));
+                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken));
             nativeLayer.Children.Add(web);
             ApplyPreviewSize();
             RefreshSceneDescription();
@@ -684,7 +699,7 @@ public sealed class MainWindow : SukiWindow
         developerTools = null;
         tools.Changed -= OnDeveloperToolsChanged;
         tools.CdpTargetChanged -= OnCdpTargetChanged;
-        try { tools.ApplyCdp(false, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort)); }
+        try { tools.ApplyCdp(false, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken)); }
         catch (Exception error) { SetDeveloperMessage("Developer.ActionError", error.Message); }
         try { tools.ApplyNativeRemote(false, new DeveloperListenOptions(host.DeveloperAllowLan, host.NativeRemotePort)); }
         catch (Exception error) { SetDeveloperMessage("Developer.ActionError", error.Message); }
@@ -698,6 +713,18 @@ public sealed class MainWindow : SukiWindow
             SetDeveloperMessage("Developer.InvalidPorts");
             return false;
         }
+        var token = panel.CdpBearerToken.Text?.Trim() ?? "";
+        if (!HostSettings.IsValidBearerToken(token))
+        {
+            SetDeveloperMessage("Developer.InvalidCdpBearerToken");
+            return false;
+        }
+        if (panel.AllowLan.IsChecked == true && panel.Cdp.IsChecked == true && token.Length == 0)
+        {
+            SetDeveloperMessage("Developer.CdpLanTokenRequired");
+            return false;
+        }
+        host.CdpBearerToken = token;
         host.DeveloperAllowLan = panel.AllowLan.IsChecked == true;
         host.NativeRemotePort = nativePort;
         host.CdpPort = cdpPort;
@@ -726,7 +753,7 @@ public sealed class MainWindow : SukiWindow
                     devToolsWindow?.Close();
                     devToolsWindow = null;
                 }
-                developerTools.ApplyCdp(enabled, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort));
+                developerTools.ApplyCdp(enabled, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken));
             }
         });
     }
@@ -743,7 +770,7 @@ public sealed class MainWindow : SukiWindow
             {
                 devToolsWindow?.Close();
                 devToolsWindow = null;
-                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort));
+                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken));
             }
             SetDeveloperMessage("Developer.ListenersSaved");
         });

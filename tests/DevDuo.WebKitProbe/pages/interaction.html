@@ -1,0 +1,35 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interaction acceptance</title>
+<style>
+  html { background: #cdf; }
+  body { margin: 0; font: 16px sans-serif; }
+  main { height: 2400px; padding: 16px; }
+  button { width: 160px; height: 48px; }
+  #nested { margin-top: 16px; width: 240px; height: 120px; overflow: auto; background: #fea; }
+  #nested > div { height: 600px; }
+</style>
+<main>
+  <button id="tap">Tap counter</button>
+  <div id="nested"><div>Nested scrolling</div></div>
+  <p>Drag outside the nested scroller to pan the document.</p>
+</main>
+<script>
+  const inputEvents = [];
+  let tapCount = 0;
+  document.getElementById('tap').addEventListener('click', () => tapCount++);
+  for (const type of ['pointerdown', 'pointercancel', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+    addEventListener(type, event => {
+      inputEvents.push({type, pointerType:event.pointerType, trusted:event.isTrusted});
+      if (inputEvents.length > 200) inputEvents.shift();
+    });
+  }
+  window.interactionSnapshot = () => ({
+    timeOrigin: performance.timeOrigin,
+    documentId: window.devduoShellObservation?.documentId,
+    mode: window.__devduoInput?.state,
+    scrollY, nested: document.getElementById('nested').scrollTop,
+    tapCount, maxTouchPoints: navigator.maxTouchPoints,
+    viewport: [innerWidth, innerHeight], events: inputEvents
+  });
+</script>

@@ -4,6 +4,7 @@ packages: []
 # Dependency installation belongs to explicit frozen setup commands.
 verifyDepsBeforeRun: error
 
-# core-js only prints a funding message; packaged debugging assets are prebuilt.
+# Packaged assets are prebuilt; funding messages and installation analytics are unnecessary.
 allowBuilds:
   core-js: false
+  "@scarf/scarf": false

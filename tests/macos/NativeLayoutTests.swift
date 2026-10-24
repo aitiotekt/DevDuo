@@ -6,6 +6,51 @@ struct NativeLayoutTests {
     @MainActor
     static func main() {
         _ = NSApplication.shared
+        let pointer=TouchPointerView(frame:NSRect(x:0,y:0,width:100,height:80))
+        precondition(pointer.isHidden && pointer.hitTest(NSPoint(x:40,y:30)) == nil,
+                     "The touch pointer is passive and initially hidden")
+        pointer.move(to:NSPoint(x:40,y:30),diameter:20)
+        precondition(pointer.circle.position == NSPoint(x:40,y:30) &&
+                     pointer.circle.path!.boundingBox == NSRect(x:-10,y:-10,width:20,height:20),
+                     "The touch pointer is centered on the contact")
+        pointer.move(to:NSPoint(x:10,y:15),diameter:40)
+        precondition(pointer.circle.path!.boundingBox.width == 40 && pointer.frame.size == NSSize(width:100,height:80),
+                     "Fit compensation changes only the passive marker, not the screen layout")
+        // Scroll-edge sampling can alternate by one RGB level. Exercise the
+        // actual painted tint layer across the former hard luminance cutoff.
+        let glass=GlassPanel(frame:NSRect(x:0,y:0,width:48,height:48))
+        for dark in [false,true] {
+            for role in ["floating","compact","top"] {
+                var previous:NSColor?
+                for level in 0...255 {
+                    let value=CGFloat(level)/255
+                    glass.style(color:NSColor(srgbRed:value,green:value,blue:value,alpha:1),
+                                alpha:0.32,strength:0.35,shadow:0.16,radius:24,role:role,dark:dark)
+                    let painted=NSColor(cgColor:glass.tint.layer!.backgroundColor!)!.usingColorSpace(.sRGB)!
+                    precondition(painted.alphaComponent>=0 && painted.alphaComponent<=1)
+                    if let previous {
+                        precondition(abs(painted.alphaComponent-previous.alphaComponent)<0.02,
+                                     "One RGB level switched glass opacity: \(role), dark=\(dark), level=\(level)")
+                        precondition(abs(painted.redComponent-previous.redComponent)<0.01 &&
+                                     abs(painted.greenComponent-previous.greenComponent)<0.01 &&
+                                     abs(painted.blueComponent-previous.blueComponent)<0.01,
+                                     "One RGB level switched the material palette")
+                    }
+                    previous=painted
+                }
+                previous=nil
+                for level in [91,92,91,92,91] {
+                    let value=CGFloat(level)/255
+                    glass.style(color:NSColor(srgbRed:value,green:value,blue:value,alpha:1),
+                                alpha:0.32,strength:0.35,shadow:0.16,radius:24,role:role,dark:dark)
+                    let alpha=NSColor(cgColor:glass.tint.layer!.backgroundColor!)!.alphaComponent
+                    if let previous {
+                        precondition(abs(alpha-previous.alphaComponent)<0.02,"Repeated boundary samples must not flash")
+                    }
+                    previous=NSColor(cgColor:glass.tint.layer!.backgroundColor!)!.usingColorSpace(.sRGB)!
+                }
+            }
+        }
         let toolsPointer="about:blank".withCString { developerWebViewCreate($0)! }
         let tools=Unmanaged<DeveloperWebViewHost>.fromOpaque(toolsPointer).takeUnretainedValue()
         for size in [NSSize(width:1100,height:780),NSSize(width:600,height:400)] {
@@ -126,6 +171,6 @@ struct NativeLayoutTests {
         host.clock.stringValue="stale-clock"
         host.clockTimer?.fire()
         precondition(host.clock.stringValue.range(of:"^[0-9]{2}:[0-9]{2}$",options:.regularExpression) != nil,"A static page clock refreshes without scrolling")
-        print("Native layout checks passed: tools host resize/ephemeral store, Inspector attachment/shortcuts, fractional Fit, clip resize, logical bounds, insets, passive footer color, four presentation rotations, coordinate round trips, native scroll intent and independent appearance")
+        print("Native layout checks passed: passive touch pointer geometry, continuous glass alpha/palette response, tools host resize/ephemeral store, Inspector attachment/shortcuts, fractional Fit, clip resize, logical bounds, insets, passive footer color, four presentation rotations, coordinate round trips, native scroll intent and independent appearance")
     }
 }

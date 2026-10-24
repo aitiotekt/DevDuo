@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <Product>DevDuo</Product>
     <Description>Pesudo iPhone Duo Viewport Simulator for Web Developers</Description>
-    <Version>0.1.0-beta.1</Version>
+    <Version>0.1.0-beta.2</Version>
     <RepositoryUrl>https://github.com/aitiotekt/DevDuo</RepositoryUrl>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -19,6 +19,7 @@
     <DevDuoNativeDirectory>$(MSBuildProjectDirectory)/obj/native</DevDuoNativeDirectory>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="SukiUI" Version="7.0.1" />
@@ -27,6 +28,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="DevDuo.Windows.Tests" />
     <EmbeddedResource Include="Localization/*.json" />
+    <EmbeddedResource Include="DeveloperTools/control-api.openapi.json" LogicalName="DevDuo.ControlApi.OpenApi.json" />
     <AvaloniaResource Include="../../assets/icons/app-icon.png" Link="Assets/app-icon.png" />
     <None Update="WebAssets/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../temp/build/debugging/**" Link="debugging/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

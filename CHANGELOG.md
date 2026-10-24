@@ -2,9 +2,23 @@
 
 <!-- Unreleased -->
 
+## 0.1.0-beta.2
+
+Second beta candidate. The application includes an updated native host compositor; Windows WebKit remains at `0.1.0-beta.1` because its engine source and patches are unchanged.
+
+- Show a passive circular touch pointer inside the simulated phone screen, including Safari chrome. Restore the system cursor outside it, in Mouse mode, on deactivation and on disposal; keep the pointer out of WebKit snapshots and backdrop sampling.
+- Default to persistent touch/mouse interaction selection, with single-finger DOM emulation, native wheel suppression in touch mode and REST/OpenAPI control.
+- Give Windows side continuation priority at side/bottom and side/top intersections, including when only the horizontal edge has a fixed color.
+- Add an opt-in, configurable loopback REST control API with offline Swagger UI, OpenAPI JSON, host/device/navigation controls and optional header authentication.
+- Give CDP stable base/discovery/page-socket addresses for local agent clients, with optional persisted bearer-header authentication and required authentication for LAN. Keep the built-in frontend working through a separate temporary socket capability and redact persistent credentials from diagnostics.
+
+- Refresh Windows toolbar and fixed-edge colors after rendered updates/document readiness, retry unavailable fixed-edge metadata with a bounded budget, and repaint the existing source once at load completion. Add uncached delayed-image/initial-mask native regressions without changing viewport or document geometry.
+
+- Smooth Safari glass backdrop adaptation across the former brightness cutoff on Windows and macOS. Preserve the current document's last native tint during transient Windows sampling failures, and reset it on navigation.
+
 ## 0.1.0-beta.1
 
-First beta candidate; not yet published. The application and Windows WebKit engine have independent versions and release gates.
+Initial beta release. Application and Windows WebKit engine versions are managed independently.
 
 - Keep alpha and beta release assembly/publication running after the optional stable approval is skipped, while respecting failed dependencies, cancellation and dry-run mode.
 

@@ -22,6 +22,9 @@ internal sealed partial class WindowsChecks
         await Task.Delay(350);
         Check(State().GetProperty("bodyRotationDegrees").GetInt32() == 0,
             "The scoped fixed-overlay matrix uses the initial Closed body pose.");
+        Select(Settings.Scale, 0);
+        await CheckInitialEdgeLoads();
+        Select(Settings.Scale, 1);
         Web.WindowsPanel!.ShowHtml(File.ReadAllText("tests/DevDuo.WebKitProbe/pages/fixed-overlay.html"));
         await Wait(state => Text(state, "pageTitle", "Fixed translucent overlay acceptance") && !Web.Navigation.IsLoading,
             "Independent fixed overlay fixture");
@@ -87,6 +90,7 @@ internal sealed partial class WindowsChecks
         for (var index = 0; index < 3; index++) Rotate();
         await LoadFixedOverlayDocument();
         await CheckFixedOverlayToggle("left-inset", "fixed", false, captures);
+        await CheckFixedOverlayToggle("left-inset-footer", "fixed", true, captures);
         Select(Settings.Fold, 1);
         await LoadFixedOverlayDocument();
         await CheckFixedOverlayToggle("top-inset", "dialog", false, captures);
@@ -260,6 +264,13 @@ internal sealed partial class WindowsChecks
                         withinValidDocumentFlow = x >= flow[0].GetInt32() && x < flow[2].GetInt32() && y < flow[3].GetInt32(),
                         sourceRgb = new[] { (int)pixel.R, pixel.G, pixel.B } });
                 }
+            }
+            var cornerY = geometry.GetProperty("height").GetDouble() - 12;
+            if (geometry.GetProperty("bottom").GetDouble() > 0)
+            {
+                if (geometry.GetProperty("right").GetDouble() > 0)
+                    insetPoints.Add(new("right-corner", left + inner[0].GetDouble() + 2, cornerY));
+                if (left > 0) insetPoints.Add(new("left-corner", left - 2, cornerY));
             }
             var bounds = browser.PresentationBounds!(browser.ClientRectangle);
             var virtualScreen = System.Windows.Forms.SystemInformation.VirtualScreen;

@@ -21,6 +21,7 @@
     <Compile Include="../../src/DevDuo/Browser/PageTitleState.cs" Link="PageTitleState.cs" />
     <Compile Include="../../src/DevDuo/Browser/SafariChromeState.cs" Link="SafariChromeState.cs" />
     <Compile Include="../../src/DevDuo/Browser/ScrollIndicatorState.cs" Link="ScrollIndicatorState.cs" />
+    <Compile Include="../../src/DevDuo/windows/FixedColorSampleSchedule.cs" Link="FixedColorSampleSchedule.cs" />
     <EmbeddedResource Include="../../src/DevDuo/Localization/*.json" LogicalName="DevDuo.Localization.%(Filename).json" />
     <None Include="../../config/**" Link="config/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/shared/safari-reference/manifest.json" Link="reference-manifest.json" CopyToOutputDirectory="PreserveNewest" />

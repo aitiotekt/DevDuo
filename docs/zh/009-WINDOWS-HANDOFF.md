@@ -108,7 +108,7 @@ Windows 固定容器 API 现查询 WebCore 自身的四边识别与背景混色�
 | 机身/内容坐标 | 独立记录观测到的场景到画布角度。Open 90°/270° 保持正向，Closed 180° 保留 R=90。共享测试直接比较 48 项原始参考，不只验证宽高或坐标往返；视口预留及原始组件框未变。 |
 | 外观与背景 | `shellAppearance` 跟随宿主解析后的 Light/Dark 外观，独立于页面像素/meta。Windows 宿主外观 API v1 使用普通 PageClient 外观通知并更新页面媒体查询，macOS 使用 NSAppearance。两端采样真实正文，相反 meta 只作诊断；主题切换不导航。 |
 | 原生滚动意图 | 原生滚轮/惯性和支持的键盘输入建立方向，同向 DOM 位移向下累计超过 24 CSS px、向上超过 8 后切换。意图 350 ms 后失效；零位移、反向脚本移动和视口夹紧不切换；单独 scrollTo 不收起。这是有时限的输入/位移关联，不是引擎提供的逐次因果标记，同时发生的脚本/原生滚动仍须限定。 |
-| 材质角色 | 合成 API v3 分开完整/紧凑地址栏；顶部背景、浮动控件和紧凑文字采用不同着色、边缘、阴影与模糊系数，保留用户调节。玻璃内字形和选中标签跟随外观，材质厚度适应相反的背景明暗；无玻璃托底的 Closed 状态字形独立参考根背景保持对比度，Wi-Fi 增加被动外围状态轮廓。参数属于艺术近似，不是光学测量或 Apple 私有内核。 |
+| 材质角色 | 合成 API v4 分开完整/紧凑地址栏；顶部背景、浮动控件和紧凑文字采用不同着色、边缘、阴影与模糊系数，保留用户调节。玻璃内字形和选中标签跟随外观，材质厚度适应相反的背景明暗；无玻璃托底的 Closed 状态字形独立参考根背景保持对比度，Wi-Fi 增加被动外围状态轮廓。参数属于艺术近似，不是光学测量或 Apple 私有内核。 |
 | 尚缺证据 | 五项原始初始视口比配置少 1 CSS px，紧凑标题容器也与点击/光学框不同，均未直接覆盖标定预留。阅读器可用等上下文 Safari 状态仍未支持。全量套件及更广泛 DPI/RDP/设备丢失验收暂缓，定向检查不能代替这些门槛。 |
 
 48 项场景尺寸、96 个可比导航按钮框及八组双标签完整容器符合现有基线；Open 展开多标签仍固定两个。选中顺序取决于当前页面，不是系统明暗规则。原图及失败尝试保持不变。
@@ -135,7 +135,7 @@ Windows 顶层窗口不透明。原生 D3D11/DirectComposition 桥接 WebKit HWN
 
 ## 原生验收清单
 
-当前运行时要求 **viewport API v2、正文绘制 v2、内容取色 API v1、宿主外观 API v1、宿主开发 API v1、固定容器颜色 API v1、composition API v3 与 presentation API v1**。需要重建固定源码运行时及应用；旧引擎缺少必需导出时明确失败。实测配置及布局语义未改变。硬裁剪取整与 GDI alpha 的确认根因见[分数栅格化说明](014-WINDOWS-WEBKIT.md#分数边界栅格化)。
+当前运行时要求 **viewport API v2、正文绘制 v2、内容取色 API v1、宿主外观 API v1、宿主开发 API v1、固定容器颜色 API v1、composition API v4 与 presentation API v1**。合成 API 随应用提供，独立于 WebKit 引擎。应用 beta.2 重建宿主 DLL，复用已发布的 WebKit beta.1 运行时；旧引擎缺少必需 WebKit 导出时明确失败。实测配置及布局语义未改变。硬裁剪取整与 GDI alpha 的确认根因见[分数栅格化说明](014-WINDOWS-WEBKIT.md#分数边界栅格化)。
 
 在用户确认的真实 3840 × 2160 显示器上，当前运行时在**每个实际 DPI 下均通过 1373 项原生应用断言**：
 
@@ -176,5 +176,7 @@ Windows 顶层窗口不透明。原生 D3D11/DirectComposition 桥接 WebKit HWN
 补色优先使用引擎解析出的页面底层/canvas 背景，html/body 背景回退须明确标注；不要复制最后一行，也不要直接拿工具栏主题着色当页面背景。fixed 底栏颜色延伸作为独立的外观能力处理。[WebCore 的 `insetClipLayerRect`](https://github.com/WebKit/WebKit/blob/6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d/Source/WebCore/page/LocalFrameView.cpp#L2763) 在文档边界裁剪延伸；[Cocoa 的 fixed 颜色延伸视图](https://github.com/WebKit/WebKit/blob/6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d/Source/WebKit/UIProcess/API/Cocoa/WKWebView.mm#L3692) 属于额外的原生行为，[underPageBackgroundColor](https://developer.apple.com/documentation/webkit/wkwebview/underpagebackgroundcolor) 定义页面边界外的底色。应检查 Windows Port 的裁剪、失效区域和后备表面清理；这些是排查方向，尚非确认的根因。修改原生集成时补验滚轮/程序滚动、短文档、文档高度变化、两种底部 inset，以及离开末端后再返回。
 
 首次 macOS 对照发现了独立的灰色 canvas/底栏未延伸问题，没有重复行号。现已恢复 WebKit canvas 绘制，并增加纯色通栏 fixed 底栏的被动颜色近似层。98/80 两种底部 inset 和底栏移除均已检查，真实视口、fixed 框及滚动范围未改变；见[回归流程及边界](003-CALIBRATION-WORKFLOW.md#文档末端与原生位置回归)。此 macOS 修复不代表实验性 Windows 后备表面问题已经解决或验收。
+
+触控/鼠标输入在已解锁桌面运行 `mise exec -- just test-windows-interaction`，覆盖文档起始仿真、轻点/滑动、原生滚轮拦截/恢复，不重建文档的 REST/UI 模式切换，以及网页与 Safari 栏上的圆形指针和离开手机后的普通指针恢复。既有滚轮驱动验收明确选择鼠标模式。fixed-overlay 矩阵同时检查交角的侧边优先。这些新增原生场景需要在 Windows 执行，交叉编译不等于像素/输入通过。
 
 [English](../en/009-WINDOWS-HANDOFF.md) | [中文](009-WINDOWS-HANDOFF.md)

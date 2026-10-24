@@ -176,5 +176,22 @@
   "Welcome.AddressHint": "在上方输入网站或本地开发地址，然后按 Enter。",
   "Welcome.Documentation": "使用文档",
   "Welcome.Repository": "源代码",
-  "Welcome.Offline": "此页面可离线使用。访问文档和源代码链接需要网络连接。"
+  "Welcome.Offline": "此页面可离线使用。访问文档和源代码链接需要网络连接。",
+  "Developer.CdpBearerToken": "CDP 请求头令牌（可选）",
+  "Developer.CdpBearerTokenHint": "留空时本机连接免鉴权；填写后发送 Authorization: Bearer <token>。令牌保存在本机，局域网 CDP 必须填写。",
+  "Developer.InvalidCdpBearerToken": "CDP 令牌只能包含 ASCII 字母、数字或 - . _ ~ + / =。",
+  "Developer.CdpLanTokenRequired": "允许局域网 CDP 连接前，请先设置 CDP 请求头令牌。",
+  "Developer.ControlApi": "REST 控制 API",
+  "Developer.ControlApiHint": "每次启动默认关闭，仅本机 IPv4，与 CDP 和局域网设置独立。令牌留空时本机免鉴权；否则发送 Authorization: Bearer <token>。令牌保存在本机。",
+  "Developer.ControlApiPort": "控制 API 端口",
+  "Developer.ControlApiBearerToken": "控制 API 请求头令牌（可选）",
+  "Developer.ControlApiAddress": "控制 API OpenAPI 地址",
+  "Developer.ApplyControlApi": "应用控制 API 设置",
+  "Developer.CopyControlApiAddress": "复制 OpenAPI 地址",
+  "Developer.InvalidControlApiPort": "请输入 1 至 65535 之间的控制 API 端口。",
+  "Developer.InvalidControlApiToken": "控制 API 令牌只能包含 ASCII 字母、数字或 - . _ ~ + / =。",
+  "Control.Interaction": "交互方式",
+  "Interaction.Touch": "触控 · 单指仿真",
+  "Interaction.Mouse": "鼠标",
+  "Interaction.Hint": "触控：轻点或按下拖动滑动，禁用滚轮。鼠标模式恢复滚轮、选择和悬停。触摸事件为合成事件，不复现 iOS 原生手势。"
 }

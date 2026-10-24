@@ -68,6 +68,10 @@ internal sealed class DeveloperToolsController : IDeveloperToolsController, IDis
     {
         if (disposed) return;
         ValidateListenOptions(options);
+        if (enabled && !HostSettings.IsValidBearerToken(options.BearerToken ?? ""))
+            throw new ArgumentException(AppLocalization.Current.Text("Developer.InvalidCdpBearerToken"), nameof(options));
+        if (enabled && options.AllowLan && string.IsNullOrEmpty(options.BearerToken))
+            throw new ArgumentException(AppLocalization.Current.Text("Developer.CdpLanTokenRequired"), nameof(options));
         cdpRequested = enabled;
         cdpOptions = options;
         if (!view.DeveloperViewReady)
@@ -115,7 +119,7 @@ internal sealed class DeveloperToolsController : IDeveloperToolsController, IDis
                 CdpStatus = CdpStatus with { Error = error };
                 Changed?.Invoke();
             });
-            await next.StartAsync(options.AllowLan, options.Port);
+            await next.StartAsync(options.AllowLan, options.Port, options.BearerToken);
             if (disposed || revision != cdpRevision) { next.Stop(); await next.DisposeAsync(); return; }
             cdp = next;
             await view.SetRemoteDebuggingScriptAsync(script);

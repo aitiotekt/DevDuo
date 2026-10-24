@@ -11,6 +11,13 @@ internal sealed partial class WindowsChecks
 {
     internal async Task Run()
     {
+        if (Environment.GetCommandLineArgs().Contains("--interaction"))
+        {
+            await CheckInteraction();
+            return;
+        }
+        // Existing wheel-driven scene/paint scenarios explicitly use desktop input.
+        Select(Settings.Interaction, 1);
         if (Environment.GetCommandLineArgs().Contains("--scroll-indicators"))
         {
             await CheckScrollIndicators();

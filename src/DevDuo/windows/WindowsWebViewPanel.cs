@@ -31,6 +31,8 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     private System.Windows.Forms.Label? initializationError;
     private string? initializationErrorDetail;
     private long observationCount, layoutCount, telemetryPublicationCount;
+    private long touchPanSequence;
+    private string? touchPanDocument;
     private string Ui(string key) => options.UiStrings.TryGetValue(key, out var value) ? value : AppLocalization.Lookup("en", key);
     private Color tintColor = Color.FromArgb(239, 243, 248);
     private const string NativeColorSource = "WebKit native edge average";
@@ -92,6 +94,13 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             }
         };
         colorTimer.Tick += async (_, _) => await SampleContentColor();
+        // The DOM can finish reporting before a delayed image/mask reaches a
+        // rendered frame. A successful early snapshot is not the final color.
+        webkit.ContentRenderingUpdated += () =>
+        {
+            if (disposed || options.Mode != "safari" || colorKey is null) return;
+            ScheduleContentColor();
+        };
         clockTimer.Tick += (_, _) =>
         {
             var nextClock = DateTime.Now.ToString("HH:mm", AppLocalization.Current.Culture);
@@ -138,6 +147,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             return;
         try
         {
+            webkit.SetInteractionMode(options.InteractionMode);
             webkit.Initialize(observer, options.Mode == "safari");
             initializationState = "ready";
             runtimeVersion = "324423@main + DevDuo host viewport API v2 + content painting v2 + content color API v1 + host appearance API v1 + fixed-container color API v1";
@@ -223,6 +233,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             return;
         if (options.ShellAppearance != current.ShellAppearance) InvalidateContentColor();
         options = current;
+        webkit.SetInteractionMode(current.InteractionMode);
         UpdateLocalizedLabels();
         ApplyLayout();
     }
@@ -260,6 +271,14 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
                 return;
             if (r.TryGetProperty("documentId", out var documentId))
                 pageDocumentId = documentId.GetString();
+            if (touchPanDocument != pageDocumentId) { touchPanDocument = pageDocumentId; touchPanSequence = 0; }
+            if (options.InteractionMode == "touch" && r.TryGetProperty("pageInput", out var input) && input.ValueKind == JsonValueKind.Object &&
+                input.TryGetProperty("panSequence", out var sequence) && sequence.TryGetInt64(out var nextSequence) && nextSequence > touchPanSequence)
+            {
+                touchPanSequence = nextSequence;
+                var direction = input.GetProperty("direction").GetInt32();
+                if (direction is -1 or 1) chromeScroll.RecordInput(direction, Environment.TickCount64, "emulated touch pan");
+            }
             var previousHeight = actualHeight;
             scrollY = r.GetProperty("scrollY").GetDouble();
             var delta = r.GetProperty("deltaY").GetDouble();
@@ -295,8 +314,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             if (options.Mode == "safari" && colorKey != nextKey)
             {
                 colorKey = nextKey;
-                colorRevision++;
-                colorTimer.Stop(); colorTimer.Start();
+                ScheduleContentColor();
             }
             observationCount++;
             ApplyLayout();
@@ -307,9 +325,17 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     {
         pageTitle.BeginNavigation();
         title = "";
+        tintSource = "initial fallback";
+        InvalidateContentColor();
         ApplyLayout();
     }
     private static Color ReadColor(JsonElement values) => Color.FromArgb(Math.Clamp(values[0].GetInt32(), 0, 255), Math.Clamp(values[1].GetInt32(), 0, 255), Math.Clamp(values[2].GetInt32(), 0, 255));
+    private void ScheduleContentColor()
+    {
+        colorRevision++;
+        colorTimer.Stop();
+        colorTimer.Start();
+    }
     private void InvalidateContentColor()
     {
         colorRevision++;
@@ -338,9 +364,17 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             }
             else
             {
-                tintColor = computedColor;
-                tintSource = "computed content background fallback";
                 colorStatus = result is null ? "stale-or-unavailable" : "native-status-" + result.Status;
+                // A transient readback failure is not a new page color. Keep a
+                // successful sample until navigation resets its source instead
+                // of flashing between rendered pixels and the DOM approximation.
+                if (tintSource == NativeColorSource)
+                    colorStatus += "; retained native color";
+                else
+                {
+                    tintColor = computedColor;
+                    tintSource = "computed content background fallback";
+                }
             }
             ApplyLayout();
         }

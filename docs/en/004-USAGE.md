@@ -19,6 +19,14 @@ In Safari mode, downward scrolling compacts the shell and upward scrolling expan
 
 Settings and language persist, but body angle resets and the **Developer** group starts collapsed on each launch. Material/diagnostics expansion persists. **Reset settings** returns to Safari, Closed, body 0° and 1:1 while retaining the language, current page and website data. Storage and deletion details belong to [Privacy](../../PRIVACY.md).
 
+## Touch and mouse interaction
+
+New profiles default to **Touch · single finger** under **Preview → Interaction**. Tap with the left button, or hold and drag to pan; the page wheel/trackpad wheel is blocked at the native browser boundary. Inside the simulated phone screen, including Safari chrome, a translucent circular pointer replaces the system cursor. Its 20-DIP diameter stays constant at Fit scales and rotations. The host address bar and settings sidebar retain the normal cursor; the marker is excluded from WebKit snapshots and backdrop color sampling. The settings sidebar keeps its normal scrolling. **Mouse** restores desktop wheel scrolling, text selection and mouse events. The selected mode persists, and switching keeps the current document, viewport, history and scroll while cancelling an active contact.
+
+Single-finger emulation sends synthetic touch PointerEvents and touch events, pans nested scroll containers, respects `touch-action`, `preventDefault()` and scroll chaining/containment, and attributes Safari shell expansion/compaction to the gesture direction. Taps prefer the engine compatibility click and use a single fallback if needed. Pages see emulated `navigator.maxTouchPoints = 1`; Mouse restores the native value. Existing and future frames receive the selected mode.
+
+This is desktop DOM input emulation, not trusted iOS input: touch/pointer events have `isTrusted = false`, constructor availability depends on the engine, and native CSS pointer/hover media capabilities are unchanged. Multi-touch, pinch, long-press, inertial flings and native iOS form-control gestures are not reproduced. Use Mouse when a page requires desktop/native activation or selection. The mode is also available through `PATCH /api/settings` with `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`; live input diagnostics are in `/api/state` telemetry.
+
 ## Keyboard shortcuts
 
 | Action | macOS | Windows |
@@ -38,9 +46,62 @@ For a Chrome-style DOM/Console panel, enable **chobitsu CDP**, then open **Chrom
 
 **Native remote inspection** is separate: macOS uses Safari's Develop discovery, while Windows uses WebKit's native Inspector TCP protocol. Both remote services start disabled; enable only the one you need. Connection exposure, tokens and sharing precautions are documented in [Security](../../SECURITY.md); protocol details belong to [Architecture](001-ARCHITECTURE.md#developer-tools-and-page-proxy).
 
+## Agent clients and fixed CDP addresses
+
+Enable **chobitsu CDP** in **Developer**. The default base address is `http://127.0.0.1:9222/`; the configured port and paths stay the same across restarts and scene changes. The listener still starts disabled on app launch. **Copy CDP address** copies the base address without credentials.
+
+```sh
+curl http://127.0.0.1:9222/json/list
+curl http://127.0.0.1:9222/json/version
+```
+
+Read `webSocketDebuggerUrl` from `/json/list` and connect to the advertised page socket, normally `ws://127.0.0.1:9222/devtools/page/devduo`. An empty list means the page bridge is not ready. Only one debugger can connect at a time; close the built-in panel before attaching an agent. Rediscover/reconnect after navigation or a scene change recreates the container.
+
+**CDP bearer token (optional)** is empty by default, allowing local connections without authentication. To enable header authentication, enter the same token that your agent will use and click **Apply listener settings**. It is masked in the UI and stored in local preferences. LAN CDP requires a nonempty token. Both discovery HTTP requests and the WebSocket handshake use `Authorization: Bearer <token>`; the persistent token is never put into the URL. For example, with the matching token in your client's environment:
+
+```sh
+curl -H "Authorization: Bearer $DEVDUO_CDP_TOKEN" http://127.0.0.1:9222/json/list
+```
+
+The variable above belongs to the client; it does not configure the app. Public bundled frontend assets need no credential. The built-in tools panel uses a separate per-start socket capability because browser WebSockets cannot attach a custom Authorization header. It continues to work when header authentication is enabled; its internal frontend URL may contain that temporary capability, while the copied agent address stays fixed. Credential storage and exposure are described in [Privacy](../../PRIVACY.md) and [Security](../../SECURITY.md).
+
+This is an endpoint for a compatible agent/MCP/skill client, not a bundled MCP server or a complete Chromium CDP implementation. Select the desired fold/orientation in DevDuo, then use supported DOM/CSS/Runtime operations to inspect the page and viewport. Host fold/rotation commands, native screenshots and full browser/engine operations are not exposed by this page bridge.
+
+## REST control API
+
+**9222 is only CDP's default port.** Change **CDP port** and apply the listener settings when another service uses it. Fixed addresses mean a stable configured port/path without a random prefix; an occupied port reports an error rather than silently choosing another.
+
+Enable **REST control API** under **Developer** when needed. It starts **off on every launch**, independently of CDP. Its **Control API port** defaults to **9224** and is editable; **Apply control API settings** saves the port/token and restarts an already running listener. It binds only `127.0.0.1`, regardless of **Allow LAN connections**. Closing the app or resetting settings stops it; changing the device/container keeps it running.
+
+- Open `http://127.0.0.1:9224/api/openapi` for offline **Swagger UI**, including **Try it out**.
+- Fetch `http://127.0.0.1:9224/api/openapi.json` for the OpenAPI 3.1 JSON contract. Its server address and authentication requirement reflect the running configuration.
+- Leave the optional control token empty for local unauthenticated access, or configure a token and send `Authorization: Bearer <token>`. In Swagger UI use **Authorize** and enter the token without the `Bearer` prefix. Documentation and its static assets remain public; control/state endpoints require the configured header. Swagger does not persist authorization or send the specification to an external validator.
+
+| Resource | Method | Effect |
+| --- | --- | --- |
+| `/api/state` | GET | Read settings, navigation, scene-coordinate mapping and actual native/page telemetry. |
+| `/api/settings` | PATCH | Change fold, absolute body angle, Safari/App mode, illustrative tab strip, touch/mouse interaction, preview scale/outline, theme, language and material tunables. Only supplied fields change; null material values restore defaults. |
+| `/api/navigation` | POST | `navigate` with an http/https `url`; or `back`, `forward`, `reload`, `stop`, `home`, `color-demo`, `calibration`. |
+| `/api/inspector` | PUT | Set native Inspector `visible` to true/false. |
+| `/api/proxy` | PUT | Set proxy `mode`; custom mode takes an unauthenticated `endpoint`. macOS direct bypass remains unsupported. |
+
+```sh
+curl http://127.0.0.1:9224/api/state
+curl -X PATCH http://127.0.0.1:9224/api/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"fold":"open","bodyAngle":90,"containerMode":"safari","showTabStrip":true}'
+curl -X POST http://127.0.0.1:9224/api/navigation \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"navigate","url":"http://localhost:5173"}'
+```
+
+With authentication, add the same bearer header to each control request. Settings use canonical English identifiers in both UI languages. Unknown fields, invalid values and duplicate fields are rejected. The JSON contract documents ranges and failure responses. Request bodies are limited to 64 KiB; cross-origin browser access and CORS are unavailable.
+
+A successful response returns current host state; page loading and native layout can still be pending. Poll `/api/state` and compare `settings` with actual `telemetry`/`navigation`, rather than assuming requested dimensions have rendered. Fold/container changes recreate the page and reset scroll/history, as in the UI. Rotation, preview, material and language changes keep the document. The recorded Closed 180° rotation-history qualification still applies; an angle command does not certify a native scene. Tab-strip control remains illustrative, not real tab management. Use CDP separately for page DOM/CSS/evaluation/scroll operations; this API does not provide native screenshots, remote shell, filesystem access or a bundled MCP server.
+
 ## Page proxy
 
-Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. Proxy and listener configuration persists; remote-service enablement and tokens do not. See [Privacy](../../PRIVACY.md) for stored settings and network data.
+Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. Proxy/listener configuration and an explicitly configured CDP bearer token persist; remote-service enablement does not. See [Privacy](../../PRIVACY.md) for stored settings and network data.
 
 ## Diagnostics and troubleshooting
 

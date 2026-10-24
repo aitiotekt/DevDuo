@@ -14,12 +14,12 @@ internal static class HostPreferenceChecks
             var path = Path.Combine(hostFolder, "preferences.json");
             var fresh = new PreferenceStore(path);
             check(fresh.Host.Theme == "system" && fresh.Host.ContainerMode == "safari" && fresh.Host.Fold == "closed" &&
-                fresh.Host.PreviewScale == "native" && fresh.Host.DeviceOutline && fresh.Host.ShowTabStrip &&
+                fresh.Host.InteractionMode == "touch" && fresh.Host.PreviewScale == "native" && fresh.Host.DeviceOutline && fresh.Host.ShowTabStrip &&
                 fresh.Host.TintAlpha is null && fresh.Host.LastUrl is null && fresh.InvalidHostFields.Count == 0,
                 "Fresh host settings use the documented Safari, Closed, 1:1 defaults.");
             var chosen = new HostSettings
             {
-                Theme = "dark", ContainerMode = "app", Fold = "open", PreviewScale = "fit", DeviceOutline = false,
+                Theme = "dark", InteractionMode = "mouse", ContainerMode = "app", Fold = "open", PreviewScale = "fit", DeviceOutline = false,
                 ShowTabStrip = false, TintAlpha = .5, CornerRadius = 12, SettingsPanelExpanded = false,
                 MaterialExpanded = true, DiagnosticsExpanded = true, LastUrl = "https://example.test/a?b=1#c"
             };
@@ -60,12 +60,16 @@ internal static class HostPreferenceChecks
                 "Material values are limited to the host slider ranges.");
             var developer = new HostSettings
             {
-                DeveloperAllowLan = true, NativeRemotePort = 9931, CdpPort = 9932,
+                DeveloperAllowLan = true, NativeRemotePort = 9931, CdpPort = 9932, CdpBearerToken = "fixture-agent-token", ControlApiPort = 9934, ControlApiBearerToken = "fixture-control-token",
                 ProxyMode = "custom", ProxyEndpoint = "socks5://127.0.0.1:1080"
             };
             check(fresh.SaveHost(developer), "Developer configuration can be saved independently of service state.");
             var restoredDeveloper = new PreferenceStore(path);
             check(JsonSerializer.Serialize(restoredDeveloper.Host) == JsonSerializer.Serialize(developer), "Developer configuration survives restart.");
+            check(restoredDeveloper.Host.CdpBearerToken == developer.CdpBearerToken, "The explicitly configured CDP credential survives restart.");
+            check(!JsonSerializer.Serialize(restoredDeveloper.Host).Contains(developer.CdpBearerToken, StringComparison.Ordinal), "General host diagnostics do not serialize the CDP credential.");
+            check(restoredDeveloper.Host.ControlApiPort == 9934 && restoredDeveloper.Host.ControlApiBearerToken == developer.ControlApiBearerToken, "Control API preferences persist independently of CDP.");
+            check(!JsonSerializer.Serialize(restoredDeveloper.Host).Contains(developer.ControlApiBearerToken, StringComparison.Ordinal), "General host diagnostics omit the control credential.");
             using (var saved = JsonDocument.Parse(File.ReadAllText(path)))
                 check(!saved.RootElement.GetProperty("host").EnumerateObject().Any(property => property.Name.EndsWith("Enabled", StringComparison.Ordinal)),
                     "Listener enablement is session state and is never persisted.");

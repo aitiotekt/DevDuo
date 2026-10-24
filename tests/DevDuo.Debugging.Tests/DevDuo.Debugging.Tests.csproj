@@ -7,7 +7,12 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../src/DevDuo/DeveloperTools/ControlApi*.cs" />
+    <EmbeddedResource Include="../../src/DevDuo/DeveloperTools/control-api.openapi.json" LogicalName="DevDuo.ControlApi.OpenApi.json" />
     <Compile Include="../../src/DevDuo/DeveloperTools/CdpDebuggingService.cs" Link="CdpDebuggingService.cs" />
+    <None Include="../../src/DevDuo/WebAssets/Pages/control-api.html" Link="WebAssets/Pages/control-api.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/DevDuo/WebAssets/Scripts/control-api.js" Link="WebAssets/Scripts/control-api.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../src/DevDuo/WebAssets/Scripts/remote-debugging.js" Link="WebAssets/Scripts/remote-debugging.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

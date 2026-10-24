@@ -6,6 +6,7 @@ public sealed class SafariContainerOptions
     // Presentation strings are separate from the measured scene/reference data.
     public string UiLanguage { get; set; } = "en";
     public Dictionary<string, string> UiStrings { get; set; } = new();
+    public string InteractionMode { get; set; } = "touch";
     public string Mode { get; set; } = "safari";
     public string UserAgent => BrowserIdentity.MobileUserAgent;
     public string ChromeLayout { get; set; } = "side";

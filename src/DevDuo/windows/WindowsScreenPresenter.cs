@@ -28,6 +28,7 @@ internal sealed class WindowsScreenPresenter : System.Windows.Forms.Panel
         TabStop = true;
         Controls.Add(source);
         source.Browser.PresentationBounds = ScreenBounds;
+        source.Browser.ScenePointFromScreen = ScenePoint;
         source.Browser.PointerMessage = ForwardPointer;
         source.PointerMessage = ForwardPointer;
     }
@@ -83,6 +84,7 @@ internal sealed class WindowsScreenPresenter : System.Windows.Forms.Panel
                 return;
             }
         }
+        source?.Browser.ObserveTouchPointer(ref message);
         if (!ForwardPointer(ref message)) base.WndProc(ref message);
     }
 
@@ -114,6 +116,13 @@ internal sealed class WindowsScreenPresenter : System.Windows.Forms.Panel
         }
     }
 
+    private Point ScenePoint(Point screen)
+    {
+        var local = PointToClient(screen);
+        if (!ClientRectangle.Contains(local) || Region?.IsVisible(local) == false) return new Point(-1, -1);
+        var point = turn.Inverse(local.X + offsetX, local.Y + offsetY);
+        return new Point((int)Math.Floor(point.X), (int)Math.Floor(point.Y));
+    }
     private Rectangle ScreenBounds(Rectangle rect)
     {
         var a = turn.Forward(rect.Left, rect.Top);

@@ -47,6 +47,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     private WindowsComposition? composition;
     private (nint Target, int Degrees, int X, int Y)? presentation;
     internal Func<Rectangle, Rectangle>? PresentationBounds;
+    internal Func<Point, Point>? ScenePointFromScreen;
     internal PointerMessageHandler? PointerMessage;
     internal nint BrowserWindow => browserWindow;
     internal WindowsComposition? Composition => composition;
@@ -63,11 +64,15 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     private long geometryGeneration;
     private long presentationRepaintGeneration;
     private long observationCount, presentCount;
+    private ulong? reportedRenderingUpdate;
+    internal event Action? ContentRenderingUpdated;
     private string? acceptedDocumentId;
     private NavigationError? error;
     private (int Width, int Height, double Scale, int Top, int Right, int Bottom, int Left, int Minimum, int Maximum)? geometry;
     private JsonElement? observation;
     private Rectangle validFlow;
+    private string interactionMode = "touch";
+    private nint inputUserScript;
     private string? url;
     public NavigationState Navigation { get; private set; } = NavigationState.Empty;
     public event Action<NavigationState>? NavigationChanged;
@@ -101,6 +106,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             WKPageConfigurationSetUserContentController(configuration, controller);
         }
         finally { WKRelease(script); WKRelease(source); }
+        InstallInputScript();
         // The default configuration disables test-only IPC. No testing entry is bound here.
         view = WKViewCreate(new Rect { Right = Math.Max(1, Width), Bottom = Math.Max(1, Height) }, configuration, Handle);
         if (view == 0) throw new InvalidOperationException("WKViewCreate failed.");
@@ -118,9 +124,10 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         finally { WKRelease(developerChannel); }
         browserWindow = WKViewGetWindow(view);
         keyboardWindow = new HostKeyboardWindow(browserWindow, command => CommandRequested?.Invoke(command));
-        keyboardWindow.PointerMessage = ForwardPointer;
+        keyboardWindow.PointerMessage = FilterBrowserPointer;
         keyboardWindow.ScrollInput = (direction, source) => { RecordScrollIndicatorInput(); NativeScrollInput?.Invoke(direction, source); };
         composition = new WindowsComposition(Handle, browserWindow);
+        touchPointerWindow = new TouchPointerWindow(GetAncestor(Handle, 2), HideTouchPointer);
         if (presentation is { } output) composition.SetPresentation(output.Target, output.Degrees, output.X, output.Y);
         WKViewWindowAncestryDidChange(view);
         keyboardWindow.ChromeHit = (x, y) => composition.Hit(x, y);
@@ -158,6 +165,11 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                 return;
             }
             ReportNavigation();
+            if (WKViewGetHostRenderingStatistics(view, out var updates, out _, out _) && reportedRenderingUpdate != updates)
+            {
+                reportedRenderingUpdate = updates;
+                ContentRenderingUpdated?.Invoke();
+            }
             _ = RefreshFixedContainerColorsAsync();
             _ = RefreshScrollIndicatorAsync();
         };
@@ -460,6 +472,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     {
         firstObservationMilliseconds ??= navigationClock.Elapsed.TotalMilliseconds;
         ObserveScrollIndicatorMotion(root);
+        if (observation is null) fixedColorSchedule.Wake();
         observation = root.Clone();
         observationCount++;
         // The panel's observation handler lays out and presents the scene. Give
@@ -551,12 +564,16 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         {
             // Cover actual obscured insets even where valid document flow exists.
             // The real layout viewport and the page's fixed rectangles stay intact.
-            if (FixedColor(0) is { } top) Add(Rectangle.FromLTRB(0, 0, Width, RasterClipEdge(g.Top * g.Scale)), top);
-            if (FixedColor(2) is { } bottom) Add(Rectangle.FromLTRB(0, RasterClipEdge((g.Height - g.Bottom) * g.Scale), Width, Height), bottom);
+            var horizontalLeft = RasterClipEdge(g.Left * g.Scale);
+            var horizontalRight = RasterClipEdge((g.Width - g.Right) * g.Scale);
+            // Side continuation owns the intersections, including the ordinary
+            // under-page background when that side has no accepted fixed color.
+            if (FixedColor(0) is { } top) Add(Rectangle.FromLTRB(horizontalLeft, 0, horizontalRight, RasterClipEdge(g.Top * g.Scale)), top);
+            if (FixedColor(2) is { } bottom) Add(Rectangle.FromLTRB(horizontalLeft, RasterClipEdge((g.Height - g.Bottom) * g.Scale), horizontalRight, Height), bottom);
             if (FixedColor(1) is { } right) Add(Rectangle.FromLTRB(RasterClipEdge((g.Width - g.Right) * g.Scale), 0, Width, Height), right);
             if (FixedColor(3) is { } left) Add(Rectangle.FromLTRB(0, 0, RasterClipEdge(g.Left * g.Scale), Height), left);
         }
-        try { composition.Update(Width, Height, Chrome, rectangles.ToArray(), Material); PaintScrollIndicator(); }
+        try { composition.Update(Width, Height, Chrome, rectangles.ToArray(), Material); PaintScrollIndicator(); touchPointerFrame = null; UpdateTouchPointer(); }
         catch (InvalidOperationException failure)
         {
             presentationFailed = true;
@@ -576,14 +593,54 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         if (clearedFixedColors) Present();
         if (view != 0) WKViewWindowAncestryDidChange(view);
     }
+    internal void SetInteractionMode(string mode)
+    {
+        if (mode is not ("touch" or "mouse")) throw new ArgumentException("Unknown interaction mode.", nameof(mode));
+        if (interactionMode == mode) return;
+        interactionMode = mode;
+        UpdateTouchPointer();
+        if (controller == 0 || disposed) return;
+        InstallInputScript();
+        if (IsReady) _ = EvaluateAsync(PageInteraction.Update(mode));
+    }
+    private void InstallInputScript()
+    {
+        if (inputUserScript != 0)
+        {
+            WKUserContentControllerRemoveHostUserScript(controller, inputUserScript);
+            WKRelease(inputUserScript);
+        }
+        var source = WKStringCreateWithUTF8CString(PageInteraction.Bootstrap(PageInteraction.Source, interactionMode));
+        try
+        {
+            inputUserScript = WKUserScriptCreateWithSource(source, 0, false);
+            WKUserContentControllerAddUserScript(controller, inputUserScript);
+        }
+        finally { WKRelease(source); }
+    }
+    private bool FilterBrowserPointer(ref System.Windows.Forms.Message message)
+    {
+        ObserveTouchPointer(ref message);
+        // Block at the HWND, before WebKit's async scrolling or DOM wheel listeners.
+        if (interactionMode == "touch" && message.Msg is 0x20A or 0x20E or 0x114 or 0x115)
+        {
+            message.Result = 0;
+            return true;
+        }
+        return ForwardPointer(ref message);
+    }
     private bool ForwardPointer(ref System.Windows.Forms.Message message) => PointerMessage?.Invoke(ref message) == true;
     protected override void WndProc(ref System.Windows.Forms.Message message)
     {
+        ObserveTouchPointer(ref message);
         if (!ForwardPointer(ref message)) base.WndProc(ref message);
     }
     internal object Diagnostics => new
     {
         hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 1, hostScrollIndicatorApiVersion = 1,
+        touchPointer = new { visible = touchPointerVisible, systemCursorHidden = touchPointerVisible, diameterDip = 20, error = touchPointerError, source = "host composition; excluded from WebKit snapshots" },
+        interactionMode, nativeWheelBlocked = interactionMode == "touch",
+        pageInput = observation is { } inputObservation && inputObservation.TryGetProperty("pageInput", out var inputState) ? inputState : (JsonElement?)null,
         darkAppearance, testOnlyIPCEnabled = false, nonPersistentStore = false,
         websiteStore = "persistent DevDuo user profile",
         inspector = new { visible = InspectorVisible, attached = InspectorAttached },
@@ -593,8 +650,8 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         backingScaleFactor = BackingScale, pageZoomFactor = 1,
         renderingPipeline = RenderingPipelineDiagnostics(),
         logicalGeometry = geometry is { } g ? new { width = g.Width, height = g.Height, top = g.Top, right = g.Right, bottom = g.Bottom, left = g.Left, minimumHeight = g.Minimum, maximumHeight = g.Maximum } : null,
-        composition = new { apiVersion = 3, error = composition?.Error, resources = composition?.Diagnostics, sourceWindow = SourceWindowDiagnostics(), strategy = "live DWM WebKit surface; DirectComposition blur/color matrix; layered Direct2D chrome", screenshotsUsedForRendering = false },
-        continuation = new { validFlowRectanglePx = new[] { validFlow.Left, validFlow.Top, validFlow.Right, validFlow.Bottom }, visible = validFlow != ClientRectangle, fixedFooterColorApproximation = false, fixedContainerColorExtension = FixedContainerColorDiagnostics(), backgroundSource = "read-only opaque html/body CSS fallback; otherwise white" }
+        composition = new { apiVersion = 4, error = composition?.Error, resources = composition?.Diagnostics, sourceWindow = SourceWindowDiagnostics(), strategy = "live DWM WebKit surface; DirectComposition blur/color matrix; layered Direct2D chrome", screenshotsUsedForRendering = false },
+        continuation = new { cornerPriority = "side-over-horizontal", validFlowRectanglePx = new[] { validFlow.Left, validFlow.Top, validFlow.Right, validFlow.Bottom }, visible = validFlow != ClientRectangle, fixedFooterColorApproximation = false, fixedContainerColorExtension = FixedContainerColorDiagnostics(), backgroundSource = "read-only opaque html/body CSS fallback; otherwise white" }
     };
     private object RenderingPipelineDiagnostics()
     {
@@ -621,6 +678,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     {
         if (Owner(page, context) is not { } owner) return;
         owner.navigationGeneration++;
+        owner.reportedRenderingUpdate = null;
         owner.InvalidateFixedContainerColors();
         owner.ResetScrollIndicator(true);
         if (!owner.requestClock.IsRunning) owner.requestCallMilliseconds = null;
@@ -651,6 +709,11 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         if (Owner(page, context) is not { } owner || navigation != owner.activeNavigation) return;
         owner.loading = false; owner.ReportNavigation();
         owner.finishMilliseconds = owner.navigationClock.Elapsed.TotalMilliseconds;
+        // A valid early "none" or unavailable result must not own the final
+        // document just because readiness produced no extra backing-store update.
+        owner.fixedColorSchedule.Wake();
+        owner.InvalidatePresentation();
+        owner.ContentRenderingUpdated?.Invoke();
         _ = owner.EvaluateAsync("window.__devduoReportContainerObservation?.()");
     }
     private static void Failed(nint page, nint navigation, nint failure, nint data, nint context)
@@ -696,12 +759,17 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             { colors.Remove(pending.Key); pending.Value.Completion.TrySetResult(null); }
             if (controller != 0) WKUserContentControllerRemoveAllUserMessageHandlers(controller);
             if (remoteDebuggingScript != 0) { WKRelease(remoteDebuggingScript); remoteDebuggingScript = 0; }
+            if (inputUserScript != 0) { WKRelease(inputUserScript); inputUserScript = 0; }
             installedRemoteDebuggingSource = null;
             RemoteDebuggingMessageReceived = null;
             DocumentNavigationStarted = null;
             FixedContainerColorsChanged = null;
+            ContentRenderingUpdated = null;
             keyboardWindow?.ReleaseHandle();
             keyboardWindow = null;
+            HideTouchPointer();
+            touchPointerWindow?.ReleaseHandle();
+            touchPointerWindow = null;
             composition?.Dispose();
             composition = null;
             if (browserWindow != 0) DestroyWindow(browserWindow);

@@ -45,7 +45,7 @@ For signing information or a blocked download, consult [release signatures and i
 2. Enter your website or local development URL in the top address bar, for example `http://localhost:5173`, then press **Enter**. Your development server runs separately on the same computer.
 3. In the settings sidebar, choose **Closed** or **Open**, then **Body +90°** to compare orientations.
 4. Choose **Safari · approximation** or **App WebView · immersive**. In Open Safari, **Multi-tab strip** previews two illustrative tabs; it does not open a second page.
-5. Select **Fit preview** to see the whole device, or **1:1 CSS px** for an unscaled preview. Scroll down and back up to compare the compact and expanded Safari shell.
+5. Select **Fit preview** to see the whole device, or **1:1 CSS px** for an unscaled preview. Drag to swipe down and back up to compare the compact and expanded Safari shell. Choose **Mouse** under **Interaction** for wheel scrolling.
 
 ![DevDuo folded, with floating Safari controls](docs/shared/app-preview/closed-en.webp)
 

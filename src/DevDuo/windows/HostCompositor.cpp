@@ -68,7 +68,17 @@ DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
 {
     const bool dark = frame.foreground == 0xffffff;
     const float luminance = (((material.tint >> 16) & 255) * .2126f + ((material.tint >> 8) & 255) * .7152f + (material.tint & 255) * .0722f) / 255;
-    const bool darkBackdrop = luminance < .36f;
+    // Preserve the dark/light recipes at the ends, but blend through the old
+    // .36 cutoff. A one-channel sampling change must not switch glass opacity.
+    const float position = std::clamp((luminance - .24f) / .24f, 0.f, 1.f);
+    const float lightBackdrop = position * position * (3 - 2 * position);
+    const auto blend = [lightBackdrop](float onDark, float onLight) { return std::lerp(onDark, onLight, lightBackdrop); };
+    const auto blendTint = [&blend](unsigned onDark, unsigned onLight) {
+        unsigned result = 0;
+        for (int shift : { 0, 8, 16 })
+            result |= static_cast<unsigned>(std::round(blend(static_cast<float>((onDark >> shift) & 255), static_cast<float>((onLight >> shift) & 255)))) << shift;
+        return result;
+    };
     if (frame.kind == Top) {
         material.tint = dark ? 0x2b3c4f : 0xffffff;
         material.alpha = std::min(.95f, material.alpha * (dark ? 2.4f : 2.7f));
@@ -77,16 +87,16 @@ DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
         material.topHighlight = material.edgeHighlight = material.sheen = 0;
         material.shadow = 0;
     } else if (frame.kind == CompactAddress) {
-        material.tint = dark ? (darkBackdrop ? 0x74808f : 0x657382) : 0xffffff;
-        material.alpha *= dark ? (darkBackdrop ? .65f : 2.5f) : (darkBackdrop ? 2.f : .2f);
+        material.tint = dark ? blendTint(0x74808f, 0x657382) : 0xffffff;
+        material.alpha *= dark ? blend(.65f, 2.5f) : blend(2.f, .2f);
         material.topHighlight *= .08f;
         material.edgeHighlight *= .1f;
         material.sheen = 0;
         material.shadow *= .15f;
         material.blur *= .7f;
     } else if (frame.kind <= TabGroup) {
-        material.tint = dark ? (darkBackdrop ? 0x8b97a5 : 0x657382) : 0xffffff;
-        material.alpha *= dark ? (darkBackdrop ? 1.1f : 2.5f) : (darkBackdrop ? 2.f : .55f);
+        material.tint = dark ? blendTint(0x8b97a5, 0x657382) : 0xffffff;
+        material.alpha *= dark ? blend(1.1f, 2.5f) : blend(2.f, .55f);
         material.topHighlight *= dark ? .35f : .65f;
         material.edgeHighlight *= dark ? .55f : .75f;
         material.sheen *= .5f;
@@ -113,6 +123,9 @@ public:
     ComPtr<IDCompositionSurface> boundary, decorations;
     ComPtr<IDCompositionSurface> indicatorSurface;
     ComPtr<IDCompositionVisual2> indicatorVisual;
+    ComPtr<IDCompositionSurface> pointerSurface;
+    ComPtr<IDCompositionVisual2> pointerGroup, pointerVisual;
+    float pointerDiameter = 0;
     D2D1_RECT_F indicatorRect { };
     float indicatorOpacity = 0;
     std::vector<Item> items;
@@ -263,6 +276,10 @@ public:
         decorations.Reset();
         indicatorSurface.Reset();
         indicatorVisual.Reset();
+        pointerVisual.Reset();
+        pointerGroup.Reset();
+        pointerSurface.Reset();
+        pointerDiameter = 0;
         indicatorRect = { };
         indicatorOpacity = 0;
         boundary.Reset();
@@ -443,9 +460,57 @@ public:
         // A passive retained visual has no host hit rectangle or accessibility item.
         // Fade updates change this visual alone, without rebuilding glass/chrome.
         if (indicatorVisual) check(root->AddVisual(indicatorVisual.Get(), FALSE, nullptr));
+        if (pointerGroup) check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
         check(composition->Commit());
         ++sceneGeneration;
         lastError.clear();
+    }
+    void setTouchPointer(float x, float y, float diameter, float left, float top, float right, float bottom)
+    {
+        const float values[] = { x, y, diameter, left, top, right, bottom };
+        if (std::any_of(std::begin(values), std::end(values), [](float value) { return !std::isfinite(value); })
+            || diameter < 0 || diameter > 256 || right < left || bottom < top) check(E_INVALIDARG);
+        if (!pointerGroup && diameter == 0) return;
+        if (diameter > 0 && (!pointerVisual || pointerDiameter != diameter)) {
+            auto extent = std::max(1, static_cast<int>(std::ceil(diameter + 2)));
+            check(composition->CreateSurface(extent, extent, DXGI_FORMAT_B8G8R8A8_UNORM,
+                DXGI_ALPHA_MODE_PREMULTIPLIED, &pointerSurface));
+            ComPtr<ID2D1DeviceContext> context;
+            POINT offset;
+            check(pointerSurface->BeginDraw(nullptr, IID_PPV_ARGS(&context), &offset));
+            context->SetDpi(96, 96);
+            context->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+            context->Clear(D2D1::ColorF(0, 0));
+            ComPtr<ID2D1SolidColorBrush> fill, rim;
+            auto result = context->CreateSolidColorBrush(D2D1::ColorF(.35f, .35f, .35f, .5f), &fill);
+            if (SUCCEEDED(result)) result = context->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, .85f), &rim);
+            if (SUCCEEDED(result)) {
+                auto radius = diameter / 2;
+                auto circle = D2D1::Ellipse(D2D1::Point2F(radius + 1, radius + 1), radius, radius);
+                context->FillEllipse(circle, fill.Get());
+                context->DrawEllipse(circle, rim.Get(), diameter / 20);
+            }
+            auto endResult = pointerSurface->EndDraw();
+            check(result);
+            check(endResult);
+            if (pointerVisual) check(pointerVisual->SetContent(pointerSurface.Get()));
+            else {
+                pointerVisual = visual(pointerSurface.Get());
+                check(composition->CreateVisual(&pointerGroup));
+                check(pointerGroup->AddVisual(pointerVisual.Get(), FALSE, nullptr));
+                check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
+            }
+            pointerDiameter = diameter;
+        }
+        ComPtr<IDCompositionVisual3> visibility;
+        check(pointerGroup.As(&visibility));
+        check(visibility->SetOpacity(diameter > 0 ? 1.f : 0.f));
+        if (diameter > 0) {
+            check(pointerVisual->SetOffsetX(x - diameter / 2 - 1));
+            check(pointerVisual->SetOffsetY(y - diameter / 2 - 1));
+            check(pointerGroup->SetClip(D2D1::RectF(left, top, right, bottom)));
+        }
+        check(composition->Commit());
     }
     void setScrollIndicator(float x, float y, float w, float h, float opacity)
     {
@@ -679,7 +744,7 @@ public:
     }
 };
 }
-unsigned DDCompositionVersion() { return 3; }
+unsigned DDCompositionVersion() { return 4; }
 void* DDCompositionCreate(HWND parent, HWND browser)
 {
     try {
@@ -707,6 +772,15 @@ HRESULT DDCompositionSetPresentation(void* handle, HWND target, int degrees, int
 }
 unsigned DDCompositionPresentationVersion() { return 1; }
 unsigned DDCompositionScrollIndicatorVersion() { return 1; }
+HRESULT DDCompositionSetTouchPointer(void* handle, float x, float y, float diameter, float left, float top, float right, float bottom)
+{
+    try {
+        if (!handle) check(E_INVALIDARG);
+        static_cast<Compositor*>(handle)->setTouchPointer(x, y, diameter, left, top, right, bottom);
+        return S_OK;
+    } catch (const CompositionFailure& error) { return error.result; }
+    catch (...) { return E_OUTOFMEMORY; }
+}
 HRESULT DDCompositionSetScrollIndicator(void* handle, float x, float y, float w, float h, float opacity)
 {
     try {
@@ -748,7 +822,7 @@ DDCompositionState DDCompositionGetState(void* handle)
     if (!handle)
         return { };
     const auto& compositor = *static_cast<Compositor*>(handle);
-    return { 3, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
+    return { 4, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
         compositor.height };
 }
 unsigned DDCompositionHit(void* handle, int x, int y)

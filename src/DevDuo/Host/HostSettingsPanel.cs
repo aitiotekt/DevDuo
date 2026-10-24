@@ -12,6 +12,7 @@ public sealed class HostSettingsPanel : Border
 
     public ChoiceGroup Fold { get; } = new();
     public ChoiceGroup Mode { get; } = new();
+    public ChoiceGroup Interaction { get; } = new();
     public ChoiceGroup Scale { get; } = new();
     public ChoiceGroup ThemeChoice { get; } = new();
     public Button Rotate { get; } = new() { Classes = { "command" }, HorizontalAlignment = HorizontalAlignment.Left };
@@ -21,9 +22,17 @@ public sealed class HostSettingsPanel : Border
     public Expander Developer { get; } = new() { IsExpanded = false, HorizontalAlignment = HorizontalAlignment.Stretch };
     public ToggleSwitch NativeRemote { get; } = Toggle();
     public ToggleSwitch Cdp { get; } = Toggle();
+    public ToggleSwitch ControlApi { get; } = Toggle();
+    public TextBox ControlApiPort { get; } = new();
+    public TextBox ControlApiBearerToken { get; } = new() { PasswordChar = '●', MaxLength = 4096 };
+    public TextBlock ControlApiStatus { get; } = HostUi.Text("hint");
+    public SelectableTextBlock ControlApiAddress { get; } = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+    public Button ApplyControlApi { get; } = Command();
+    public Button CopyControlApiAddress { get; } = Command();
     public ToggleSwitch AllowLan { get; } = Toggle();
     public TextBox NativePort { get; } = new() { IsEnabled = !OperatingSystem.IsMacOS() };
     public TextBox CdpPort { get; } = new();
+    public TextBox CdpBearerToken { get; } = new() { PasswordChar = '●', MaxLength = 4096 };
     public TextBlock NativeRemoteStatus { get; } = HostUi.Text("hint");
     public TextBlock CdpStatus { get; } = HostUi.Text("hint");
     public SelectableTextBlock NativeRemoteAddress { get; } = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
@@ -70,6 +79,7 @@ public sealed class HostSettingsPanel : Border
             HostUi.Field(Label("field-label", "Control.TabStrip"), TabStrip, TabStripHint),
             Label("hint", "Device.RebuildNote"));
         var preview = HostUi.Group(Label("section-title", "Group.Preview"),
+            HostUi.Field(Label("field-label", "Control.Interaction"), Interaction, Label("hint", "Interaction.Hint")),
             HostUi.Field(Label("field-label", "Control.Sizing"), Scale),
             HostUi.Field(Label("field-label", "Control.Outline"), Outline));
         var appearance = HostUi.Group(Label("section-title", "Group.Appearance"),
@@ -109,7 +119,13 @@ public sealed class HostSettingsPanel : Border
                 HostUi.Field(Label("field-label", "Developer.AllowLan"), AllowLan, Label("hint", "Developer.ListenHint")),
                 HostUi.Field(Label("field-label", "Developer.NativePort"), NativePort),
                 HostUi.Field(Label("field-label", "Developer.CdpPort"), CdpPort),
+                HostUi.Field(Label("field-label", "Developer.CdpBearerToken"), CdpBearerToken, Label("hint", "Developer.CdpBearerTokenHint")),
                 ApplyListeners,
+                HostUi.Field(Label("field-label", "Developer.ControlApi"), ControlApi, Label("hint", "Developer.ControlApiHint")),
+                ControlApiStatus, ControlApiAddress, CopyControlApiAddress,
+                HostUi.Field(Label("field-label", "Developer.ControlApiPort"), ControlApiPort),
+                HostUi.Field(Label("field-label", "Developer.ControlApiBearerToken"), ControlApiBearerToken),
+                ApplyControlApi,
                 HostUi.Field(Label("field-label", "Developer.ProxyMode"), ProxyMode),
                 HostUi.Field(Label("field-label", "Developer.ProxyEndpoint"), ProxyEndpoint, Label("hint", "Developer.ProxyHint")),
                 ApplyProxy, DeveloperStatus,
@@ -119,8 +135,11 @@ public sealed class HostSettingsPanel : Border
         localize.Add(() => Developer.Header = language.Text("Group.Developer"));
         foreach (var (control, key) in new (Control, string)[]
         {
+            (ControlApi, "Developer.ControlApi"), (ControlApiPort, "Developer.ControlApiPort"),
+            (ControlApiBearerToken, "Developer.ControlApiBearerToken"), (ControlApiAddress, "Developer.ControlApiAddress"),
             (NativeRemote, "Developer.NativeRemote"), (Cdp, "Developer.Cdp"), (AllowLan, "Developer.AllowLan"),
             (NativePort, "Developer.NativePort"), (CdpPort, "Developer.CdpPort"),
+            (CdpBearerToken, "Developer.CdpBearerToken"),
             (ProxyMode, "Developer.ProxyMode"), (ProxyEndpoint, "Developer.ProxyEndpoint"),
             (NativeRemoteAddress, "Developer.NativeAddress"), (CdpAddress, "Developer.CdpAddress")
         })
@@ -129,6 +148,7 @@ public sealed class HostSettingsPanel : Border
         {
             (ColorDemo, "Control.Fixture"), (Calibration, "Control.Calibration"),
             (CopyCdpAddress, "Developer.CopyAddress"), (ChromeDevTools, "Developer.ChromeDevTools"),
+            (ApplyControlApi, "Developer.ApplyControlApi"), (CopyControlApiAddress, "Developer.CopyControlApiAddress"),
             (ApplyListeners, "Developer.ApplyListeners"), (ApplyProxy, "Developer.ApplyProxy")
         })
             localize.Add(() =>

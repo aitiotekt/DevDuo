@@ -14,14 +14,14 @@ internal sealed partial class WindowsWebKitView
     private bool fixedColorBusy;
     private string fixedColorStatus = "not-requested";
     private long fixedColorRevision;
-    private ulong? fixedColorSampledUpdate;
+    private readonly FixedColorSampleSchedule fixedColorSchedule = new();
     internal event Action? FixedContainerColorsChanged;
 
     private bool InvalidateFixedContainerColors()
     {
         var hadColors = FixedColor(0) is not null || FixedColor(1) is not null || FixedColor(2) is not null || FixedColor(3) is not null;
         fixedColorRevision++;
-        fixedColorSampledUpdate = null;
+        fixedColorSchedule.Reset();
         fixedColorBusy = false;
         fixedColorStatus = "invalidated";
         fixedContainerColors = null;
@@ -38,8 +38,8 @@ internal sealed partial class WindowsWebKitView
         if (!IsReady || !committed || acceptedDocumentId is null || geometry is null || fixedColorBusy) return;
         if (!WKViewGetHostRenderingStatistics(view, out var updates, out _, out _))
         {
+            if (fixedColorStatus != "render-statistics-unavailable") fixedColorSchedule.Wake();
             fixedColorStatus = "render-statistics-unavailable";
-            fixedColorSampledUpdate = null;
             var hadColors = fixedContainerColors is not null;
             fixedContainerColors = null;
             if (hadColors) { fixedColorRevision++; Present(); FixedContainerColorsChanged?.Invoke(); }
@@ -47,8 +47,7 @@ internal sealed partial class WindowsWebKitView
         }
         // The existing 200 ms UI timer bounds sampling. Rendering updates cover
         // CSS animation, dialog state and computed-style changes without DOM hooks.
-        if (fixedColorSampledUpdate == updates) return;
-        fixedColorSampledUpdate = updates;
+        if (!fixedColorSchedule.TryBegin(updates, out var sample)) return;
         var revision = ++fixedColorRevision;
         var navigation = navigationGeneration;
         var geometryVersion = geometryGeneration;
@@ -65,6 +64,7 @@ internal sealed partial class WindowsWebKitView
             if (disposed || revision != fixedColorRevision || navigation != navigationGeneration ||
                 geometryVersion != geometryGeneration || document != acceptedDocumentId || !committed) return;
             fixedContainerColors = result;
+            fixedColorSchedule.Complete(sample, result is { Status: 0 });
             fixedColorStatus = result is { Status: 0 } ? "accepted" : result is null ? "stale-or-unavailable" : "native-unavailable";
             Present();
         }
@@ -74,7 +74,7 @@ internal sealed partial class WindowsWebKitView
             {
                 fixedContainerColors = null;
                 fixedColorStatus = "timeout";
-                fixedColorSampledUpdate = null;
+                fixedColorSchedule.Complete(sample, false);
                 Present();
             }
         }

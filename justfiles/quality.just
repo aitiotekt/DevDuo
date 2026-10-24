@@ -87,6 +87,10 @@ test-windows-presentation: prepare-debugging
 test-windows-fixed-overlay: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/fixed-overlay-tests -p:RestoreLockedMode=true -- --fixed-overlay
 
+[windows]
+test-windows-interaction: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/interaction-tests -p:RestoreLockedMode=true -- --interaction
+
 # Exercises input-gated screen-edge indicators without changing the page viewport.
 [windows]
 test-windows-scroll-indicators: prepare-debugging

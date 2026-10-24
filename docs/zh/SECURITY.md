@@ -10,6 +10,8 @@ SDK 和浏览器应通过正常渠道更新。Windows WebKit 固定源码版本�
 
 另见[隐私](PRIVACY.md)、[贡献指南](CONTRIBUTING.md)与[第三方说明](THIRD_PARTY_NOTICES.md)。
 
-远程检查须显式启用，每次启动均关闭。页面 CDP 允许 JavaScript 求值和访问网站数据，所有 HTTP/前端/发现/WebSocket 路由每次启动使用新的随机 token，默认只绑定回环。token 属于访问凭据，服务不提供 TLS 或多用户授权；选择局域网会向所在网络开放。Windows 原生远程 Inspector 是独立、无认证的 WebKit TCP 协议，不受 CDP token 保护；macOS 原生检查遵循 Safari 系统发现规则。使用完应停止监听，不向公网开放这些开发端点。代理端点不接受凭据，DevDuo 不实现代理认证，也不关闭引擎 TLS 校验。
+远程检查须显式启用，每次启动均关闭。页面 CDP 允许 JavaScript 求值和访问网站数据。固定的回环端点在可选请求头令牌留空时允许本机免鉴权连接；填写后，发现接口和页面 socket 要求 Authorization bearer 请求头，局域网 CDP 必须设置令牌。随包前端静态资源公开且不含页面数据；内置工具窗口使用独立的、每次启动生成的同源 socket 访问能力，不能借此访问发现接口。即使未设置令牌，Host 与浏览器 WebSocket Origin 检查仍保留。服务不提供 TLS 或多用户授权，选择局域网会向所在网络开放。Windows 原生远程 Inspector 是独立、无认证的 WebKit TCP 协议，不受 CDP token 保护；macOS 原生检查遵循 Safari 系统发现规则。使用完应停止监听，不向公网开放这些开发端点。代理端点不接受凭据，DevDuo 不实现代理认证，也不关闭引擎 TLS 校验。
+
+REST 控制 API 独立启用，仅监听本机，不受调试局域网开关影响。可选 Bearer 令牌保护宿主状态与修改操作；公开的 Swagger UI/规范/资源仅包含接口约定。Host/Origin 检查和仅接受 JSON 的修改接口阻止浏览器跨源控制。服务允许已授权的本机客户端导航、修改宿主设置并读取页面诊断，不提供远程 shell 或文件系统接口。配置与范围见[使用指南](004-USAGE.md#rest-控制-api)。
 
 [English](../../SECURITY.md) | [中文](SECURITY.md)

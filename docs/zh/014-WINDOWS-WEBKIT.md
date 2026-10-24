@@ -165,13 +165,15 @@ Windows 边缘元数据路径还会在原生混色前，将背景自身 alpha �
 
 合成 API v3 分开绘制类型与点击动作，并用绘制所用的 DirectWrite 字体测量文本。地址栏主体、菜单、书签和概览展开外壳；仅重新加载图标触发 reload。加号仍为返回顶部的示意。`SafariChromeState` 将原生滚轮/键盘意图与同向正文位移关联：向下累计 >24、向上 >8 切换，意图 350 ms 失效；视口夹紧、零/反向位移保持状态，单独脚本滚动不收起。导航重置展开及输入。该时限关联不能证明并发脚本/原生输入的精确因果。
 
-`config/safari-shell.json.windowsMaterial` 管理 Windows 艺术参数：模糊 14 场景单位、饱和度 1.8、亮度 1.05、对比度 1.02、顶部高光 0.35、边缘高光 0.30、sheen 0.08、阴影模糊 10、向下偏移 3。既有 Tint/Glass/Shadow/Radius 偏好继续生效。饱和度、亮度和对比度使用 ColorMatrix，因为 DirectComposition 饱和度效果仅接受 0–1。圆角着色、定向高光、边缘和阴影近似 [design.dev](https://design.dev/tools/liquid-glass-generator/) 与 [Hire Digital](https://hiredigital.com/tools/liquid-glass-css-generator) 的分层配方，不代表物理折射或 Apple 私有 Liquid Glass 内核。顶部背景、浮动表面和标签轨道分别处理；玻璃内字形跟随独立外壳外观，材质厚度适应背景明暗；无玻璃托底的 Closed 时钟/Wi-Fi 按根背景保持对比度，文档边界保持独立。
+`config/safari-shell.json.windowsMaterial` 管理 Windows 艺术参数：模糊 14 场景单位、饱和度 1.8、亮度 1.05、对比度 1.02、顶部高光 0.35、边缘高光 0.30、sheen 0.08、阴影模糊 10、向下偏移 3。既有 Tint/Glass/Shadow/Radius 偏好继续生效。饱和度、亮度和对比度使用 ColorMatrix，因为 DirectComposition 饱和度效果仅接受 0–1。圆角着色、定向高光、边缘和阴影近似 [design.dev](https://design.dev/tools/liquid-glass-generator/) 与 [Hire Digital](https://hiredigital.com/tools/liquid-glass-css-generator) 的分层配方，不代表物理折射或 Apple 私有 Liquid Glass 内核。顶部背景、浮动表面和标签轨道分别处理；玻璃内字形跟随独立外壳外观，材质厚度适应背景明暗；无玻璃托底的 Closed 时钟/Wi-Fi 按根背景保持对比度，文档边界保持独立。两个桌面平台的浮动和收窄玻璃现按 sRGB 加权亮度 0.24–0.48 的 smoothstep 连续混合明暗背景配方，移除原先在 0.36 处的跳变；相邻取样曾可使默认浅色浮动表面的着色 alpha 从 0.176 跳至 0.64。此区间是桌面光学调节，不是新的 Safari 测量；字形颜色、实测组件框和视口预留均不改变。
 
 被动摄像头、Wi-Fi 及本地 `HH:mm` 示意沿用 macOS 场景坐标。Closed 竖向两种状态均显示三者，Closed 横向只在对应侧显示摄像头。Open 展开显示时钟/Wi-Fi，Open 紧凑及沉浸模式均隐藏。分钟变化会刷新时钟，静态页也可更新。名称本地化，示意元素不消耗网页点击。
 
 独立的**内容取色 API v1**（`WKViewGetContentColorAPIVersion`、`WKViewRequestContentEdgeColor`）在内部使用普通快照 IPC，仅返回请求 ID、状态和 RGB。Closed 采样无遮挡底边，Open 采样顶边，条带不超过 18 逻辑行，忽略设备比例后缩放到宽 64。原生代码平均取消预乘后的 sRGB 通道，忽略 alpha <= 0.1。采样图像不进入呈现，也不跨宿主 ABI。状态 0 表示成功，1 为输入无效，2 为不可用/无有效像素，3 为不支持的格式。启动要求完整性校验清单中的 `contentColorApiVersion: 1`；旧运行时需按源码构建命令重建。
 
-相关文档、滚动、视口或布局变化后防抖 180 ms，每个视图仅一个请求在途，并拒绝过期导航、文档、几何或请求代次。meta 提示只作诊断，真实正文决定背景，外壳外观决定字形/材质。宿主外观 API v1（`WKViewGetHostAppearanceAPIVersion`、`WKViewSetHostDarkAppearance`）持久保留视图外观，通过普通 PageClient 通知更新页面媒体查询，不使用测试 IPC；运行时清单要求 `hostAppearanceApiVersion: 1`。失败记录原因并回退到已标明的 DOM 背景近似。采样可能滞后动画，不改变文档外画布颜色。viewport API v2 和 painting v2 保留先前的布局语义，测试 IPC 仍关闭。诊断提供绘制类型、动作、场景框、状态显隐、取色来源、采样框与代次。`content-color.html` 新增无标记的纯色、渐变、SVG 图片和透明画布输入，RGB 各通道容差为 3。实际外观、原生取色、几何和输入分别验收。
+相关文档、滚动、视口或布局变化后防抖 180 ms，每个视图仅一个请求在途，并拒绝过期导航、文档、几何或请求代次。meta 提示只作诊断，真实正文决定背景，外壳外观决定字形/材质。宿主外观 API v1（`WKViewGetHostAppearanceAPIVersion`、`WKViewSetHostDarkAppearance`）持久保留视图外观，通过普通 PageClient 通知更新页面媒体查询，不使用测试 IPC；运行时清单要求 `hostAppearanceApiVersion: 1`。失败记录原因，并保留当前文档最后一次成功的原生渲染取色；只有该文档尚无成功原生取样时，才使用已标明的 DOM 背景近似。导航开始会重置这份颜色归属，包括加载重叠的情况；之后成功的原生取样会替换保留色。采样可能滞后动画，不改变文档外画布颜色。viewport API v2 和 painting v2 保留先前的布局语义，测试 IPC 仍关闭。诊断提供绘制类型、动作、场景框、状态显隐、取色来源、采样框与代次。`content-color.html` 新增无标记的纯色、渐变、SVG 图片和透明画布输入，RGB 各通道容差为 3。实际外观、原生取色、几何和输入分别验收。
+
+冷导航区分 DOM 就绪与实际绘制就绪。既有 200 ms 元数据计时器仅在原生绘制计数变化时唤醒工具栏取色；加载完成也会唤醒，并对现有实时 backing store 做一次失效重绘，不改变尺寸或重新加载。固定边缘采样在首份有效观测和加载完成时独立唤醒，即使绘制计数不变；不可用结果最多尝试三次后进入空闲，后续就绪/绘制变化可重新开启，旧回调不能消耗新唤醒或其它文档的工作。`just test-windows-fixed-overlay` 现先执行六次未缓存的 1:1 折叠竖屏加载，分别展示 absolute 白色底栏/背景图和初始黑色 fixed 遮罩，以延迟的本地 SVG 延后 load 完成。用例在任何刷新前检查源栅格最后两行、DOM 几何、工具栏取色、固定边缘元数据及空闲行为。这些新增原生用例仍须在解锁的 Windows 桌面执行，编译不能证明报告中的 1 像素缝隙已经消失。
 
 快照先按条带逻辑尺寸完整绘制，再在原生内部按面积重采样至宽 64 后取平均。直接向 WebKit 等比快照绘制器传入取整后的缩略尺寸，可能在宽而浅的条带中裁掉某一轴。原生取色夹具覆盖 Open 两个方向，确保保留完整请求边缘。这种仅用于元数据的回读不影响实时 DWM 呈现链。
 
@@ -232,5 +234,7 @@ GPU 握手的两个阶段都在同一个截止时间内检查真实的来源注�
 原生测试程序的 `--browser-tools` 模式覆盖两种设备形态、八个旋转姿态、JavaScript/表单/历史身份、延迟脚本的早期绘制及 Inspector 按钮。`--browser-performance` 是主动选择的网络诊断，使用颜色实验室和 MDN 首页并开启 Inspector。两个独立进程依次运行 `--storage-write`、`--storage-read`，可检查 localStorage、IndexedDB 和持久 Cookie；两者需共用绝对路径的 `DEVDUO_WEBKIT_PROFILE` 和唯一的 `DEVDUO_STORAGE_TEST_TOKEN`。普通原生测试使用隔离的临时 profile，不读写用户网站数据。Windows 执行不能验证对应的 macOS 场景更新桥接。
 
 `mise exec -- just package-local-windows` 在 `temp/build/local-release/win-x64/DevDuo` 生成自包含未签名体验包，并归档到 `temp/local-release/`。它复用已有源码构建的 runtime、冻结输入及许可，不需要已发布的运行时 Release。原始原生验收标记保持不变，不宣称已用最新构建编排重新构建引擎。正式发行打包仍遵循独立的已发布 runtime 要求。
+
+侧边与水平 obscured 条带的交角由**侧边延伸优先**。顶/底边 fixed 颜色填充止于视口左右边界，因此侧边即使没有已接受的 fixed 元素颜色，也保留其普通背景。侧边 fixed 颜色仍覆盖侧条带全高。修改仅影响合成区域，不改变 DOM 视口、fixed 框或滚动范围。原生 fixed-overlay 矩阵采样右下/左下交角，并包含颜色不同的不透明 footer。
 
 [English](../en/014-WINDOWS-WEBKIT.md) | [中文](014-WINDOWS-WEBKIT.md)

@@ -28,6 +28,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
     private ClientSession? _session;
     private HashSet<string> _allowedHosts = new(StringComparer.OrdinalIgnoreCase);
     private string _token = "";
+    private string _frontendSession = "";
     private string? _documentId;
     private string _pageUrl = "";
     private string _pageTitle = "DevDuo";
@@ -56,9 +57,14 @@ public sealed class CdpDebuggingService : IAsyncDisposable
         return bootstrap.Replace("/* CHOBITSU */", chobitsu, StringComparison.Ordinal);
     }
 
-    public async Task StartAsync(bool allowLan = false, int port = 0)
+    public async Task StartAsync(bool allowLan = false, int port = 0, string? bearerToken = null)
     {
         if (port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
+        if (bearerToken is { Length: > 0 } && (bearerToken.Length > 4096 ||
+            !bearerToken.All(character => char.IsAsciiLetterOrDigit(character) || "-._~+/=".Contains(character))))
+            throw new ArgumentException("The CDP bearer token must use ASCII token characters.", nameof(bearerToken));
+        if (allowLan && string.IsNullOrEmpty(bearerToken))
+            throw new ArgumentException("LAN CDP requires a bearer token.", nameof(bearerToken));
         await _lifecycle.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -66,7 +72,8 @@ public sealed class CdpDebuggingService : IAsyncDisposable
             if (!File.Exists(Path.Combine(_assetsDirectory, "front_end", "chii_app.html")) ||
                 !File.Exists(Path.Combine(_assetsDirectory, "chobitsu.js")))
                 throw new FileNotFoundException("Offline debugging assets are missing. Run just prepare-debugging and rebuild the app.");
-            _token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+            _token = bearerToken ?? "";
+            _frontendSession = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             _allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "127.0.0.1", "localhost" };
             if (allowLan)
             {
@@ -83,10 +90,10 @@ public sealed class CdpDebuggingService : IAsyncDisposable
                 var listener = new TcpListener(allowLan ? IPAddress.Any : IPAddress.Loopback, port);
                 listener.Start(16);
                 Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-                BaseUri = new Uri($"http://127.0.0.1:{Port}/{_token}/");
+                BaseUri = new Uri($"http://127.0.0.1:{Port}/");
                 AccessUris = _allowedHosts.Where(host => host != "localhost")
                     .OrderBy(host => host == "127.0.0.1" ? "" : host, StringComparer.Ordinal)
-                    .Select(host => new Uri($"http://{host}:{Port}/{_token}/")).ToArray();
+                    .Select(host => new Uri($"http://{host}:{Port}/")).ToArray();
                 _lifetime = new CancellationTokenSource();
                 _listener = listener;
                 _acceptTask = AcceptConnectionsAsync(listener, _lifetime.Token);
@@ -115,6 +122,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
             AccessUris = Array.Empty<Uri>();
             Port = 0;
             _token = "";
+            _frontendSession = "";
         }
         finally { _lifecycle.Release(); }
     }
@@ -267,13 +275,20 @@ public sealed class CdpDebuggingService : IAsyncDisposable
             await RespondAsync(stream, "400 Bad Request", "text/plain", "Invalid request.", cancellationToken).ConfigureAwait(false);
             return;
         }
-        var prefix = $"/{_token}/";
-        if (!request.Path.StartsWith(prefix, StringComparison.Ordinal))
+        var path = request.Path[1..];
+        var asset = path.StartsWith("front_end/", StringComparison.Ordinal) && IsSafeAssetPath(path);
+        // Browser WebSockets cannot set an Authorization header. The built-in
+        // frontend gets a separate per-start capability, limited to its socket.
+        var frontendSocket = path == "devtools/page/devduo" &&
+            request.Headers.TryGetValue("Origin", out var frontendOrigin) && frontendOrigin == authority.GetLeftPart(UriPartial.Authority) &&
+            CredentialMatches(request.FrontendSession, _frontendSession);
+        if (!asset && _token.Length > 0 && !frontendSocket &&
+            (!request.Headers.TryGetValue("Authorization", out var authorization) ||
+             !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) || !CredentialMatches(authorization[7..], _token)))
         {
-            await RespondAsync(stream, "404 Not Found", "text/plain", "Not found.", cancellationToken).ConfigureAwait(false);
+            await RespondAsync(stream, "401 Unauthorized\r\nWWW-Authenticate: Bearer", "text/plain", "Authentication required.", cancellationToken).ConfigureAwait(false);
             return;
         }
-        var path = request.Path[prefix.Length..];
         if (path == "devtools/page/devduo")
         {
             await ServeWebSocketAsync(stream, request, authority, cancellationToken).ConfigureAwait(false);
@@ -287,7 +302,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
                 {
                     id = "devduo", type = "page", title = _pageTitle, url = _pageUrl,
                     description = "chobitsu JavaScript CDP subset; engine debugging is unavailable.",
-                    webSocketDebuggerUrl = $"ws://{authority.Authority}/{_token}/devtools/page/devduo",
+                    webSocketDebuggerUrl = $"ws://{authority.Authority}/devtools/page/devduo",
                     devtoolsFrontendUrl = CreateFrontendUri(authority.Authority).PathAndQuery,
                 } };
             await RespondAsync(stream, "200 OK", "application/json", JsonSerializer.Serialize(targets), cancellationToken).ConfigureAwait(false);
@@ -310,7 +325,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
             await WriteHeadersAsync(stream, $"302 Found\r\nLocation: {location}", "text/plain", 0, cancellationToken).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("front_end/", StringComparison.Ordinal) && IsSafeAssetPath(path))
+        if (asset)
         {
             var file = Path.Combine(_assetsDirectory, path.Replace('/', Path.DirectorySeparatorChar));
             if (File.Exists(file))
@@ -448,9 +463,12 @@ public sealed class CdpDebuggingService : IAsyncDisposable
 
     private Uri CreateFrontendUri(string authority)
     {
-        var endpoint = $"{authority}/{_token}/devtools/page/devduo";
-        return new Uri($"http://{authority}/{_token}/front_end/chii_app.html?ws={Uri.EscapeDataString(endpoint)}");
+        var endpoint = $"{authority}/devtools/page/devduo" + (_token.Length == 0 ? "" : "?session=" + _frontendSession);
+        return new Uri($"http://{authority}/front_end/chii_app.html?ws={Uri.EscapeDataString(endpoint)}");
     }
+
+    private static bool CredentialMatches(string? supplied, string expected) => supplied is not null && expected.Length > 0 &&
+        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(supplied), Encoding.UTF8.GetBytes(expected));
 
     private static bool IsSafeAssetPath(string path) => !path.Contains('\\') && !path.Contains(':') &&
         !path.Contains('%') && !path.Contains('\0') && path.Split('/').All(segment => segment is not ("." or "..") && segment.Length != 0);
@@ -485,8 +503,9 @@ public sealed class CdpDebuggingService : IAsyncDisposable
             if (colon <= 0 || !headers.TryAdd(line[..colon], line[(colon + 1)..].Trim())) return null;
         }
         if (headers.ContainsKey("Transfer-Encoding") || headers.ContainsKey("Content-Length")) return null;
-        var path = first[1].Split('?', 2)[0];
-        return new HttpRequest(path, headers);
+        var target = first[1].Split('?', 2);
+        var session = target.Length == 2 ? System.Web.HttpUtility.ParseQueryString(target[1])["session"] : null;
+        return new HttpRequest(target[0], headers, session);
     }
 
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
@@ -511,7 +530,7 @@ public sealed class CdpDebuggingService : IAsyncDisposable
         return stream.WriteAsync(Encoding.ASCII.GetBytes(headers), cancellationToken).AsTask();
     }
 
-    private sealed record HttpRequest(string Path, Dictionary<string, string> Headers);
+    private sealed record HttpRequest(string Path, Dictionary<string, string> Headers, string? FrontendSession);
     private sealed record ClientSession(WebSocket Socket, string DocumentId)
     {
         public string Id { get; } = Guid.NewGuid().ToString("N");

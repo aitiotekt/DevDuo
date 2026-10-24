@@ -176,5 +176,22 @@
   "Welcome.AddressHint": "Enter a website or local development address above, then press Enter.",
   "Welcome.Documentation": "Documentation",
   "Welcome.Repository": "Source code",
-  "Welcome.Offline": "This page is available offline. Documentation and source links need an internet connection."
+  "Welcome.Offline": "This page is available offline. Documentation and source links need an internet connection.",
+  "Developer.CdpBearerToken": "CDP bearer token (optional)",
+  "Developer.CdpBearerTokenHint": "Leave empty for local connections without authentication. Otherwise send Authorization: Bearer <token>. Saved locally; required for LAN CDP.",
+  "Developer.InvalidCdpBearerToken": "Use ASCII letters, digits or - . _ ~ + / = for the CDP token.",
+  "Developer.CdpLanTokenRequired": "Set a CDP bearer token before allowing LAN CDP connections.",
+  "Developer.ControlApi": "REST control API",
+  "Developer.ControlApiHint": "Off at launch. Local IPv4 only; independent of CDP and LAN settings. Blank token allows local access; otherwise send Authorization: Bearer <token>. The token is saved locally.",
+  "Developer.ControlApiPort": "Control API port",
+  "Developer.ControlApiBearerToken": "Control API bearer token (optional)",
+  "Developer.ControlApiAddress": "Control API OpenAPI address",
+  "Developer.ApplyControlApi": "Apply control API settings",
+  "Developer.CopyControlApiAddress": "Copy OpenAPI address",
+  "Developer.InvalidControlApiPort": "Enter a control API port between 1 and 65535.",
+  "Developer.InvalidControlApiToken": "Use ASCII letters, digits or - . _ ~ + / = for the control API token.",
+  "Control.Interaction": "Interaction",
+  "Interaction.Touch": "Touch · single finger",
+  "Interaction.Mouse": "Mouse",
+  "Interaction.Hint": "Touch: tap or drag to swipe; wheel is blocked. Mouse restores wheel, selection and hover. Touch events are synthetic; native iOS gestures are not reproduced."
 }

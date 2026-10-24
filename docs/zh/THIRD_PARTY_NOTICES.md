@@ -16,4 +16,6 @@ iPhone、Safari、Xcode 及相关名称属于 Apple。本工具独立开发，�
 
 离线调试包包含 [chii 1.15.5](https://github.com/liriliri/chii) 和 [chobitsu 1.8.6](https://github.com/liriliri/chobitsu)，两者使用 MIT，解析结果固定在 `pnpm-lock.yaml`。chii 含经过修改的 [Chrome DevTools 前端](https://github.com/liriliri/devtools-frontend/tree/chii)，使用 Chromium BSD 及各第三方代码的独立许可。`scripts/package-debugging.mts` 将未修改的 npm 前端/浏览器后端复制到生成的 `temp/build/debugging/` 和应用输出的 `debugging/`，保留上游许可注释、chii/chobitsu 许可、内嵌说明及锁定后端依赖许可文本。`scripts/licenses/debugging/devtools-frontend-LICENSES.txt` 保留前端许可文本与来源 revision，只记录许可来源，不证明上游 npm 前端构建可复现。生成清单包含包版本、后端哈希和依赖许可来源。不分发 chii Node 服务或 Node runtime；这些许可不使上游代码变成第一方 MIT，也不证明完整 CDP 支持。
 
+本机控制监听使用 ASP.NET Core/Kestrel（MIT），由自包含应用发布打包。离线文档使用锁定的 `swagger-ui-dist` 包内的 [Swagger UI](https://github.com/swagger-api/swagger-ui)（Apache-2.0）；打包工具保留 LICENSE、NOTICE 和包内许可证注释至 `debugging/openapi/`。不分发 Node 或仅用于安装的 Scarf 统计工具；禁用 Scarf 安装脚本和统计。
+
 [English](../../THIRD_PARTY_NOTICES.md) | [中文](THIRD_PARTY_NOTICES.md)

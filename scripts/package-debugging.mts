@@ -7,6 +7,7 @@ import { repoRoot } from "./lib/paths.mts";
 const require = createRequire(import.meta.url);
 const chiiRoot = dirname(require.resolve("chii/package.json"));
 const chobitsuRoot = dirname(dirname(require.resolve("chobitsu")));
+const swaggerRoot = dirname(require.resolve("swagger-ui-dist/package.json"));
 const output = join(repoRoot, "temp/build/debugging");
 const packages = [
   ["chii", chiiRoot, "1.15.5"],
@@ -23,6 +24,15 @@ for (const [name, root, version] of packages) {
 }
 
 await mkdir(output, { recursive: true });
+const openapi = join(output, "openapi");
+await mkdir(openapi, { recursive: true });
+for (const asset of [
+  "swagger-ui-bundle.js",
+  "swagger-ui.css",
+  "LICENSE",
+  "NOTICE",
+])
+  await cp(join(swaggerRoot, asset), join(openapi, asset));
 await cp(join(chiiRoot, "public/front_end"), join(output, "front_end"), {
   recursive: true,
 });
@@ -84,8 +94,11 @@ await cp(
   join(output, "bundled-LICENSE.txt"),
 );
 const script = await readFile(join(output, "chobitsu.js"));
+const swaggerPackage = JSON.parse(
+  await readFile(join(swaggerRoot, "package.json"), "utf8"),
+);
 await writeFile(
   join(output, "manifest.json"),
-  `${JSON.stringify({ chii: "1.15.5", chobitsu: "1.8.6", chobitsuSha256: createHash("sha256").update(script).digest("hex"), dependencyLicenseSources: [...licensedPackages].sort() }, null, 2)}\n`,
+  `${JSON.stringify({ chii: "1.15.5", chobitsu: "1.8.6", swaggerUi: swaggerPackage.version, chobitsuSha256: createHash("sha256").update(script).digest("hex"), dependencyLicenseSources: [...licensedPackages].sort() }, null, 2)}\n`,
 );
-console.log("Packaged offline chii frontend and chobitsu assets.");
+console.log("Packaged offline chii, chobitsu and Swagger UI assets.");

@@ -56,7 +56,7 @@ internal sealed class WindowsComposition : IDisposable
     }
     internal WindowsComposition(nint parent, nint browser)
     {
-        if (DDCompositionVersion() != 3) throw new InvalidOperationException("Windows composition API v3 is required.");
+        if (DDCompositionVersion() != 4) throw new InvalidOperationException("Windows composition API v4 is required.");
         if (DDCompositionPresentationVersion() != 1) throw new InvalidOperationException("Windows composition presentation API v1 is required.");
         if (DDCompositionScrollIndicatorVersion() != 1) throw new InvalidOperationException("Windows composition scroll indicator API v1 is required.");
         native = DDCompositionCreate(parent, browser);
@@ -79,6 +79,11 @@ internal sealed class WindowsComposition : IDisposable
         if (DDCompositionSetScrollIndicator(native, x, y, width, height, opacity) < 0)
             throw new InvalidOperationException(Error);
         scrollIndicator = next;
+    }
+    internal void SetTouchPointer(float x, float y, float diameter, System.Drawing.Rectangle clipBounds)
+    {
+        if (native != 0 && DDCompositionSetTouchPointer(native, x, y, diameter, clipBounds.Left, clipBounds.Top, clipBounds.Right, clipBounds.Bottom) < 0)
+            throw new InvalidOperationException(Error);
     }
     internal void SetPresentation(nint target, int degrees, int offsetX, int offsetY)
     {
@@ -126,6 +131,7 @@ internal sealed class WindowsComposition : IDisposable
         DDCompositionDestroy(native);
         native = 0;
     }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int DDCompositionSetTouchPointer(nint native, float x, float y, float diameter, float left, float top, float right, float bottom);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionPresentationVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionScrollIndicatorVersion();

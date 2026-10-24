@@ -29,6 +29,7 @@ extern "C" {
 __declspec(dllexport) unsigned DDCompositionVersion();
 __declspec(dllexport) unsigned DDCompositionPresentationVersion();
 __declspec(dllexport) unsigned DDCompositionScrollIndicatorVersion();
+__declspec(dllexport) HRESULT DDCompositionSetTouchPointer(void*, float x, float y, float diameter, float left, float top, float right, float bottom);
 __declspec(dllexport) HRESULT DDCompositionSetScrollIndicator(void*, float x, float y, float width, float height, float opacity);
 __declspec(dllexport) HRESULT DDCompositionSetPresentation(void*, HWND target, int clockwiseDegrees, int offsetX, int offsetY);
 __declspec(dllexport) void* DDCompositionCreate(HWND parent, HWND browser);

@@ -14,6 +14,6 @@ function Get-SourceHash([string]$path) {
 $records = foreach ($relative in @('src/DevDuo/windows/HostCompositor.cpp', 'src/DevDuo/windows/HostCompositor.h', 'src/DevDuo/windows/DevDuo.Windows.Compositor.vcxproj', 'src/DevDuo/windows/BuildCompositor.ps1')) {
     [ordered]@{ path = $relative; sha256 = Get-SourceHash (Join-Path $repository $relative) }
 }
-[ordered]@{ schemaVersion = 1; apiVersion = 2; presentationApiVersion = 1; sources = @($records); binarySha256 = Get-SourceHash (Join-Path $output 'DevDuo.Windows.Compositor.dll'); nativeAcceptancePassed = $false } |
+[ordered]@{ schemaVersion = 1; apiVersion = 4; presentationApiVersion = 1; sources = @($records); binarySha256 = Get-SourceHash (Join-Path $output 'DevDuo.Windows.Compositor.dll'); nativeAcceptancePassed = $false } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'build-manifest.json') -Encoding utf8
 exit 0

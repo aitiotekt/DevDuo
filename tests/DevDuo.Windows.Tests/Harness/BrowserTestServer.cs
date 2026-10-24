@@ -41,11 +41,19 @@ internal sealed class BrowserTestServer : IDisposable
             var received = System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             var path = request.Request.Url!.AbsolutePath;
             if (path == "/delay.js") await Task.Delay(2500);
+            if (path == "/initial-edge.svg") await Task.Delay(2500);
+            var edgeKind = request.Request.QueryString["kind"] == "mask" ? "mask" : "absolute";
             var html = path == "/delay.js" ? "window.delayedScriptLoaded=true" :
+                path == "/initial-edge.svg" ? "<svg xmlns='http://www.w3.org/2000/svg' width='750' height='112'><path fill='white' d='M0 0H750V112H0Z'/></svg>" :
+                path == "/initial-edge.html" ? "<!doctype html><meta charset=utf-8><title>Initial edge " + edgeKind + "</title>" +
+                    "<style>html{font-size:100px;background:rgb(40,80,120)}html,body{margin:0;height:100%}" +
+                    "#banner{position:absolute;bottom:0;left:0;width:100%;height:.56rem;background:white url('/initial-edge.svg?" + Guid.NewGuid().ToString("N") + "') 0 0/100% 100%}" +
+                    "#mask{position:fixed;inset:0;background:black}</style><div id=banner></div>" +
+                    (edgeKind == "mask" ? "<div id=mask></div>" : "") :
                 "<!doctype html><meta charset=utf-8><title>Browser lifecycle acceptance</title><style>body{min-height:4000px;background:#cde}input{margin:30px}</style><h1 id='early'>Browser lifecycle acceptance</h1><input aria-label='Draft'><p>Persistent website storage and rotation.</p>" +
                 (path == "/slow.html" ? "<script src='/delay.js'></script>" : "");
             var body = Encoding.UTF8.GetBytes(latency ? LatencyDocument : html);
-            request.Response.ContentType = path == "/delay.js" ? "application/javascript" : "text/html; charset=utf-8";
+            request.Response.ContentType = path == "/delay.js" ? "application/javascript" : path == "/initial-edge.svg" ? "image/svg+xml" : "text/html; charset=utf-8";
             request.Response.ContentLength64 = body.Length;
             request.Response.Headers["Cache-Control"] = "no-store";
             Requests.Enqueue(new(request.Request.RawUrl ?? "", request.Request.UserAgent, received,

@@ -9,12 +9,14 @@ public sealed class HostSettings
     public const double TintMaximum = 1, GlassMaximum = 1, ShadowMaximum = .5, RadiusMaximum = 40;
     public static readonly string[] Themes = ["system", "light", "dark"];
     public static readonly string[] ContainerModes = ["safari", "app"];
+    public static readonly string[] InteractionModes = ["touch", "mouse"];
     public static readonly string[] PreviewScales = ["native", "fit"];
 
     public string Theme { get; set; } = "system";
     public string ContainerMode { get; set; } = "safari";
     // A device-profile id; MainWindow falls back to the first profile when it is unknown.
     public string Fold { get; set; } = "closed";
+    public string InteractionMode { get; set; } = "touch";
     public string PreviewScale { get; set; } = "native";
     public bool DeviceOutline { get; set; } = true;
     public bool ShowTabStrip { get; set; } = true;
@@ -29,6 +31,11 @@ public sealed class HostSettings
     public bool DeveloperAllowLan { get; set; }
     public int NativeRemotePort { get; set; } = 9223;
     public int CdpPort { get; set; } = 9222;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CdpBearerToken { get; set; } = "";
+    public int ControlApiPort { get; set; } = 9224;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ControlApiBearerToken { get; set; } = "";
     public string ProxyMode { get; set; } = "system";
     public string ProxyEndpoint { get; set; } = "";
     public string? LastUrl { get; set; }
@@ -41,6 +48,9 @@ public sealed class HostSettings
         endpoint.Query.Length == 0 && endpoint.Fragment.Length == 0;
 
     public HostSettings Copy() => (HostSettings)MemberwiseClone();
+
+    public static bool IsValidBearerToken(string token) => token.Length <= 4096 &&
+        token.All(character => char.IsAsciiLetterOrDigit(character) || "-._~+/=".Contains(character));
 }
 
 // Owns LocalApplicationData/DevDuo/preferences.json: {schemaVersion: 1, language, host?}.
@@ -143,6 +153,7 @@ public sealed class PreferenceStore
         }
         settings.Theme = Choice("theme", HostSettings.Themes, settings.Theme)!;
         settings.ContainerMode = Choice("containerMode", HostSettings.ContainerModes, settings.ContainerMode)!;
+        settings.InteractionMode = Choice("interactionMode", HostSettings.InteractionModes, settings.InteractionMode)!;
         settings.PreviewScale = Choice("previewScale", HostSettings.PreviewScales, settings.PreviewScale)!;
         if (host.TryGetProperty("fold", out var fold))
         {
@@ -168,6 +179,21 @@ public sealed class PreferenceStore
         }
         settings.NativeRemotePort = Port("nativeRemotePort", settings.NativeRemotePort);
         settings.CdpPort = Port("cdpPort", settings.CdpPort);
+        settings.ControlApiPort = Port("controlApiPort", settings.ControlApiPort);
+        if (host.TryGetProperty("controlApiBearerToken", out var controlToken))
+        {
+            if (controlToken.ValueKind == JsonValueKind.String && HostSettings.IsValidBearerToken(controlToken.GetString()!))
+                settings.ControlApiBearerToken = controlToken.GetString()!;
+            else
+                invalid.Add("controlApiBearerToken");
+        }
+        if (host.TryGetProperty("cdpBearerToken", out var cdpToken))
+        {
+            if (cdpToken.ValueKind == JsonValueKind.String && HostSettings.IsValidBearerToken(cdpToken.GetString()!))
+                settings.CdpBearerToken = cdpToken.GetString()!;
+            else
+                invalid.Add("cdpBearerToken");
+        }
         settings.ProxyMode = Choice("proxyMode", ["system", "direct", "custom"], settings.ProxyMode)!;
         if (host.TryGetProperty("proxyEndpoint", out var proxy))
         {
@@ -209,6 +235,7 @@ public sealed class PreferenceStore
                 ["containerMode"] = Host.ContainerMode,
                 ["fold"] = Host.Fold,
                 ["previewScale"] = Host.PreviewScale,
+                ["interactionMode"] = Host.InteractionMode,
                 ["deviceOutline"] = Host.DeviceOutline,
                 ["showTabStrip"] = Host.ShowTabStrip,
                 ["tintAlpha"] = Host.TintAlpha,
@@ -221,6 +248,9 @@ public sealed class PreferenceStore
                 ["developerAllowLan"] = Host.DeveloperAllowLan,
                 ["nativeRemotePort"] = Host.NativeRemotePort,
                 ["cdpPort"] = Host.CdpPort,
+                ["cdpBearerToken"] = Host.CdpBearerToken,
+                ["controlApiPort"] = Host.ControlApiPort,
+                ["controlApiBearerToken"] = Host.ControlApiBearerToken,
                 ["proxyMode"] = Host.ProxyMode,
                 ["proxyEndpoint"] = Host.ProxyEndpoint,
                 ["lastUrl"] = Host.LastUrl

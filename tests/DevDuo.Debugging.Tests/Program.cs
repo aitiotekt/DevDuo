@@ -44,7 +44,7 @@ var port = service.Port;
 Check(port != 0 && root.Host == "127.0.0.1", "port zero selects a loopback listener");
 Check(!service.HasTarget && service.FrontendUri is null, "the frontend remains unavailable before native page readiness");
 using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-Check((await http.GetAsync($"http://127.0.0.1:{port}/json/list")).StatusCode == HttpStatusCode.NotFound, "discovery requires a token");
+Check((await http.GetAsync($"http://127.0.0.1:{port}/json/list")).StatusCode == HttpStatusCode.OK, "local discovery uses a fixed path without mandatory authentication");
 Check((await http.GetStringAsync(new Uri(root, "json/list"))) == "[]", "uninitialized pages are not advertised");
 service.HandlePageMessage("{\"type\":\"ready\",\"documentId\":\"first-document\",\"url\":\"https://example.test/\",\"title\":\"Example\"}");
 service.HandlePageMessage("{\"type\":\"ready\",\"documentId\":\"first-document\",\"url\":\"https://example.test/\",\"title\":\"Example\"}");
@@ -58,7 +58,7 @@ Check(frontend.StatusCode == HttpStatusCode.OK && frontend.Content.Headers.Conte
     "the packaged chii frontend is served offline");
 var module = Directory.EnumerateFiles(Path.Combine(assets, "front_end"), "*.js", SearchOption.AllDirectories).First();
 var modulePath = Path.GetRelativePath(assets, module).Replace('\\', '/');
-Check((await http.GetAsync(new Uri(root, modulePath))).StatusCode == HttpStatusCode.OK, "frontend modules resolve under the token prefix");
+Check((await http.GetAsync(new Uri(root, modulePath))).StatusCode == HttpStatusCode.OK, "frontend modules resolve at stable public asset paths");
 using var version = JsonDocument.Parse(await http.GetStringAsync(new Uri(root, "json/version")));
 Check(!string.IsNullOrEmpty(version.RootElement.GetProperty("Protocol-Version").GetString()), "version discovery supplies a protocol version");
 
@@ -140,10 +140,12 @@ replacement.Stop();
 await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(service.Stop)).Append(service.StopAsync()));
 Check(!service.HasTarget, "concurrent repeated stop and asynchronous disposal remain idempotent");
 Check(errors.Count == 0, "normal shutdown emits no errors");
-await service.StartAsync();
-Check(service.BaseUri!.AbsolutePath != root.AbsolutePath, "restarting rotates the access token");
+await service.StartAsync(port: port);
+Check(service.BaseUri == root, "restarting preserves the configured connection address");
 await service.StopAsync();
-Console.WriteLine("All CDP transport checks passed. Native injection and actual chobitsu domain support require platform acceptance.");
+await CdpAuthenticationChecks.Run(assets, Check);
+await ControlApiChecks.Run(assets, Check);
+Console.WriteLine("All CDP and control API transport checks passed. Native injection and actual chobitsu domain support require platform acceptance.");
 
 static void Check(bool condition, string name)
 {

@@ -1,8 +1,9 @@
 namespace DevDuo;
 
-public sealed record DeveloperListenOptions(bool AllowLan, int Port)
+public sealed record DeveloperListenOptions(bool AllowLan, int Port, [property: System.Text.Json.Serialization.JsonIgnore] string? BearerToken = null)
 {
     public string BindAddress => AllowLan ? "0.0.0.0" : "127.0.0.1";
+    public override string ToString() => $"{BindAddress}:{Port}, authentication: {!string.IsNullOrEmpty(BearerToken)}";
 }
 
 public sealed record DeveloperProxyOptions(string Mode, string? Endpoint);
