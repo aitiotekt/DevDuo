@@ -132,6 +132,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         keyboardWindow.PointerMessage = FilterBrowserPointer;
         keyboardWindow.ScrollInput = (direction, source) => { RecordScrollIndicatorInput(); NativeScrollInput?.Invoke(direction, source); };
         composition = new WindowsComposition(Handle, browserWindow);
+        touchPointerTimer.Tick += (_, _) => UpdateTouchPointer();
         touchPointerWindow = new TouchPointerWindow(GetAncestor(Handle, 2), HideTouchPointer);
         if (presentation is { } output)
         {
@@ -666,7 +667,10 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         hostDesktopApiVersion = 1, hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 1, hostScrollIndicatorApiVersion = 1,
         accessibility = webAccessibility?.Diagnostics,
         textInput = TextInputDiagnostics(),
-        touchPointer = new { visible = touchPointerVisible, systemCursorHidden = touchPointerVisible, diameterDip = 20, error = touchPointerError, source = "host composition; excluded from WebKit snapshots" },
+        touchPointer = new { visible = touchPointerVisible, systemCursorHidden = touchPointerVisible, diameterDip = 20, error = touchPointerError,
+            pending = touchPointerTimer.Enabled, requests = touchPointerRequests, commits = touchPointerCommits,
+            frameIntervalMilliseconds = touchPointerTimer.Interval, frameX = touchPointerFrame?.Position.X, frameY = touchPointerFrame?.Position.Y,
+            source = "independent host composition device; latest-position coalescing; excluded from WebKit snapshots" },
         interactionMode, nativeWheelBlocked = interactionMode == "touch",
         pageInput = observation is { } inputObservation && inputObservation.TryGetProperty("pageInput", out var inputState) ? inputState : (JsonElement?)null,
         darkAppearance, testOnlyIPCEnabled = false, nonPersistentStore = false,
@@ -812,6 +816,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             keyboardWindow?.ReleaseHandle();
             keyboardWindow = null;
             HideTouchPointer();
+            touchPointerTimer.Dispose();
             touchPointerWindow?.ReleaseHandle();
             touchPointerWindow = null;
             composition?.Dispose();

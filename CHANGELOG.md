@@ -2,6 +2,12 @@
 
 <!-- Unreleased -->
 
+## 0.1.1
+
+Host-only patch release; the bundled Windows WebKit remains at `0.1.0` and does not require rebuilding.
+
+- Reduce transient Windows touch-pointer trails over Safari glass by coalescing mouse motion to the latest position and committing the pointer through an independent composition device; preserve page geometry, input delivery and screenshot behavior.
+
 ## 0.1.0
 
 DevDuo and its bundled Windows WebKit dependency both use version `0.1.0`, published independently as `v0.1.0` and `webkit-v0.1.0`. The WebKit upstream revision is unchanged; this release includes the maintained host patches. Version promotion does not expand the recorded native acceptance scope.

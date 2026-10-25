@@ -24,6 +24,11 @@ internal sealed partial class WindowsChecks
             await CheckInteraction();
             return;
         }
+        if (Environment.GetCommandLineArgs().Contains("--touch-pointer"))
+        {
+            await CheckTouchPointerDamage();
+            return;
+        }
         // Existing wheel-driven scene/paint scenarios explicitly use desktop input.
         Select(Settings.Interaction, 1);
         if (Environment.GetCommandLineArgs().Contains("--page-dialogs"))

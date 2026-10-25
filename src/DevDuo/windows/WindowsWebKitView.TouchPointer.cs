@@ -10,6 +10,9 @@ internal sealed partial class WindowsWebKitView
     private string? touchPointerError;
     private TouchPointerWindow? touchPointerWindow;
     private (Point Position, Rectangle Screen, int Diameter)? touchPointerFrame;
+    private Point? touchPointerScreen;
+    private readonly System.Windows.Forms.Timer touchPointerTimer = new() { Interval = 16 };
+    private long touchPointerRequests, touchPointerCommits;
 
     internal void ObserveTouchPointer(ref System.Windows.Forms.Message message)
     {
@@ -18,11 +21,21 @@ internal sealed partial class WindowsWebKitView
             var tracking = new TrackMouse { Size = (uint)Marshal.SizeOf<TrackMouse>(), Flags = 2, Window = message.HWnd };
             TrackMouseEvent(ref tracking);
         }
-        if (message.Msg is 0x200 or 0x20 or 0x2A3) UpdateTouchPointer();
+        if (message.Msg is 0x200 or 0x20)
+        {
+            // Read the latest OS position at flush time; do not queue positions
+            // or repeatedly postpone the flush while mouse messages arrive.
+            touchPointerRequests++;
+            if (!touchPointerVisible) UpdateTouchPointer();
+            else if (!touchPointerTimer.Enabled && (!GetCursorPos(out var screen) || touchPointerScreen != screen))
+                touchPointerTimer.Start();
+        }
+        if (message.Msg == 0x2A3) UpdateTouchPointer();
         if (message.Msg == 0x8) HideTouchPointer();
     }
     internal void UpdateTouchPointer()
     {
+        touchPointerTimer.Stop();
         if (disposed || interactionMode != "touch" || composition is null || geometry is not { } g ||
             ScenePointFromScreen is null || !GetCursorPos(out var screen) || GetForegroundWindow() != GetAncestor(Handle, 2))
         { HideTouchPointer(); return; }
@@ -34,19 +47,21 @@ internal sealed partial class WindowsWebKitView
         var next = (point, screenBounds, diameter);
         if (!touchPointerVisible || touchPointerFrame != next)
         {
-            try { composition.SetTouchPointer(point.X, point.Y, diameter, screenBounds); touchPointerError = null; }
+            try { composition.SetTouchPointer(point.X, point.Y, diameter, screenBounds); touchPointerCommits++; touchPointerError = null; }
             catch (InvalidOperationException failure) { touchPointerError = failure.Message; HideTouchPointer(); return; }
             touchPointerFrame = next;
         }
+        touchPointerScreen = screen;
         if (!touchPointerVisible) { System.Windows.Forms.Cursor.Hide(); touchPointerVisible = true; }
     }
     internal void HideTouchPointer()
     {
+        touchPointerTimer.Stop();
         if (!touchPointerVisible) return;
         // Always restore the system cursor even if the composition device was lost.
         try { composition?.SetTouchPointer(0, 0, 0, Rectangle.Empty); }
         catch (InvalidOperationException failure) { touchPointerError = failure.Message; }
-        finally { System.Windows.Forms.Cursor.Show(); touchPointerVisible = false; touchPointerFrame = null; }
+        finally { System.Windows.Forms.Cursor.Show(); touchPointerVisible = false; touchPointerFrame = null; touchPointerScreen = null; }
     }
     private sealed class TouchPointerWindow : System.Windows.Forms.NativeWindow
     {

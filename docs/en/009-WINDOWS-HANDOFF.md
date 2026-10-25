@@ -15,6 +15,7 @@ The baseline includes uncommitted host/test changes and native patch `0004`, wit
 | Input and menus | Combined-engine Microsoft Pinyin: 47 checks at 144 DPI; select: 56 checks across eight poses at 192 DPI. Earlier input/menu/dialog cohorts cover 96/144/192 DPI with their own binaries. |
 | Final accessibility host | 24 native checks at each actual 96/144/192 DPI: public tree discovery, native canvas pixels, names/values/actions, physical hit testing, modal restoration, stale-document rejection and rotated close. Earlier mixed-monitor evidence belongs to its separate host revision. |
 | Actual window and Narrator | Final 192-DPI Closed 0°/90°/180° windows were inspected at about 100% Fit. Closed 180° Tab/Shift+Tab navigation and Narrator speech recap confirmed document/edit labels. This is scoped navigation/speech evidence, not full text-navigation or Safari optical equivalence. |
+| Touch pointer (separate host follow-up) | 187 affected pixel/coalescing/cancellation/device-capture checks and 19 interaction checks passed at actual 192 DPI and fractional Fit. Open 90°/270° and Closed 0°/180° retain viewport/fixed/scroll geometry. Original color-page Open landscape motion and scroll compaction were also observed; this is not a display-latency benchmark or a rerun of the inherited matrix. |
 | Cold navigation | Final 96-DPI HTTP/inline/Network-recovery checks passed the existing 1.5-second gates. First document observation: 176.83/184.51 ms; matching HTTP source pixels observed by 261.94 ms. These are local-fixture timings, not DWM or external-site benchmarks. |
 | Portable integration | `just verify` and bilingual docs checks/build passed: Core 370, localization 1769 with 200 keys/language, JS 50 plus a macOS skip, Python 32. Windows compilation had zero warnings/errors; the docs ES2024 warning remains. |
 
@@ -38,6 +39,7 @@ Default to the affected checks on **one currently available actual DPI**. Do not
 | Accessibility | `just test-windows-accessibility`; short Narrator observation when discovery, focus or speech semantics change. |
 | IME, select or JavaScript dialogs | The corresponding `just test-windows-ime`, `just test-windows-popups` or `just test-windows-page-dialogs`. |
 | Material, painting or continuation | Relevant presentation/inset/fixed-overlay check and actual-window observation; add fractional Fit at the same DPI when raster boundaries change. |
+| Touch-pointer presentation | `just test-windows-touch-pointer`, relevant interaction checks and actual-window motion; do not substitute pointer visibility flags for old-position pixels. |
 | Startup/navigation or developer services | Affected navigation-latency, developer-tools or debugging recipe. |
 | Shared viewport/mask/rotation or broad engine integration | Core/build, single-DPI `just test-windows` and affected native checks. Add ordinary-page geometry comparisons only when layout/inset semantics change. |
 | Dependency selection or packaging | Release/build/package checks and single-DPI packaged startup/runtime-loading observation; reuse unchanged engine behavior evidence. |
@@ -79,5 +81,7 @@ Apply the relevant items to the changed behavior; this is not a mandatory full r
 The milestone summary is `captures/desktop-validation/pre-0.1.0/20261028T165509769Z-desktop-followup/final-combined/final-results.json`; its milestone sidecar identifies the baseline. Per-run sources, binaries, native inputs and observations remain under ignored `captures/desktop-validation/windows-runtime/`. Keep original bytes and failed attempts intact. Do not copy raw logs, machine identifiers or browsing records into public documentation.
 
 A follow-up report needs only: baseline ID, affected behavior, checks actually executed, actual DPI/Fit, results and unverified boundaries. Hashes are provenance outputs, not a substitute for acceptance. Important implementation decisions and failure mechanisms belong in the [WebKit guide](014-WINDOWS-WEBKIT.md#decisions-and-failure-lessons); release steps belong in the [release guide](013-RELEASE.md).
+
+The current pointer follow-up uses `captures/desktop-validation/windows-runtime/20261029T070548367Z` for automated pixels and `20261029T070628126Z` for original-page presented observations. The short-lived-trail report is consistent with per-message pointer commits sharing the glass device; permanent stale pixels were not reproduced in the static control. The fix removes that submission path, and the bounded latest-position behavior is tested directly. Hardware polling-rate and frame-time comparisons remain unmeasured.
 
 [English](009-WINDOWS-HANDOFF.md) | [中文](../zh/009-WINDOWS-HANDOFF.md)

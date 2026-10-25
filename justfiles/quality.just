@@ -105,6 +105,11 @@ test-windows-accessibility: prepare-debugging
 test-windows-interaction: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/interaction-tests -p:RestoreLockedMode=true -- --interaction
 
+# Presented chrome pixels must restore behind a moving/hidden touch pointer.
+[windows]
+test-windows-touch-pointer: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/touch-pointer-tests -p:RestoreLockedMode=true -- --touch-pointer
+
 # Exercises input-gated screen-edge indicators without changing the page viewport.
 [windows]
 test-windows-scroll-indicators: prepare-debugging

@@ -61,6 +61,8 @@ Rotated scenes retain a full-sized, cloaked layered source host outside the smal
 
 Composition order is page/valid continuation, document-boundary fills, local blur, rounded tint/rim/shadow, then clear text/icons. Blur reads the undecorated page, clamps sampling edges and precedes rounded clipping. Premultiplied alpha and separate glyph layers preserve readable foregrounds. Hit frames, optical frames and text clips remain distinct; selected tabs use complete visual containers.
 
+The passive touch pointer uses an independent DirectComposition device attached above the scene. Pointer movement commits only that device; the page/material tree is not resubmitted for every mouse message. While visible, movement requests share one 16ms timer that reads the latest OS position without postponing its deadline. Entry, exit, focus loss and mode changes update immediately, and disposal cancels pending work. Input events are delivered independently. This bounds queued pointer work without repainting the page or changing the pointer's size, masks or inclusion in device screenshots. See the [cross-device visual contract](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositionvisual-addvisual).
+
 Physical HWND synchronization and resource generations handle resize, ancestor clips and device recreation without navigation. Hardware setup may retry the same D3D11 route with WARP; unsupported composition reports a capability error rather than certifying an old GDI material fallback. Device-loss/WARP recovery still lacks fault-injection acceptance. Scene/resource counters are not WebKit frame IDs, atomic DOM/frame timestamps or final DWM FPS.
 
 ## Fractional boundary rasterization

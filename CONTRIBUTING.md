@@ -81,6 +81,7 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-ime` | Installed Chinese text service preedit, candidate commit, cancellation and selected-range replacement in input/textarea/contenteditable |
 | `just test-windows-screenshots` | Native REST/CDP screenshots, eight poses and unchanged scroll/fixed geometry; opens Windows UI |
 | `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI, without claiming exact Safari thickness or fade timing |
+| `just test-windows-touch-pointer` | Foreground chrome pixel restoration, rapid-motion coalescing and unchanged page geometry at the current DPI; opens Windows UI |
 | `just test-windows-run-loop` | Actual pinned WTF timers under an external Windows message pump and WTF's own loop; requires the native runtime build |
 | `just test-debugging` | Real loopback CDP HTTP/WebSocket discovery, token/origin/lifecycle checks; does not certify native page injection |
 | `just prepare-debugging` | Copy locked chii/chobitsu offline assets into `temp/build/debugging/`; included in app dev/build/package recipes |

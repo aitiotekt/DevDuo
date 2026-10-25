@@ -15,6 +15,7 @@ Windows 通过 Avalonia 使用固定版本的 WebKit Windows Port，macOS 保留
 | 输入与菜单 | 组合引擎在 144 DPI 通过微软拼音 47 项，在 192 DPI 通过八姿态 select 56 项；较早输入／菜单／对话框批次覆盖 96／144／192 DPI，各自绑定原二进制。 |
 | 最终无障碍宿主 | 实际 96／144／192 DPI 各 24 项原生检查，包含公开树发现、原生画布像素、名称／值／动作、物理命中、模态恢复、过期文档拒绝及旋转关窗。较早混合显示器证据属于其独立宿主版本。 |
 | 实际窗口与讲述人 | 在最终 192 DPI、约 100% Fit 下检查 Closed 0°／90°／180°。Closed 180° 的 Tab／Shift+Tab 及讲述人语音回顾确认了文档／编辑框名称，只证明限定导航／朗读，不代表完整文本导航或 Safari 光学等价。 |
+| 触摸圆点（独立宿主增量复验） | 实际 192 DPI、分数 Fit 下通过 187 项像素／更新合并／取消／设备截图检查及 19 项交互检查。Open 90°／270°、Closed 0°／180° 保持 viewport／fixed／滚动几何；另观察了原始颜色页 Open 横屏移动及滚动收起。这不是显示延迟基准，也不是沿用矩阵的全量重跑。 |
 | 冷导航 | 最终 96 DPI 的 HTTP／内联／Network 恢复通过原有 1.5 秒门槛。首个文档观测分别为 176.83／184.51ms，HTTP 匹配源像素在 261.94ms 内观察到；这不是 DWM 或外站基准。 |
 | 可移植集成 | `just verify` 及双语文档检查／构建通过：Core 370、本地化 1769／每语言 200 键、JS 50 及一项 macOS 跳过、Python 32。Windows 编译零警告／错误；文档已有的 ES2024 警告保留。 |
 
@@ -38,6 +39,7 @@ Windows 通过 Avalonia 使用固定版本的 WebKit Windows Port，macOS 保留
 | 无障碍 | `just test-windows-accessibility`；发现入口、焦点或朗读语义变化时补短时讲述人观察。 |
 | IME、select 或 JavaScript 对话框 | 对应 `just test-windows-ime`、`just test-windows-popups` 或 `just test-windows-page-dialogs`。 |
 | 材质、绘制或内容延伸 | 对应呈现／inset／固定遮罩检查和实际窗口；栅格边界变化时在同一 DPI 加分数 Fit。 |
+| 触摸圆点呈现 | `just test-windows-touch-pointer`、相关交互检查及实际窗口移动观察；显隐标志不能替代旧位置像素检查。 |
 | 启动／导航或开发服务 | 对应导航延迟、开发工具或调试检查。 |
 | 共享视口／遮罩／旋转或广泛引擎集成 | Core／构建、单 DPI 的 `just test-windows` 及相关原生检查；仅布局／inset 语义变化时加普通页面几何比较。 |
 | 依赖选择或打包 | 发布／构建／打包检查及单 DPI 的包启动／运行时加载观察，沿用未变引擎的行为证据。 |
@@ -79,5 +81,7 @@ mise、真实符号链接和日常命令见[贡献指南](CONTRIBUTING.md)。引
 里程碑汇总为 `captures/desktop-validation/pre-0.1.0/20261028T165509769Z-desktop-followup/final-combined/final-results.json`，同目录 sidecar 标识基线。逐次源码、二进制、原生输入和观测保留于忽略的 `captures/desktop-validation/windows-runtime/`。原始字节与失败尝试保持不变，不将原始日志、设备标识或浏览记录复制到公开文档。
 
 后续报告只需写基线 ID、受影响行为、实际执行检查、实际 DPI／Fit、结果及未验证边界。哈希是来源输出，不能代替验收。关键实现裁决及失败机制见 [WebKit 指南](014-WINDOWS-WEBKIT.md#关键裁决与经验)，发布步骤见[发布指南](013-RELEASE.md)。
+
+当前圆点复验使用 `captures/desktop-validation/windows-runtime/20261029T070548367Z` 记录自动化像素，`20261029T070628126Z` 记录原始页面实际呈现。短时拖影报告与圆点逐消息提交并共用玻璃设备的路径相符；静态对照未复现永久旧像素。修复移除了该提交路径，并直接测试最新位置更新有界；硬件轮询率及帧耗时对比仍未测量。
 
 [English](../en/009-WINDOWS-HANDOFF.md) | [中文](009-WINDOWS-HANDOFF.md)

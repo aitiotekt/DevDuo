@@ -113,6 +113,7 @@ public:
     bool detachedSource = false;
     ComPtr<ID3D11Device> device;
     ComPtr<IDCompositionDevice3> composition;
+    ComPtr<IDCompositionDevice3> pointerComposition;
     ComPtr<IDCompositionDesktopDevice> desktop;
     ComPtr<IDCompositionTarget> target;
     ComPtr<IDCompositionVisual2> root;
@@ -164,6 +165,11 @@ public:
         check(factory->CreateDevice(dxgi.Get(), &drawing));
         check(DCompositionCreateDevice3(drawing.Get(), IID_PPV_ARGS(&desktop)));
         check(desktop.As(&composition));
+        // Cross-device child visuals retain their own commit stream. Pointer
+        // motion must not submit the page/glass device at mouse-message rates.
+        ComPtr<IDCompositionDesktopDevice> pointerDesktop;
+        check(DCompositionCreateDevice3(drawing.Get(), IID_PPV_ARGS(&pointerDesktop)));
+        check(pointerDesktop.As(&pointerComposition));
         check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
             reinterpret_cast<IUnknown**>(textFactory.GetAddressOf())));
         check(desktop->CreateTargetForHwnd(presentationWindow ? presentationWindow : parent, TRUE, &target));
@@ -279,6 +285,7 @@ public:
         pointerVisual.Reset();
         pointerGroup.Reset();
         pointerSurface.Reset();
+        pointerComposition.Reset();
         pointerDiameter = 0;
         indicatorRect = { };
         indicatorOpacity = 0;
@@ -473,7 +480,7 @@ public:
         if (!pointerGroup && diameter == 0) return;
         if (diameter > 0 && (!pointerVisual || pointerDiameter != diameter)) {
             auto extent = std::max(1, static_cast<int>(std::ceil(diameter + 2)));
-            check(composition->CreateSurface(extent, extent, DXGI_FORMAT_B8G8R8A8_UNORM,
+            check(pointerComposition->CreateSurface(extent, extent, DXGI_FORMAT_B8G8R8A8_UNORM,
                 DXGI_ALPHA_MODE_PREMULTIPLIED, &pointerSurface));
             ComPtr<ID2D1DeviceContext> context;
             POINT offset;
@@ -495,10 +502,12 @@ public:
             check(endResult);
             if (pointerVisual) check(pointerVisual->SetContent(pointerSurface.Get()));
             else {
-                pointerVisual = visual(pointerSurface.Get());
-                check(composition->CreateVisual(&pointerGroup));
+                check(pointerComposition->CreateVisual(&pointerVisual));
+                check(pointerVisual->SetContent(pointerSurface.Get()));
+                check(pointerComposition->CreateVisual(&pointerGroup));
                 check(pointerGroup->AddVisual(pointerVisual.Get(), FALSE, nullptr));
                 check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
+                check(composition->Commit());
             }
             pointerDiameter = diameter;
         }
@@ -510,7 +519,7 @@ public:
             check(pointerVisual->SetOffsetY(y - diameter / 2 - 1));
             check(pointerGroup->SetClip(D2D1::RectF(left, top, right, bottom)));
         }
-        check(composition->Commit());
+        check(pointerComposition->Commit());
     }
     void setScrollIndicator(float x, float y, float w, float h, float opacity)
     {

@@ -2,6 +2,12 @@
 
 <!-- Unreleased -->
 
+## 0.1.1
+
+本次为宿主补丁版本；bundled Windows WebKit 保持 `0.1.0`，无需重建。
+
+- 合并高频移动至最新位置，并以独立合成设备提交触摸圆点，缓解 Windows Safari 玻璃外壳上的短时拖影；保持页面几何、输入传递及截图行为。
+
 ## 0.1.0
 
 DevDuo 与 bundled Windows WebKit 均使用 `0.1.0`，分别以 `v0.1.0`、`webkit-v0.1.0` 独立发布。WebKit 上游 revision 不变，本版包含维护中的宿主补丁；版本提升不扩大已记录的原生验收范围。
