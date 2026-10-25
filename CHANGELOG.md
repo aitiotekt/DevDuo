@@ -2,8 +2,6 @@
 
 <!-- Unreleased -->
 
-- Keep publication dry-run CLI tests valid after promotion to a stable version by selecting the metadata-defined version tag or development branch, without weakening release-source or dry-run guards.
-
 ## 0.1.0
 
 DevDuo and its bundled Windows WebKit dependency both use version `0.1.0`, published independently as `v0.1.0` and `webkit-v0.1.0`. The WebKit upstream revision is unchanged; this release includes the maintained host patches. Version promotion does not expand the recorded native acceptance scope.
@@ -13,6 +11,7 @@ DevDuo and its bundled Windows WebKit dependency both use version `0.1.0`, publi
 - Correct rotated native select placement, support real Chinese IME preedit and expose one discoverable WebCore-backed MSAA/UIA tree with names, values, actions and transformed bounds. Narrator label/navigation checks are recorded; UIA TextPattern/IAccessible2 remain unsupported.
 - Show localized native JavaScript alert/confirm/prompt dialogs with keyboard support and deterministic navigation/disposal cancellation.
 - Preserve late HWND/DPI teardown safety and accessibility invalidation during synchronous replies; defer AX queries until a document commits to avoid startup stalls.
+- Allow stable publication from the configured release branch or exact version tag, retaining stable approval, signing and dry-run guards. Cover both branch/tag publication CLI paths across version channels.
 
 ### Bundled Windows WebKit
 

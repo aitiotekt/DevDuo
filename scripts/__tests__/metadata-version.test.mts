@@ -118,6 +118,10 @@ test("release names and refs come from metadata", () => {
       .displayName,
     "Fixture & App",
   );
+  assert.equal(
+    releasePlan("1.2.3", "refs/heads/shipping", "a".repeat(40), metadata).tag,
+    "app-v1.2.3",
+  );
   assert.throws(() =>
     releasePlan("1.2.3-beta.1", "refs/heads/release", "a".repeat(40), metadata),
   );

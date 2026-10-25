@@ -20,8 +20,6 @@ export function releasePlan(
     );
   if (parsed.channel === "dev" && ref !== branch)
     throw new Error("Development versions cannot be tagged for release.");
-  if (parsed.channel === "stable" && ref !== `refs/tags/${tag}`)
-    throw new Error("Stable versions require an exact version tag.");
   return {
     version,
     tag,

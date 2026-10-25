@@ -23,7 +23,7 @@ import {
 const sha = "a".repeat(40);
 const metadata = loadMetadata();
 
-test("release policy accepts numbered prereleases and stable versions on their tags", () => {
+test("release policy accepts release branches and matching tags for prerelease and stable versions", () => {
   for (const channel of ["alpha", "beta"]) {
     const version = `1.2.3-${channel}.1`;
     assert.equal(releasePlan(version, "refs/heads/release", sha).publish, true);
@@ -32,7 +32,14 @@ test("release policy accepts numbered prereleases and stable versions on their t
       true,
     );
   }
-  assert.equal(releasePlan("1.2.3", "refs/tags/v1.2.3", sha).prerelease, false);
+  for (const ref of ["refs/heads/release", "refs/tags/v1.2.3"]) {
+    const stable = releasePlan("1.2.3", ref, sha);
+    assert.equal(stable.publish, true);
+    assert.equal(stable.prerelease, false);
+    assert.equal(stable.tag, "v1.2.3");
+    assert.equal(stable.sourceRef, ref);
+    assert.equal(stable.sourceSha, sha);
+  }
   assert.equal(
     releasePlan("1.2.3-dev", "refs/heads/release", sha).publish,
     false,
@@ -52,7 +59,7 @@ test("release policy accepts numbered prereleases and stable versions on their t
     assert.throws(() => parseVersion(version));
   for (const ref of [
     "refs/heads/main",
-    "refs/heads/release",
+    "refs/heads/feature",
     "refs/tags/v1.2.4",
     "v1.2.3",
   ])

@@ -64,6 +64,7 @@ After editing the TOML version directly, run `just sync-version`. `just check-ve
 | --- | --- | --- |
 | `release` branch | `X.Y.Z-dev` | Explicit successful skip; no package or publication |
 | `release` branch | `X.Y.Z-alpha.N` / `X.Y.Z-beta.N` | Verify, build, sign, attest and publish a prerelease |
+| `release` branch | `X.Y.Z` | Verify, require stable approval, then build, sign, attest and publish with the version tag |
 | Exact `vX.Y.Z[-alpha.N/-beta.N]` tag | Matching package version | Verify and release; stable versions require approval |
 | Other branch or mismatched tag | Any | Reject before accessing signing credentials |
 

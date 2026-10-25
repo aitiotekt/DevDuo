@@ -320,15 +320,17 @@ test("only an explicit true value selects a dry run", () => {
 
 test("publication CLIs refuse dry runs before reading assets or mutating GitHub", () => {
   const metadata = loadMetadata();
-  // Reach the dry-run guard with a valid release source for the current channel.
-  // Stable versions require their exact tag; development versions cannot use tags.
-  const applicationRef =
-    parseVersion(metadata.project.version).channel === "dev"
-      ? `refs/heads/${metadata.release.branch}`
-      : `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`;
+  const applicationRefs = [`refs/heads/${metadata.release.branch}`];
+  // Development versions skip publication and cannot be tagged for release.
+  if (parseVersion(metadata.project.version).channel !== "dev")
+    applicationRefs.push(
+      `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`,
+    );
   for (const [script, command, ref] of [
-    ["release.mts", "publish", applicationRef],
-    ["release.mts", "ensure-tag", applicationRef],
+    ...applicationRefs.flatMap((ref) => [
+      ["release.mts", "publish", ref],
+      ["release.mts", "ensure-tag", ref],
+    ]),
     [
       "webkit-release.mts",
       "publish",

@@ -13,17 +13,19 @@ test("development plans skip the runtime preflight", () => {
 });
 
 test("publishing plans require the published runtime before building", () => {
-  const plan = releasePlan("0.1.0-alpha.1", "refs/heads/release", sha);
-  let runtimeChecks = 0;
-  preflightApplicationRelease(plan, () => {
-    runtimeChecks++;
-  });
-  assert.equal(runtimeChecks, 1);
-  assert.throws(
-    () =>
-      preflightApplicationRelease(plan, () => {
-        throw new Error("Runtime is not published");
-      }),
-    /Runtime is not published/,
-  );
+  for (const version of ["0.1.0-alpha.1", "0.1.0"]) {
+    const plan = releasePlan(version, "refs/heads/release", sha);
+    let runtimeChecks = 0;
+    preflightApplicationRelease(plan, () => {
+      runtimeChecks++;
+    });
+    assert.equal(runtimeChecks, 1);
+    assert.throws(
+      () =>
+        preflightApplicationRelease(plan, () => {
+          throw new Error("Runtime is not published");
+        }),
+      /Runtime is not published/,
+    );
+  }
 });
