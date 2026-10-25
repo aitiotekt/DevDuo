@@ -339,6 +339,7 @@ public sealed partial class NativeWebView(DeviceProfile profile, string initialU
     }
 #if WINDOWS
     internal Task<string?> EvaluateResultAsync(string script) => panel?.EvaluateResultAsync(script) ?? Task.FromResult<string?>(null);
+    protected override Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new WindowsWebViewHostPeer(this);
 #endif
     protected override void DestroyNativeControlCore(IPlatformHandle control)
     {

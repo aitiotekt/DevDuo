@@ -26,6 +26,7 @@ internal sealed class WindowsScreenPresenter : System.Windows.Forms.Panel
         this.focusRequested = focusRequested;
         SetStyle(System.Windows.Forms.ControlStyles.Selectable, true);
         TabStop = true;
+        source.Browser.AccessibilityHostWindow = Handle;
         Controls.Add(source);
         source.Browser.PresentationBounds = ScreenBounds;
         source.Browser.ScenePointFromScreen = ScenePoint;
@@ -67,6 +68,11 @@ internal sealed class WindowsScreenPresenter : System.Windows.Forms.Panel
 
     protected override void WndProc(ref System.Windows.Forms.Message message)
     {
+        if (message.Msg == 0x3D && unchecked((int)message.LParam) == -25 && source is not null)
+        {
+            message.Result = source.Browser.GetPresentedUiaProvider(Handle, message.WParam, message.LParam);
+            if (message.Result != 0) return;
+        }
         if (turn.Degrees != 0 && source is not null && source.Browser.BrowserWindow is var browser && browser != 0)
         {
             if (message.Msg == 0x87) { message.Result = (nint)0x85; return; }

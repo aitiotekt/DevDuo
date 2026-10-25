@@ -43,7 +43,8 @@ internal sealed class BrowserTestServer : IDisposable
             if (path == "/delay.js") await Task.Delay(2500);
             if (path == "/initial-edge.svg") await Task.Delay(2500);
             var edgeKind = request.Request.QueryString["kind"] == "mask" ? "mask" : "absolute";
-            var html = path == "/screenshot.html" ? File.ReadAllText("tests/DevDuo.WebKitProbe/pages/screenshot.html") :
+            var html = path == "/desktop-input.html" ? File.ReadAllText("tests/DevDuo.WebKitProbe/pages/desktop-input.html") :
+                path == "/screenshot.html" ? File.ReadAllText("tests/DevDuo.WebKitProbe/pages/screenshot.html") :
                 path == "/delay.js" ? "window.delayedScriptLoaded=true" :
                 path == "/initial-edge.svg" ? "<svg xmlns='http://www.w3.org/2000/svg' width='750' height='112'><path fill='white' d='M0 0H750V112H0Z'/></svg>" :
                 path == "/initial-edge.html" ? "<!doctype html><meta charset=utf-8><title>Initial edge " + edgeKind + "</title>" +

@@ -11,6 +11,7 @@ internal sealed partial class WindowsChecks
 {
     private async Task CheckScreenshots()
     {
+        using var server = new BrowserTestServer();
         await Wait(state => Text(state, "initializationState", "ready"), "Screenshot runtime");
         window.WindowState = WindowState.Maximized;
         window.Activate();
@@ -38,11 +39,14 @@ internal sealed partial class WindowsChecks
                     await Web.EvaluateResultAsync("scrollTo(0,800)");
                     await WaitForScript("String(scrollY)", value => double.TryParse(value, out var y) && y > 0, "Screenshot scrolled fixture");
                     var before = await ScreenshotFixture();
+                    await WaitScreenshotPaint(before, $"{fold}-{angle}");
                     foreach (var target in new[] { "viewport", "device" })
                     {
                         using var response = await http.PostAsJsonAsync("api/screenshot", new { target });
                         response.EnsureSuccessStatusCode();
                         var bytes = await response.Content.ReadAsByteArrayAsync();
+                        File.WriteAllBytes(Path.Combine(Program.Output, $"{fold}-{angle}-{target}.png"), bytes);
+                        Save($"{fold}-{angle}-{target}-state", JsonSerializer.SerializeToElement(new { before, host = State() }));
                         using var stream = new MemoryStream(bytes);
                         using var bitmap = new Bitmap(stream);
                         Check(response.Content.Headers.ContentType?.MediaType == "image/png" &&
@@ -62,7 +66,6 @@ internal sealed partial class WindowsChecks
                                 "Captured fixed-marker pixels agree with the DOM viewport coordinates.");
                         }
                         Check((await ScreenshotFixture()).GetRawText() == before.GetRawText(), "Screenshot preserves document, viewport, scroll range/position and fixed rectangles.");
-                        File.WriteAllBytes(Path.Combine(Program.Output, $"{fold}-{angle}-{target}.png"), bytes);
                     }
                 }
             var controller = Web.DeveloperTools;
@@ -79,7 +82,7 @@ internal sealed partial class WindowsChecks
             using var decoded = System.Drawing.Image.FromStream(jpegStream);
             Check(decoded.RawFormat.Guid == ImageFormat.Jpeg.Guid && (await ScreenshotFixture()).GetRawText() == state.GetRawText(),
                 "CDP returns a real native JPEG without changing the page.");
-            controller.ApplyCdp(false, new(false, 0));
+            controller.ApplyCdp(false, new(false, baseAddress.Port));
             Save("screenshots", State());
             Console.WriteLine($"PASS screenshots: {assertions} assertions; eight poses, native viewport/device PNG, fixed geometry and CDP JPEG.");
         }
@@ -90,5 +93,44 @@ internal sealed partial class WindowsChecks
     {
         using var document = JsonDocument.Parse((await Web.EvaluateResultAsync("JSON.stringify(screenshotFixtureState())"))!);
         return document.RootElement.Clone();
+    }
+
+    private async Task WaitScreenshotPaint(JsonElement fixture, string name)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var marker = fixture.GetProperty("fixed").EnumerateArray().Single(item => item.GetProperty("id").GetString() == "marker");
+        var attempts = 0;
+        while (true)
+        {
+            var browser = Web.WindowsPanel!.Browser;
+            var geometry = State().GetProperty("webKit").GetProperty("logicalGeometry");
+            var left = geometry.GetProperty("left").GetDouble();
+            var top = geometry.GetProperty("top").GetDouble();
+            Point Pixel(double x, double y) => new(WindowsWebKitView.RasterClipEdge((left + x) * browser.BackingScale),
+                WindowsWebKitView.RasterClipEdge((top + y) * browser.BackingScale));
+            var footerPoint = Pixel(fixture.GetProperty("width").GetDouble() / 2, fixture.GetProperty("height").GetDouble() - 4);
+            var markerPoint = Pixel(marker.GetProperty("x").GetDouble() + marker.GetProperty("width").GetDouble() / 2,
+                marker.GetProperty("y").GetDouble() + marker.GetProperty("height").GetDouble() / 2);
+            // Reading the retained source does not request a paint or alter the
+            // page. DOM readiness alone can precede the fixture's first frame.
+            using var source = NativePaintEvidence.CaptureLiveRaster(browser);
+            attempts++;
+            bool Matches(Point point, int red, int green, int blue)
+            {
+                if (!new Rectangle(Point.Empty, source.Size).Contains(point)) return false;
+                var color = source.GetPixel(point.X, point.Y);
+                return Math.Abs(color.R - red) < 4 && Math.Abs(color.G - green) < 4 && Math.Abs(color.B - blue) < 4;
+            }
+            var accepted = Matches(footerPoint, 121, 26, 194) && Matches(markerPoint, 25, 181, 105);
+            if (!accepted && attempts == 1)
+                source.Save(Path.Combine(Program.Output, name + "-pending-source.png"), ImageFormat.Png);
+            if (accepted || elapsed.Elapsed > TimeSpan.FromSeconds(3))
+            {
+                Save(name + "-paint-readiness", JsonSerializer.SerializeToElement(new { accepted, attempts, elapsedMilliseconds = elapsed.Elapsed.TotalMilliseconds, fixture, host = State() }));
+                Check(accepted, "The authored screenshot fixture reaches the live native source without forcing repaint.");
+                return;
+            }
+            await Task.Delay(50);
+        }
     }
 }

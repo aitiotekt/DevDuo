@@ -37,7 +37,8 @@ $previousInputRoot = Use-WebKitBuildTree $repository $build $identityHash
 Initialize-PinnedSource $source 'https://github.com/WebKit/WebKit.git' $pin.revision @('Source', 'Tools', 'WebKitLibraries')
 $paintingPatch = Join-Path $PSScriptRoot 'patches/0002-windows-content-painting.patch'
 $developerPatch = Join-Path $PSScriptRoot 'patches/0003-windows-developer-api.patch'
-Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch)
+$desktopPatch = Join-Path $PSScriptRoot 'patches/0004-windows-desktop-integration.patch'
+Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch)
 $registry = Get-Content -LiteralPath (Join-Path $source 'vcpkg-configuration.json') -Raw | ConvertFrom-Json
 $vcpkgRoot = Join-Path $cache ('vcpkg-' + $registry.'default-registry'.baseline.Substring(0, 8))
 Initialize-PinnedSource $vcpkgRoot 'https://github.com/microsoft/vcpkg.git' $registry.'default-registry'.baseline @('scripts', 'triplets')
@@ -75,6 +76,7 @@ $inputFiles = @('mise.toml', 'mise.lock', 'mise.windows-webkit.toml', 'mise.wind
     'native/webkit/windows/patches/0001-windows-host-viewport-api.patch',
     'native/webkit/windows/patches/0002-windows-content-painting.patch',
     'native/webkit/windows/patches/0003-windows-developer-api.patch',
+    'native/webkit/windows/patches/0004-windows-desktop-integration.patch',
     'native/webkit/windows/runtime.lock.json')
 $inputRecords = foreach ($relative in $inputFiles) {
     $path = Join-Path $repository $relative
@@ -88,6 +90,7 @@ $inputRecords = foreach ($relative in $inputFiles) {
     schemaVersion = 1; upstreamRevision = $pin.revision; patchSha256 = Get-WebKitFileHash $patch
     paintingPatchSha256 = Get-WebKitFileHash $paintingPatch
     developerPatchSha256 = Get-WebKitFileHash $developerPatch
+    desktopPatchSha256 = Get-WebKitFileHash $desktopPatch
     testOnlyIPCRequired = $false; backForwardListSwift = $false; cmakeArguments = $arguments
     inputFiles = @($inputRecords); clangSha256 = $clangHash
     systemInputs = $systemInputs; buildTreeIdentity = $identityHash
@@ -113,7 +116,7 @@ foreach ($name in @('WebKit2.dll', 'WebCore.dll', 'JavaScriptCore.dll', 'WebKitW
 }
 $exports = & (Get-Command dumpbin).Source /exports (Join-Path $runtime 'WebKit2.dll')
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect host API exports' }
-foreach ($name in @('WKViewGetViewportHostAPIVersion', 'WKViewSetObscuredContentInsets', 'WKViewSetUnobscuredSizeRange', 'WKViewSetHostPresentationGeometry', 'WKViewGetContentColorAPIVersion', 'WKViewRequestContentEdgeColor', 'WKViewGetHostAppearanceAPIVersion', 'WKViewSetHostDarkAppearance', 'WKViewSetUsesOffscreenRendering', 'WKViewGetHostRenderingStatistics', 'WKViewGetHostDeveloperAPIVersion', 'WKInspectorStartHostRemoteServer', 'WKInspectorStopHostRemoteServer', 'WKInspectorGetHostRemoteServerPort', 'WKUserContentControllerRemoveHostUserScript', 'WKViewGetFixedContainerColorAPIVersion', 'WKViewRequestFixedContainerColors', 'WKViewGetHostScrollIndicatorAPIVersion', 'WKViewSetHostScrollIndicatorEnabled', 'WKViewRequestHostScrollIndicatorState')) {
+foreach ($name in @('WKViewGetHostTextInputState', 'WKViewCopyHostTextInputDiagnostics', 'WKViewResetHostTextInput', 'WKViewCopyHostAccessibilityTree', 'WKViewPerformHostAccessibilityAction', 'WKViewGetHostDesktopAPIVersion', 'WKViewSetHostDesktopGeometry', 'WKViewGetViewportHostAPIVersion', 'WKViewSetObscuredContentInsets', 'WKViewSetUnobscuredSizeRange', 'WKViewSetHostPresentationGeometry', 'WKViewGetContentColorAPIVersion', 'WKViewRequestContentEdgeColor', 'WKViewGetHostAppearanceAPIVersion', 'WKViewSetHostDarkAppearance', 'WKViewSetUsesOffscreenRendering', 'WKViewGetHostRenderingStatistics', 'WKViewGetHostDeveloperAPIVersion', 'WKInspectorStartHostRemoteServer', 'WKInspectorStopHostRemoteServer', 'WKInspectorGetHostRemoteServerPort', 'WKUserContentControllerRemoveHostUserScript', 'WKViewGetFixedContainerColorAPIVersion', 'WKViewRequestFixedContainerColors', 'WKViewGetHostScrollIndicatorAPIVersion', 'WKViewSetHostScrollIndicatorEnabled', 'WKViewRequestHostScrollIndicatorState')) {
     if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
 }
 $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
@@ -124,7 +127,7 @@ $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
 [ordered]@{
     schemaVersion = 1; upstreamRevision = $pin.revision
     inputFiles = @($inputRecords)
-    hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 1; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
+    hostDesktopApiVersion = 1; hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 1; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
     runtimeAcceptancePassed = $false
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $build 'runtime-manifest.json') -Encoding utf8
 exit 0

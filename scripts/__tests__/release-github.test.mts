@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
+import { loadMetadata } from "../lib/metadata.mts";
 import { repoRoot } from "../lib/paths.mts";
 import { digest } from "../lib/release-artifacts.mts";
 import {
@@ -16,6 +17,7 @@ import {
   type Runner,
   tagCommit,
 } from "../lib/release-github.mts";
+import { parseVersion } from "../lib/release-version.mts";
 
 const sha = "a".repeat(40),
   tag = "v1.2.3-beta.1";
@@ -317,10 +319,21 @@ test("only an explicit true value selects a dry run", () => {
 });
 
 test("publication CLIs refuse dry runs before reading assets or mutating GitHub", () => {
+  const metadata = loadMetadata();
+  // Reach the dry-run guard with a valid release source for the current channel.
+  // Stable versions require their exact tag; development versions cannot use tags.
+  const applicationRef =
+    parseVersion(metadata.project.version).channel === "dev"
+      ? `refs/heads/${metadata.release.branch}`
+      : `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`;
   for (const [script, command, ref] of [
-    ["release.mts", "publish", "refs/heads/release"],
-    ["release.mts", "ensure-tag", "refs/heads/release"],
-    ["webkit-release.mts", "publish", "refs/heads/main"],
+    ["release.mts", "publish", applicationRef],
+    ["release.mts", "ensure-tag", applicationRef],
+    [
+      "webkit-release.mts",
+      "publish",
+      `refs/heads/${metadata.webkit.releaseBranch}`,
+    ],
   ]) {
     const result = spawnSync(
       process.execPath,

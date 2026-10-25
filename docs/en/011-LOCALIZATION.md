@@ -42,7 +42,7 @@ The active simulated tab shows the current document's actual title, without tran
 
 ## Verification and limits
 
-Run `mise exec -- just test` for the portable tests, or select the shared-state and localization harnesses:
+Select the affected shared-state and localization checks:
 
 ```sh
 mise exec -- just test-core
@@ -51,7 +51,7 @@ mise exec -- just test-localization
 
 `tests/DevDuo.Localization.Tests` links the actual localization, profile, scene and options sources. It checks catalog key and placeholder parity, nonempty text, formatting, fallback, explicit/system language resolution, language preference restart/corruption/write-failure behavior, page resource keys, welcome-page translation and unchanged measured option values across locale payloads. `tests/DevDuo.Core.Tests` separately covers host-preference defaults/round trips/field validation, calibration labels, URL normalization, navigation payloads, all eight mappings and 24 states, coordinate transforms, title state and scroll policies. Both use the repository-managed .NET SDK, committed locks and no external test runner. `just test-debugging` checks real loopback CDP service boundaries; `just test-windows` runs the separate native app scenarios and opens Windows UI.
 
-Compilation and portable tests cannot establish native runtime correctness. On macOS, separately verify language changes while a page is loaded and scrolled, native accessibility labels, selected mode/profile preservation, the color laboratory, save/error messages and preference restoration after restart. Inspect viewport and native-frame telemetry before and after switching languages. On Windows, perform the equivalent runtime checks, including the Windows WebKit error path, input and DPI behavior. A Windows cross-build alone does not establish those results. See [Platform parity and macOS acceptance](015-PLATFORM-PARITY.md), [Windows handoff](009-WINDOWS-HANDOFF.md) and [validation](003-CALIBRATION-WORKFLOW.md).
+Compilation and portable tests cannot establish native runtime correctness. On macOS, separately verify language changes while a page is loaded and scrolled, native accessibility labels, selected mode/profile preservation, the color laboratory, save/error messages and preference restoration after restart. Inspect viewport and native-frame telemetry before and after switching languages. On Windows, select the equivalent affected runtime checks on one current actual DPI; add input/DPI coverage only when those paths change. A Windows cross-build alone does not establish those results. See [Platform parity and macOS acceptance](015-PLATFORM-PARITY.md), [Windows handoff](009-WINDOWS-HANDOFF.md) and [validation](003-CALIBRATION-WORKFLOW.md).
 
 For isolated native acceptance runs, set `DEVDUO_PREFERENCES_PATH` before process startup to a dedicated preference file. The Windows harness uses an OS temporary path so a browser/native crash cannot overwrite the user's real settings. This does not change the preference schema or runtime language behavior.
 

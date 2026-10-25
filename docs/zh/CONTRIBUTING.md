@@ -73,7 +73,12 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-navigation-latency` | HTTP/内联冷启动、首次源像素、无外链导航计时及独立进程的 Network 崩溃恢复；会打开 Windows 窗口 |
 | `just test-windows-presentation` | 检查 WebKit 物理窗口尺寸、重绘区域及最大化/Inspector/恢复后的实时像素，会打开 Windows 窗口 |
 | `just test-windows-presentation-insets` | 单独检查工具栏收起后新露出的未经修改颜色页源像素；会打开 Windows 窗口，与最终 DWM 验收分开 |
+| `just test-windows-presentation-rotations` | 检查八种姿态、弹窗关闭和快速旋转后的新文档动画帧；会打开 Windows 窗口，与完整固定遮罩历史分开 |
 | `just test-windows-fixed-overlay` | 原生弹窗遮罩视口 alpha、inset 颜色及几何保持检查；会打开 Windows 窗口，不代表完整 Safari 光学验收 |
+| `just test-windows-page-dialogs` | 真实 WebKit alert/confirm/prompt listener、本地化原生界面、系统键盘/UIA、DPI 及导航/销毁取消 |
+| `just test-windows-accessibility` | 实际 Windows UIA 页面名称、值、动作、旋转边界及过期文档拒绝；需要 desktop API v1 |
+| `just test-windows-popups` | 八种机身姿态下真实原生 select 锚点、鼠标／键盘选择及 Escape 关闭 |
+| `just test-windows-ime` | 已安装中文文本服务在 input／textarea／contenteditable 中的预编辑、候选提交、取消及选区替换 |
 | `just test-windows-screenshots` | 原生 REST/CDP 截图、八种姿态及滚动/fixed 几何保持；会打开 Windows 窗口 |
 | `just test-windows-scroll-indicators` | 原生输入、淡出、CSS 抑制及屏幕外缘指示器像素与页面几何保持检查；会打开 Windows 窗口，不声明 Safari 精确线宽或淡出时长 |
 | `just test-windows-run-loop` | 在外部 Windows 消息泵和 WTF 自有循环下检查实际固定版本 WTF 定时器；需要已构建的原生运行时 |
@@ -90,6 +95,8 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 
 Core、本地化和调试检查使用无外部测试框架依赖的 .NET 检查程序及已提交锁文件，不启动原生应用。Windows 应用场景位于 `tests/DevDuo.Windows.Tests/Checks/`，生命周期/服务支持位于 `Harness/`，截图/来源支持位于 `Evidence/`。构建该项目不会执行原生检查。可移植结果、编译和实际窗口验收应分别报告；跨平台交接见[平台对齐与macOS验收](015-PLATFORM-PARITY.md)。
 
+Windows 增量工作采用[已验收里程碑与回归选择规则](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)。未受影响的结果沿用基线，只在当前可用的单一实际 DPI 执行相关 recipe；系统缩放切换、全部原生 recipe 和三 DPI 矩阵都不是日常要求。`just verify` 仍是可移植检查／构建的集成入口，不会启动 Windows 原生验收套件。只有引擎输入发生变化才重建引擎，文档或托管宿主修改不需要重建 WebKit。
+
 自定义参数直接传给对应生态，例如 `mise exec -- uv run --locked devduo-tools --help` 或 `mise exec -- pnpm --dir docsite dev --port 5174 --strictPort`。重新构建后需重启静态 preview。安装可选 hooks 使用 `mise exec -- prek install`。
 
 构建和缓存放在 `temp/build/`、`temp/cache/`；.NET 还使用标准且被忽略的 `bin/`、`obj/`。`just clean` 保留应用包、依赖环境和原始证据。一次性验证副本使用系统临时目录，用完清理。原始截图与测量保存在各自的忽略目录。`.gitignore` 不会移除已有暂存项，发布前仍需检查差异。
@@ -100,7 +107,7 @@ Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；�
 
 `just test-debugging` 使用真实回环 HTTP/WebSocket 检查 CDP 发现、token、Origin 及生命周期，不证明原生页内注入通过。`just prepare-debugging` 从锁定的 chii/chobitsu 复制离线资源到 `temp/build/debugging/`，应用 dev/build/package 命令均依赖该步骤；直接使用 `dotnet` 命令前先执行它，安装后用户无需 Node。
 
-原生开发工具和代理需单独验收：独立 Inspector 不改变视口，原生远程连接/断开，真实 chii DOM/Console 交互，目标导航后的前端重连，监听释放，以及各平台代理路由。Windows 需包含第三宿主补丁及 `hostDeveloperApiVersion: 1` 的新运行时；macOS 使用系统 WebKit，本次改动仍需原生验收。参见[开发工具架构](001-ARCHITECTURE.md#开发工具与页面代理)。
+原生开发工具和代理需单独验收：独立 Inspector 不改变视口，原生远程连接/断开，真实 chii DOM/Console 交互，目标导航后的前端重连，监听释放，以及各平台代理路由。Windows 需包含第三宿主补丁及 `hostDeveloperApiVersion: 1` 的新运行时；macOS 使用系统 WebKit，当前原生验收状态见[平台对齐](015-PLATFORM-PARITY.md)。参见[开发工具架构](001-ARCHITECTURE.md#开发工具与页面代理)。
 
 ## 依赖与版本
 
@@ -116,7 +123,7 @@ Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；�
 
 测试应执行行为并验证结果或失败状态。禁止扫描源码或工作流、任务、工具配置，断言命令写法、固定 job/runner 名称或偏好的接线方式；正则、token 匹配等命令快照变体也不允许。应运行函数、CLI、协议或原生操作来验证。配置 schema、生成产物和外部 API 契约通过可观察行为覆盖。此要求由评审落实，不再新增扫描测试来检查测试。
 
-同步维护英中源文件、语言内链接和双向页脚。根目录英文规范文件是主源，`docs/en` 用相对符号链接引用，`docs/zh` 保存翻译；`docsite` 链接同一批源文件。增删技术页时同步 `scripts/docs-manifest.json`，不维护网站内容副本。
+同步维护英中源文件、语言内链接和双向页脚。专题以当前行为／流程及长期有效裁决为主，逐次日志放在证据中，摘要指标只保留在当前验收基线。根目录英文规范文件是主源，`docs/en` 用相对符号链接引用，`docs/zh` 保存翻译；`docsite` 链接同一批源文件。增删技术页时同步 `scripts/docs-manifest.json`，不维护网站内容副本。
 
 标识符与代码注释使用英语。评审说明改后行为、相关检查与未验证平台。原生变更需平台构建及真实 UI 验收；Windows 交叉编译不能替代运行。区分模拟器坐标和硬件尺寸，保持原始证据完整；修改标定数据前阅读[测量约定](002-MEASUREMENT-CONTRACT.md)。未经请求不 commit 或推送。
 

@@ -1,7 +1,7 @@
 schema_version = 1
 
 [project]
-version = "0.1.0-beta.3"
+version = "0.1.0"
 display_name = "DevDuo"
 binary_name = "DevDuo"
 identifier = "local.DevDuo.Calibration"
@@ -35,7 +35,7 @@ extension = "zip"
 
 # The engine is versioned and released independently from the application.
 [webkit]
-version = "0.1.0-beta.1"
+version = "0.1.0"
 tag_prefix = "webkit-v"
 asset_prefix = "DevDuo-WebKit"
 target = "win-x64"

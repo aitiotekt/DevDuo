@@ -23,14 +23,15 @@ internal static class WindowsWebKitApi
         var manifestPath = Path.Combine(directory, "..", "runtime-manifest.json");
         using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
         var root = manifest.RootElement;
-        if (root.GetProperty("hostViewportApiVersion").GetInt32() != 2 ||
+        if (!root.TryGetProperty("hostDesktopApiVersion", out var desktop) || desktop.GetInt32() != 1 ||
+            root.GetProperty("hostViewportApiVersion").GetInt32() != 2 ||
             !root.TryGetProperty("contentPaintingVersion", out var painting) || painting.GetInt32() != 2 ||
             !root.TryGetProperty("contentColorApiVersion", out var contentColor) || contentColor.GetInt32() != 1 ||
             !root.TryGetProperty("hostAppearanceApiVersion", out var appearance) || appearance.GetInt32() != 1 ||
             !root.TryGetProperty("hostDeveloperApiVersion", out var developer) || developer.GetInt32() != 1 ||
             !root.TryGetProperty("hostFixedContainerColorApiVersion", out var fixedContainer) || fixedContainer.GetInt32() != 1 ||
             !root.TryGetProperty("hostScrollIndicatorApiVersion", out var scrollIndicator) || scrollIndicator.GetInt32() != 1)
-            throw new InvalidOperationException("Windows WebKit requires viewport v2, painting v2, content color v1, host appearance v1, host developer v1, fixed-container color v1 and scroll indicator v1. Rebuild the pinned runtime.");
+            throw new InvalidOperationException("Windows WebKit requires desktop v1, viewport v2, painting v2, content color v1, host appearance v1, host developer v1, fixed-container color v1 and scroll indicator v1. Rebuild the pinned runtime.");
         if (!SetDefaultDllDirectories(0x1000) || AddDllDirectory(directory) == 0)
             throw new InvalidOperationException("Cannot configure the Windows WebKit dependency search path.");
         var loaded = LoadLibraryExW(Path.Combine(directory, "WebKit2.dll"), 0, 0x1100);
@@ -41,6 +42,8 @@ internal static class WindowsWebKitApi
             if (import?.Value == Library && !NativeLibrary.TryGetExport(loaded, import.EntryPoint ?? method.Name, out _))
                 throw new InvalidOperationException("Required Windows WebKit export missing: " + method.Name);
         }
+        var desktopVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostDesktopAPIVersion"));
+        if (desktopVersion() != 1) throw new InvalidOperationException("Host desktop API v1 export missing.");
         var version = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetViewportHostAPIVersion"));
         if (version() != 2) throw new InvalidOperationException("Host viewport API v2 export missing.");
         var colorVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetContentColorAPIVersion"));
@@ -98,6 +101,22 @@ internal static class WindowsWebKitApi
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void SameDocumentCallback(nint page, nint navigation, int kind, nint data, nint context);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void CrashCallback(nint page, nint context);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate uint VersionCallback();
+    // WKPageUIClientV6 from the pinned WKPageUIClient.h. The first 58 callback
+    // slots (versions 0–5 and createNewPage) remain unset; no private API is used.
+    [StructLayout(LayoutKind.Sequential)] internal struct UiClient
+    {
+        public int Version;
+        public nint Info;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 58)] public nint[] UnusedCallbacks;
+        public nint Alert, Confirm, Prompt, Unused;
+    }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void DialogCallback(nint page, nint message, nint frame, nint origin, nint listener, nint context);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void PromptCallback(nint page, nint message, nint value, nint frame, nint origin, nint listener, nint context);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKPageSetPageUIClient(nint page, ref UiClient client);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKPageRunJavaScriptAlertResultListenerCall(nint listener);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKPageRunJavaScriptConfirmResultListenerCall(nint listener, [MarshalAs(UnmanagedType.I1)] bool result);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKPageRunJavaScriptPromptResultListenerCall(nint listener, nint value);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern nint WKSecurityOriginCopyToString(nint origin);
 
     internal static string String(nint value)
     {
@@ -114,6 +133,13 @@ internal static class WindowsWebKitApi
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetDefaultDllDirectories(uint flags);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern nint AddDllDirectory(string directory);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern nint LoadLibraryExW(string file, nint reserved, uint flags);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetHostDesktopAPIVersion();
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewResetHostTextInput(nint view);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern nint WKViewCopyHostTextInputDiagnostics(nint view);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetHostTextInputState(nint view, out uint error, out ulong editorId);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern nint WKViewCopyHostAccessibilityTree(nint view);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool WKViewPerformHostAccessibilityAction(nint view, nint document, ulong objectId, uint action, nint value);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool WKViewSetHostDesktopGeometry(nint view, nint target, int degrees, int offsetX, int offsetY);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetViewportHostAPIVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetHostDeveloperAPIVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool WKInspectorStartHostRemoteServer(nint address, ushort port);

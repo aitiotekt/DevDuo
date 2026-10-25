@@ -2,9 +2,15 @@
 
 ## 当前范围
 
-DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Windows WebKit 实现，已完成有限视口/内容延伸原生验收，更广输入、DPI 和兼容性仍待验证。Linux 平台检查与发布由 `[platforms.linux]` 的 `check = false`、`release = false` 关闭；工作流计划和文档仍可使用 Ubuntu。构建和签名成功不代表原生验收通过，也不代表已取得模拟器衍生几何数据的再分发权。保留[第三方声明](THIRD_PARTY_NOTICES.md)。
+DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Windows WebKit 实现，已完成有限视口/内容延伸原生验收，能力与交付限制由平台指南记录。Linux 平台检查与发布由 `[platforms.linux]` 的 `check = false`、`release = false` 关闭；工作流计划和文档仍可使用 Ubuntu。构建和签名成功不代表原生验收通过，也不代表已取得模拟器衍生几何数据的再分发权。保留[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-发布流水线生成自带 .NET 10 的 **macOS 27 arm64** 和 **Windows x64** 包。Windows 唯一依赖固定源码构建的 WebKit 宿主运行时，独立发布，再按 metadata 的精确版本下载并放入 Windows 应用归档的 `webkit/`。在应用旁 `webkit/` 下安装完整 `bin` 目录与清单，或设置绝对路径 `DEVDUO_WEBKIT_RUNTIME`；文件缺失或不兼容即明确报错。官方预编译测试运行时不能替代宿主 API v2，见 [Windows WebKit 初始化](014-WINDOWS-WEBKIT.md#avalonia-后端)。macOS 使用 GitHub 的 `xcode-27` 预览运行器，已对照[运行器清单](https://github.com/actions/runner-images#available-images)核实；运行器可用性是外部依赖。原有 `just package-macos` 仍生成未签名、依赖外部 .NET 的开发包。发布包保留 `local.DevDuo.Calibration` Bundle ID，直接使用原生应用启动器。
+发布流水线生成自带 .NET 10 的 **macOS 27 arm64** 和 **Windows x64** 包。Windows 唯一依赖固定源码构建的 WebKit 宿主运行时，独立发布，再按 metadata 的精确版本下载并放入 Windows 应用归档的 `webkit/`。在应用旁 `webkit/` 下安装完整 `bin` 目录与清单，或设置绝对路径 `DEVDUO_WEBKIT_RUNTIME`；文件缺失或不兼容即明确报错。官方预编译测试运行时不能替代必需的正式宿主 API，见 [Windows WebKit 初始化](014-WINDOWS-WEBKIT.md#avalonia-后端)。macOS 使用 GitHub 的 `xcode-27` 预览运行器，已对照[运行器清单](https://github.com/actions/runner-images#available-images)核实；运行器可用性是外部依赖。原有 `just package-macos` 仍生成未签名、依赖外部 .NET 的开发包。发布包保留 `local.DevDuo.Calibration` Bundle ID，直接使用原生应用启动器。
+
+## 交付前提
+
+发布、签名及 CI 成功不代表原生验收或再分发权。Windows 的 desktop API v1 修复已建立本地限定里程碑；metadata 为 DevDuo 0.1.0 选择 WebKit 0.1.0，应先发布引擎，再使用该依赖打包并验收应用。按[增量回归策略](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)沿用未受影响的证据，打包本身不要求再次多 DPI 审计。macOS 验收及能力限制见[平台能力](015-PLATFORM-PARITY.md)。
+
+运行时完整验收标记保持 false。UIA TextPattern／IAccessible2、广泛兼容性及故障注入限制由 [Windows 交接](009-WINDOWS-HANDOFF.md#当前状态)明确记录；第三方／模拟器素材再分发审查独立于功能测试。
 
 ## CI 职责与资源预算
 
@@ -30,7 +36,7 @@ macOS 官方应用发行包必须通过 Developer ID 签名、Apple 公证并附
 
 ## Windows WebKit 运行时发布
 
-应用 dev/build/package 命令执行 `just prepare-debugging`，将根 pnpm 锁定的精确 chii/chobitsu 浏览器资源及许可复制到 `temp/build/debugging/`，MSBuild 再将该树作为 `debugging/` 复制到应用输出/发布目录。安装后的应用通过 .NET 和原生 WebView 离线提供资源，不要求用户安装 Node，也不启动 chii Node 服务。每个包须保留生成清单及许可目录；资源缺失时启用 CDP 会明确失败。Windows 运行时包还需提供 `hostDeveloperApiVersion: 1` 和第三开发工具补丁，仅旧视口构建成功并不够。原生运行时验收与资源打包、CDP 传输测试分别记录。
+应用 dev/build/package 命令执行 `just prepare-debugging`，将根 pnpm 锁定的精确 chii/chobitsu 浏览器资源及许可复制到 `temp/build/debugging/`，MSBuild 再将该树作为 `debugging/` 复制到应用输出/发布目录。安装后的应用通过 .NET 和原生 WebView 离线提供资源，不要求用户安装 Node，也不启动 chii Node 服务。每个包须保留生成清单及许可目录；资源缺失时启用 CDP 会明确失败。Windows 运行时包须提供当前宿主要求的全部 API，包括 desktop API v1；旧视口／开发 API 构建不够。原生运行时验收与资源打包、CDP 传输测试分别记录。
 
 `devduo-metadata.toml` 的 `[webkit]` 统一管理独立的引擎版本、tag/产物前缀、Windows 目标、DLL 标识、上游 revision、手动发布分支和 runner 标签。当前 ABI 保留上游 `WebKit2.dll` 名称，ZIP 名称按 `<asset_prefix>-<version>-win-x64.zip` 派生。应用版本变化不会提升引擎版本。`runtime.lock.json` 继续固定官方诊断归档，并须与 metadata 的上游 revision 一致；更新上游时还须审查原生绑定及其要求的能力。
 

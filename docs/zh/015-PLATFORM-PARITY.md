@@ -1,143 +1,71 @@
-# 平台能力对照与 macOS 原生交接
+# 平台能力与 macOS 验收
 
-本文跟踪 Windows 实施向 macOS 的集成，依据[Windows 交接](009-WINDOWS-HANDOFF.md)与[校准流程](003-CALIBRATION-WORKFLOW.md)中的限定记录编写。下文列出本次实际原生检查，未测项目仍待验收。对照目标是[已接受的场景矩阵](005-SAFARI-SCENES.md)，不是 Windows 桌面呈现。保留 macOS 系统 WKWebView、生产 Windows WebKit Port，以及 Safari/沉浸容器。
+两个平台均以 [Safari 场景矩阵](005-SAFARI-SCENES.md)为参照。Windows 使用固定源码 WebKit Windows Port，macOS 使用系统 WKWebView；共享源码和另一平台的测试不能认证本平台原生行为。
 
-分别记录四种状态：**已实现**（存在源码）、**已编译**（该平台构建了精确版本）、**已原生检查**（对该二进制执行了限定交互）及**待验证/不支持**。共享测试、Windows 通过、旧 macOS 构建或模拟器观察不能填入当前 macOS 原生通过栏。校准文档中较早的 macOS 布局、材质和语言观察仍是历史记录；后续开发工具、身份/标题及 fixed-container Swift 修改需要当前 macOS 编译与呈现检查。
+## 当前验收状态
+
+维护者于 2026-10-28 确认 beta.3 候选版的 macOS 手工验收完成，逐项回执由该轮记录保存。本轮 Windows 文档工作不增加 macOS 通过结论，后续原生变化仍需针对性验证。
+
+Windows 沿用 [`windows-desktop/2026-10-29`](009-WINDOWS-HANDOFF.md#当前状态) 里程碑，保留运行时／宿主归属及待完成的依赖／应用包交付门槛。实现、编译、原生检查和不支持行为分别记录；构建、签名或共享测试不代表光学／输入一致。
 
 ## 当前实现与差异
 
-| 领域与源码 | Windows | macOS 及验收边界 |
+| 范围 | Windows | macOS |
 | --- | --- | --- |
-| 被测页面引擎：`src/DevDuo/` 下的 `windows/WindowsWebKitApi.cs`、`macos/WebViewBridge.swift` | 固定源码运行时、必需宿主 ABI 与完整性清单 | 系统 WKWebView，不需要 Windows 引擎构建/归档。记录实际系统、WebKit 与 SDK；系统能力可能不同。 |
-| 存储 | 持久 `DevDuo/WebKit`，绝对路径 `DEVDUO_WEBKIT_PROFILE` 可隔离测试 | `WKWebViewConfiguration` 保留默认持久网站数据存储，没有对应的 macOS profile 覆盖实现。偏好隔离不隔离网站数据。跨进程检查使用独立测试 origin/token 和相同应用身份。 |
-| 移动身份：`Browser/BrowserIdentity.cs` | 首次请求前设置原生自定义 UA，已有 Windows 请求头/重定向检查记录 | 加载前设置 `customUserAgent`；须在 macOS 核实首次请求头与 `navigator.userAgent`。观察到的精确 iPhone Safari 字符串含冻结的 `OS 18_7` 与 `Version/27.0`，属于兼容身份，不证明实际桌面引擎、iOS 版本或物理硬件。两种容器共用它；没有单独测量 App WebView 身份。 |
-| 标题/引导页：`Browser/PageTitleState.cs`、`Browser/WelcomePage.cs`、`macos/WebViewBridge.swift` | 按文档确认门控选中示意标签标题，提供离线引导页与应用自有文本本地化 | Swift 独立按 committed/已观察文档身份门控标题。引导页更新自有文本节点而不导航。检查动态/空/长标题及延迟 provisional 加载；共享标题测试不验证原生 KVO 顺序。 |
-| 呈现：`Browser/NativeWebView.cs`、`Host/MainWindow.cs` | 旋转/配置更新现有浏览器 | `devduo_update_scene`/`devduo_configure` 更新现有容器。旋转、语言、Fit、轮廓、外观必须保持文档；新合法范围可能夹紧滚动。折叠和容器模式切换会有意重建容器及历史。 |
-| 延伸绘制 | 生产四侧 inset/绘制路径，Windows 限定结果见 009/014 | 支持的系统在 Closed 侧栏布局使用完整视图 obscured inset；Open 顶栏仍是预留 frame 近似，不是相同四侧引擎路径。侧边/根背景填充与系统材质必须保留近似标签。 |
-| 本地 Inspector | 独立原生前端，已有 Windows F12/Ctrl+Shift+I 窗口观察 | 运行时检查私有 Inspector/attachment selector，以隐藏的附着目标禁止停靠，不再允许 Inspector 改动被测浏览器尺寸。有限等待核实真实可见状态，缺少能力明确报错。除宿主菜单外，WKWebView 直接处理 F12/Ctrl+Shift+I。 |
-| 原生远程检查（WIP） | 显式、无认证的 WebKit Inspector TCP listener，与 CDP 分开 | `isInspectable`（macOS 13.3+）提供 Safari Develop 发现。宿主不创建 Windows TCP listener；地址/端口/LAN 字段不配置 Safari 发现。分别验证本地 Inspector 冲突与停止后的发现移除。 |
-| CDP/chii：`DeveloperTools/`、`macos/DeveloperWebViewBridge.swift` | 页面插桩加独立系统 WebView2 前端 | 相同的 token 保护页面 CDP 服务；前端使用独立、非持久系统 WKWebView 和自有工具 UA，不得替换被测页面或共享其存储。实际 chii 兼容性待验证。JavaScript CDP 子集不等于引擎调试、性能分析或完整网络覆盖。 |
-| 代理 | system、direct、无认证自定义 HTTP/HTTPS/SOCKS5 | macOS 14+ 通过 `WKWebsiteDataStore.proxyConfigurations` 提供 system/custom；UI 禁用 direct，桥接明确拒绝。没有认证代理支持。首次加载前应用，后续请求验证路由，不重载当前文档。默认存储在被测视图之间共享。 |
-| fixed/container 颜色 | 原生 fixed-container color API 加宿主合成，已有 alpha/dialog 限定检查 | 能力检查通过时启用系统 fixed-container 扩展，并移除竞争的宿主侧边/页脚填充；否则旧 fallback 仅近似符合条件的不透明全宽页脚/根背景。fallback 不能认证半透明 fixed 与 dialog backdrop。 |
-| 滚动指示器 | 原生资格/CSS/输入状态，加宿主绘制的临时屏幕边缘滑块 | 遥测明确报告 `host-scene-policy-unavailable; native-acceptance-pending`。保留系统 WKWebView 滚动条与用户系统偏好，没有对应的宿主屏幕边缘策略；仅能滚动不能认定对齐。 |
+| 引擎／运行时 | 源码 WebKit 及必需宿主 API 清单 | 系统 WKWebView；记录真实 OS／WebKit／SDK 能力，不复制 Windows 运行时或修改其锁 |
+| 网站存储 | 持久 store，绝对路径 `DEVDUO_WEBKIT_PROFILE` 可隔离测试 | 默认持久网站 store，无对应 profile 覆盖；隔离宿主偏好不等于隔离网站数据 |
+| 呈现 | 完整绘制框、四向 obscured inset 和独立 backing scale | Closed 侧边布局使用支持的系统 inset，Open 顶部延伸仍是预留框／颜色近似 |
+| 呈现变化 | 旋转、语言、Fit、外框、外观和外壳设置保留视图／文档，形态／模式替换 | 相同所有权约束；原生点／backing 像素与 CSS／场景坐标保持独立 |
+| 移动身份／标题 | 首请求前设置原生兼容 UA，按文档确认标题 | Swift 回调／KVO 实现相同策略，两种容器共用观测身份 |
+| 本地 Inspector | 显示前 detach 的独立原生 Inspector | 检查私有 selector 能力，以隐藏 attachment target 防止异步 docking 缩小实测视口 |
+| 原生远程检查 | 明确的无鉴权 WebKit TCP listener | `isInspectable` 提供系统 Safari Develop 发现，Windows listener 地址／端口不配置该发现 |
+| CDP／chii | Token 保护页面桥，独立系统 WebView2 前端 | 同一页面桥，独立非持久工具 WKWebView；不声明引擎调试器或完整 CDP 兼容 |
+| 代理 | 原生 system／direct／custom HTTP／HTTPS／SOCKS5 | 支持系统上的 website-store system／custom 配置，拒绝 direct；默认 store 在被测视图间共享，两端均不提供带鉴权代理 |
+| 固定容器颜色 | 原生四边 API 及宿主填充 | 检查能力的系统延伸，否则仅有限的不透明全宽 footer／root 回退，不能据此认证半透明遮罩 |
+| 滚动指示器 | 原生资格／输入与被动场景外缘 thumb | 无对应宿主策略，系统 WebKit 滚动条和用户偏好仍有效 |
+| 玻璃与无障碍 | DirectComposition 近似，限定 WebCore AX／UIA 与讲述人支持 | 系统 AppKit 玻璃及 WKWebView 无障碍，能力与辅助技术覆盖分别验收 |
 
-表内源码名相对 `src/DevDuo/`，其余路径相对仓库根目录。测量布局、系统能力和实际观察像素是不同输入。
+`src/DevDuo/macos/WebViewBridge.swift`、`DeveloperWebViewBridge.swift` 和 `ScreenshotBridge.swift` 管理 macOS 原生行为；共享宿主／浏览器／场景逻辑位于 `Host/`、`Browser/`、`Device/`、`DeveloperTools/`。Windows 精确 API 及不支持能力见[后端指南](014-WINDOWS-WEBKIT.md)。
 
-## Beta 集成记录：2026-10-24
+## 准备 macOS 复验
 
-源码基线为 `43161d9e535ae1fafce80308c46c999a20b2c09e`，另加尚未提交的 `0.1.0-beta.1` 准备差异。私有回执、截图、记录器源码及哈希位于 `captures/desktop-validation/platform-parity/20261023T221413Z-macos/`。本会话使用独立宿主偏好与受控回环 origin，并未隔离网站数据存储。环境：macOS 27.0.1（26A434）、Xcode 27.1、macOS SDK 27.0、系统 WebKit 22625.1.29.11.28、.NET SDK 10.0.402、arm64、backing scale 2。
+mise、Xcode／macOS SDK、真实符号链接和构建命令见[贡献指南](CONTRIBUTING.md)。`just test-macos` 检查 AppKit 布局、输入策略、私有能力／回退和 Inspector 附着，不等于端到端网站或最终窗口验收。
 
-| 范围 | 结果与边界 |
-| --- | --- |
-| 构建/检查 | `just verify`、`just build-windows`、`just test-macos` 通过。自包含 macOS 候选包构建并在未设置 `DOTNET_ROOT` 时实际启动，加载库检查确认使用包内 CoreCLR；这是未正式签名的本地候选，不是签名/公证验收。交叉编译检查 Windows 托管源码，不再要求本机生成 C++ compositor；Windows 原生构建仍生成并打包该组件。macOS CI 现在执行 AppKit 断言。 |
-| M01/M02 | 离线欢迎页、真实地址输入和重定向正常。Safari 与沉浸容器的首次请求、重定向目标、子资源和 fetch 的 UA 请求头均与 `navigator.userAgent` 一致。 |
-| M03 | 正常关闭并重启后，同一 origin 的测试 localStorage、IndexedDB 与另行写入的持久 cookie 保留。服务重启后保持关闭，开发者分组重新折叠。工具配置的非持久存储已有断言，完整跨存储隔离验收仍待进行。 |
-| M04 | 八个初始机身映射得到预期视口类别，同一折叠形态内保留文档/表单。Closed 保持 scrollY 400；Open 在会话中也出现过 400→340 移动，不能据此认定普遍保留滚动位置。完整 24 态过渡仍待验收。Open 单标签开关保留文档，纵向机身视口由 951 × 543 变为 951 × 589。 |
-| M05 | 复现异步 Inspector 停靠将页面挤为 951 × 169：`isConnected` 为真早于后端恢复停靠。隐藏附着目标修复此竞态，实际独立 Inspector 窗口保持 951 × 589 视口及文档身份。随后 F12、Ctrl+Shift+I 都从原生页面焦点实际打开了该窗口，另有 AppKit 断言检查分发。 |
-| M07 | 原生注入与 token 保护的 CDP `Runtime.evaluate` 往返正常。工具窗口最初 DOM 已就绪却绘制为空白；显式的原生 flipped 布局容器修复合成呈现，实际离线前端显示 DOM、样式与盒模型，Console 求值 `1+1` 返回 `2`。另有原生布局断言检查 resize 与非持久存储。导航/重连、完整协议覆盖和 CSP/HTTPS 案例仍待验收。 |
-| M12/呈现 | 复现 90.3446% Fit 将要求的 669 点高度变为 668.9999999999999，导致视口截成 668 CSS 像素。原生子视图现使用精确场景单位，仅由祖先承担缩放。新增回归先失败，修复后在 100%、90.3446%、94%、75%、50% 通过；实际窗口约 90% Fit 保持 951 × 669 DOM/visual 视口。中文切换英语也保留文档身份、视口和滚动。其他显示器/DPI 与输入案例仍待验收。 |
-| M09–M13 | 本机系统报告 fixed-container 扩展不可用；旧实色页脚/根背景仍是近似，不能支持 alpha/dialog 延伸。Open 延伸、屏幕外缘指示器、可信 HTTPS/代理路由、完整 Fit/输入/无障碍与生命周期并未由这些检查认证。 |
+按变化选择下表组件，不重新执行所有场景；未受影响的行为沿用证据。使用隔离宿主偏好／输出和唯一测试 origin／token，不清理无关网站数据。`DEVDUO_WEBKIT_PROFILE` 不隔离 macOS 网站存储。
 
-Inspector 修复依据 WebKit 的[异步连接/停靠实现](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/Inspector/WebInspectorUIProxy.cpp)及 [macOS 附着资格判断](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/Inspector/mac/WebInspectorUIProxyMac.mm)。各受支持系统版本仍需私有 SPI 能力检查。
-
-## 准备 macOS 运行
-
-使用已解锁的真实 macOS 桌面、仓库 mise 环境，以及[贡献指南](CONTRIBUTING.md)要求的 Xcode/macOS 27 SDK。核实真实文件/目录符号链接及 `core.symlinks=true`。不要向 macOS 应用复制 Windows 运行时或改写 Windows 锁。
+`just serve` 在回环 8765 提供校准服务，需要时另开受审静态夹具服务：
 
 ```sh
-mise install
-mise exec -- just setup
-mise exec -- just doctor
-sw_vers
-xcodebuild -version
-xcrun --sdk macosx --show-sdk-version
-mise exec -- just verify
-mise exec -- just test-macos
-```
-
-把退出码和完整日志保存在新本地会话。macOS 上 `verify` 会编译应用桥接，`build-native-tests` 编译包含两份 Swift 桥接文件的原生 harness。macOS CI 执行 `test-macos`，这是 AppKit 几何/输入策略的聚焦测试，并非浏览器端到端验收，不覆盖所有开发工具、首次请求 UA、持久存储、遮罩或最终显示。目前没有与 Windows 专项原生浏览器 harness 模式对应的 macOS 命令；执行下列交互案例，再按需要添加维护的自动化。
-
-`NativeLayoutTests.swift` 按实际系统能力检查旧页脚 surface 是否让位，再临时关闭能力 flag，检查 fallback 几何、被动命中与移除，最后恢复 flag；另检查隐藏的 Inspector 附着目标与原生快捷键分发。这些断言已在 beta 集成会话通过；强制 fallback 分支不认证系统扩展像素。呈现应用必须另行记录实际能力分支。
-
-在新终端建立独立宿主偏好/证据会话：
-
-```sh
-session_dir="$PWD/captures/desktop-validation/platform-parity/$(date -u +%Y%m%dT%H%M%SZ)-macos"
-mkdir -p "$session_dir"
-export DEVDUO_PREFERENCES_PATH="$session_dir/preferences.json"
-export DEVDUO_OUTPUT_DIR="$session_dir/states"
-unset DEVDUO_URL
-mise exec -- just dev
-```
-
-正常偏好不会被覆盖，但被测页面仍使用默认网站存储。不要清除无关网站数据。分别在独立终端启动夹具服务：
-
-```sh
-mise exec -- just serve
 mise exec -- uv run --locked python -m http.server 8878 --bind 127.0.0.1 --directory tests/DevDuo.WebKitProbe/pages
 ```
 
-两条是独立长期运行的服务：8765 提供校准，8878 提供审核过的 HTML 夹具。通过真实地址栏打开 `http://127.0.0.1:8878/fixed-overlay.html` 或 `scroll-indicators.html`。若需要自定义请求头/重定向/代理记录器，放在系统临时目录，并将源码/哈希冻结进证据会话。静态服务本身不验证 UA 请求头、重定向或代理路由。
+静态服务不能验证请求头、重定向或代理路由，这些需要受控 recorder；临时代码和回执保持本地并保留来源。
 
 ## 原生验收矩阵
 
-对精确构建候选执行。除指定 Safari chrome 的案例外，覆盖 Safari 与沉浸模式。在每个折叠形态内保持模式不变，连续旋转四个 body 角度；切换模式/折叠形态属于独立生命周期案例。Safari 扩展覆盖全部 24 个初始/滚动状态，包括 Open 单/多示意标签。保留 Closed 180 度既有旋转顺序，独立确认实际内容方向，不能只看命令。
+对精确候选版选择相关行。几何修改覆盖两种容器、受影响机身映射及初始／紧凑／标签变体，保留 Closed 180° 历史并验证实际方向；无关日常修改不要求完整矩阵或重新配置显示器。
 
-| ID | 操作 | 必需观察与证据 |
-| --- | --- | --- |
-| M01 启动与应用页面 | 使用全新隔离偏好且不设启动 URL，离线启动；执行 Home、Color demo、Calibration，再重启。在引导页切 English/简体中文/系统语言。 | 无 receiver 也能显示离线引导页，仓库/文档链接正确。只有校准依赖其服务并接收测量标签。引导页文本/标题原地更新，URL、文档身份/time origin 和滚动保持。另验记忆网站启动。每个新窗口 Developer tools 默认收起，同窗展开状态跨语言保持，颜色/校准操作位于组末尾。 |
-| M02 原生 UA 与标题 | 记录首次 HTTP、重定向、子资源、fetch 请求头；将 `navigator.userAgent` 与 `BrowserIdentity.MobileUserAgent` 比对。测试延迟加载、动态/空/长标题及历史。 | 两种容器首次请求前即使用相同观察移动 UA，旋转后保持；不改实际 platform/DPR。provisional 期间选中示意标签不得泄露上个文档标题；提交后更新和原生省略保持完整标签/文本测量 frame。保留 HTTP 回执与呈现文本，不能只比较常量。 |
-| M03 持久存储 | 在独立且稳定的 HTTP origin 写带 token 的 localStorage、IndexedDB 和持久 Cookie；正常退出，再以相同应用身份启动读取。分别测两个容器和工具前端。 | 被测存储跨应用进程保持，sessionStorage 不作为跨进程持久项。工具非持久存储独立。写入/读取值与 origin/token 留在本地。`DEVDUO_WEBKIT_PROFILE` 是 Windows 能力，不能声称隔离此测试。 |
-| M04 文档保持 | 输入表单、建立历史并滚动；覆盖八个 fold/body 映射，切语言、主题、轮廓、Fit、Open 标签条设置。 | 此类呈现变化不导航/重建。比对 URL、time origin/文档 ID、表单/历史、实际 viewport、文档尺寸、范围和 fixed 矩形。旋转/viewport 增长可能夹紧滚动，记录原因而非脚本恢复。折叠/模式切换有意重建。 |
-| M05 Inspector 与快捷键 | 分别让地址栏、原生页面、输入框、Inspector 持焦点，使用侧栏按钮、F12、Ctrl+Shift+I；需要 Fn 的键盘记录实际组合。关闭/重开并 resize。 | 独立 detach 窗口显示真实 DOM/Console，不占设备 viewport，无旧 Inspector 状态或重复前端。页面持焦点时通过原生菜单检查 ⌘L、⌘R、⌘[/⌘]、⌘S、⌘\\。缺少 selector 时明确报错。仅注册菜单不算通过。 |
-| M06 原生远程检查 | 启停并在 Safari Develop 发现目标；远程开启时尝试本地 Inspector，反向也测；启动中销毁容器。 | 正确目标/文档、明确冲突处理、停止/销毁后移除。记录实际遇到的 Safari 发现配置要求。不能声称 macOS 存在宿主控制的 Windows TCP 端口或 token 保护的原生发现。 |
-| M07 CDP 与 chii | 启用 CDP，打开打包前端，查看真实 DOM/styles 并计算无害表达式；导航、历史返回、旋转、关闭/重开前端、快速启停、销毁容器，含 HTTPS/CSP 页。 | 独立工具 WKWebView、正确目标、导航后重连；旋转保持文档。token discovery 和 WebSocket 路由连接真实页面。停止关闭前端/listener、移除未来注入；现有页面 hook 可能保留到刷新。旧回调不得访问已销毁视图。不要绕过上游 Console 粘贴保护。 |
-| M08 代理 | 使用有回执的本地 HTTP、受信 HTTPS、SOCKS5 代理，应用后请求主文档/资源/fetch，再切 system；检查 direct/认证/非法输入被拒绝。 | 应用设置保持现有文档/time origin/滚动，后续请求经过所选代理且无静默直连 fallback。TLS ClientHello 后不受信证书失败仅证明握手尝试，不等于受信 HTTPS 会话。记录默认存储共享影响。 |
-| M09 fixed/dialog alpha | 按下述夹具步骤覆盖 Closed 展开/紧凑及左右侧，含 Open 顶部与沉浸对照；在根背景/不透明页脚上显示、隐藏 fixed、元素 opacity、dialog backdrop。 | viewport 内 authored alpha 只合成一次，inset 使用对应原生 fixed-container 扩展色。记录实际能力分支、上下左右区域及前/中/后像素；无竞争宿主填充、残留变暗、文档尺寸变化或额外 padding。不支持的 fallback 案例须明确。 |
-| M10 延伸与边界 | 使用 static-gradient、static-quirks、transparent、dynamic-height、live-glass 夹具，滚到 near/end、缩短/恢复文档、回顶并切紧凑态。 | 真正文档范围内保持实时 flow，范围外从根/背景开始，无重复行、黑条、旧像素。Closed 底部/侧边与 Open 已知预留 frame 近似分别观察。既采 DOM/原生状态，也采真实窗口。 |
-| M11 滚动指示器 | 对 auto/短文档/强制 scroll/none/自定义宽度分别用全新 `scroll-indicators.html`；测滚轮、惯性、键盘、脚本、取消 wheel、端点/淡出。 | 记录实际系统偏好、原生滚动条位置/gutter，检查 CSS 抑制与 viewport/fixed/range 不变量。与 Device Hub 目标比对，但保留当前 macOS 宿主策略缺口。不得强改系统偏好或 CSS 制造屏幕边缘通过。 |
-| M12 比例与原生输入 | 检查 1:1 与可达的约 100/94/75/50% Fit、窄窗口裁剪、resize/最小化/恢复、真实显示 backing scale/monitor 迁移。点击变换后的控件/链接，选字、拖动、使用输入法。 | 分开记录实际 NSWindow/NSView 点、backing 像素/比例、CSS viewport、scene 变换。无命中偏移、一像素缝、覆盖宿主控件或预览外原生子视图。请求 Fit 不等于实际 backing scale，macOS 点也不等于 Windows DPI。 |
-| M13 生命周期与无障碍 | 导航/reload/stop/retry，快速切 fold/mode，在 Inspector/CDP/代理/导航工作未完成时关闭，重启重测；检查键盘遍历、VoiceOver、弹出层。 | timer/KVO/消息 handler/原生引用和服务可预测释放；无旧容器回调、崩溃或误删 profile。分别观察地址/菜单/reload/标签操作、被动 clock/Wi-Fi/camera，以及静态页跨分钟更新时间。不可用的无障碍/弹窗/显示器场景仍待验收。 |
+| 变化范围 | 可观察要求 |
+| --- | --- |
+| 导航、身份与标题 | 离线欢迎／Home、重定向／历史／错误处理、原生首文档／子资源／fetch UA、动态／空／长标题；无 provisional 标题泄漏 |
+| 存储与服务 | 同源 token 化 localStorage／IndexedDB／持久 cookie 跨正常重启保留；工具存储隔离，服务重启默认关闭 |
+| 场景与呈现 | 呈现变化保留 URL、文档／time origin、表单／历史及合法滚动；记录 clamp 而不脚本恢复；在相关 Fit 检查独立遮罩、完整标签容器和原生框 |
+| Inspector 与快捷键 | 独立窗口真实 DOM／Console，网页焦点下 F12／Ctrl+Shift+I，无 docking 视口预留；能力缺失明确报错，无过期前端 |
+| 远程／CDP／代理 | 真实 Safari 发现或页面桥、目标重连、listener 清理、互斥及未来流量路由，且不重载当前页面；不绕过 Console 粘贴保护，不将失败 TLS 握手当可信 HTTPS 通过 |
+| 延伸、alpha 与材质 | 静态／动画真实流、文档边界、遮罩／backdrop 和原生返回色；明确 Open 近似及系统／回退分支，同时比较实际窗口及 DOM／快照 |
+| 输入、生命周期与无障碍 | 变换后点击、键盘／IME、弹窗、VoiceOver、相关 resize／关闭／替换竞争及资源清理；不回调已销毁容器 |
 
-M09 在 Inspector Console 使用夹具已有操作；这是 authored 测试输入，不是页面几何 workaround：
+遮罩／指示器夹具通过自有控件或测试 API 逐步操作，等待 settled 状态，不能把测试输入变成生产 DOM 绕过。视口 alpha、inset 纯色和被玻璃遮盖的像素分别观测，明确系统偏好、原生指示器资格及 macOS 场景外缘策略缺口。
 
-```js
-setFixedOverlay(true, false, 'fixed');
-setFixedOverlay(true, true, 'opacity');
-setFixedOverlay(true, true, 'dialog');
-setFixedOverlay(false);
-fixedOverlayState();
-```
+## 重要裁决与经验
 
-逐条执行，每条等待 `fixedOverlaySettled === fixedOverlayRevision`，各自保存状态/窗口图。使用夹具暴露的 `fixedOverlayRootRgb`、`fixedOverlayRgb`、`fixedOverlayAlpha` 重测彩色背景/遮罩与部分透明 alpha。在无遮挡 viewport 采样点，按已声明 RGB 容差核对 authored 前景/背景 alpha 方程；inset 则按对应根/页脚/背景案例核对 resolved extension 色，不要求重复页面纹理。玻璃/chrome 遮住的像素不能声称直接采到页面，须单独保留最终窗口观察。祖先 group opacity、任意 filter 和所有网站 stacking context 不能由此夹具泛化。
-
-M11 夹具提供 `indicatorFixture.configure(short, forceScroll, suppress, authorStyle)`、`trapWheel(enabled)`、`snapshot()`。覆盖 `authorStyle` 的 `''`、`display-none`、`zero-width`、`subpixel-width`。抑制后须用全新文档恢复正对照；复用页历史曾污染 Device Hub 会话。稀疏采图不证明精确通用淡出时间或物理厚度。
+- 原生子视图逻辑大小必须精确采用场景单位，Fit 缩放祖先层；浮点大小截断不能改变 CSS 视口。
+- Inspector 连接与 docking 恢复异步发生，需预留隐藏 attachment target，并验证独立可见前端不缩小设备视图。
+- 工具 DOM 有内容时，原生布局／方向错误仍可能导致空白，不能只凭协议求值成功验收。
+- 私有 SPI 必须运行时检查；强制回退分支只证明该分支几何／生命周期，不证明系统延伸像素或其他 OS 能力。
 
 ## 证据与验收报告
 
-原始图与失败尝试留在新 ignored 会话。每次变换前后 Save state，实时内容/滚动期间采实际呈现窗口（例如 macOS 交互窗口截图）。WK snapshot 可能遗漏 obscured inset 下延伸。原生 snapshot/source 像素、GPU 提交、最终窗口像素是不同观察；动画 callback 时间不是桌面 FPS。
-
-每个案例记录 ID/结果、精确源码 revision 与 dirty diff/hash、应用/原生桥接/资源哈希、构建命令和退出码、实际 macOS/SDK/WebKit 版本、原生显示/backing scale 与本地/远程环境、夹具 URL/源码哈希、fold/body/scene 角、模式、标签变体、语言/外观、时间戳、DOM 文档身份/time origin/URL/滚动/尺寸/viewport/fixed 矩形、实际原生 frame/inset、图名/哈希、预期/实测差异及限定。可用时从已安装系统 framework 取得实际 WebKit 构建元数据，被覆盖的 UA 不能提供此信息。冻结临时记录器源码。token 和原始浏览记录保密；只发布审核后的相对路径派生物，不含账号、主机名、私有绝对路径或模拟器 UDID。
-
-可在 Save state 之外附上只读 Inspector 样本，每次操作前后各采一次；夹具专用 state 函数补充 authored 回执与 fixed 矩形：
-
-```js
-JSON.stringify({
-  url: location.href, title: document.title, timeOrigin: performance.timeOrigin,
-  documentId: window.devduoShellObservation?.documentId,
-  userAgent: navigator.userAgent, dpr: devicePixelRatio,
-  inner: [innerWidth, innerHeight],
-  visual: [visualViewport.width, visualViewport.height, visualViewport.scale],
-  scroll: [scrollX, scrollY],
-  document: [document.scrollingElement.scrollWidth, document.scrollingElement.scrollHeight],
-  fixed: Array.from(document.querySelectorAll('*')).filter(element =>
-    ['fixed', 'sticky'].includes(getComputedStyle(element).position)
-  ).map(element => ({ id: element.id, rect: element.getBoundingClientRect().toJSON() }))
-});
-```
-
-逐项把 M01–M13 标为通过、失败、不支持或未运行，并给具体证据引用。没有新审核证据时，不能把已知实现差异直接记作已接受的 Safari 偏差。保留八个映射、24 状态及 Closed 180 度限定。物理毫米、真实硬件圆角、iOS Liquid Glass 参数继续未知/`null`，桌面玻璃调参和模拟器像素不能提供这些值。
-
-当前 macOS 待办是精确版本构建/聚焦测试、原生存储/身份/标题/引导页、当前场景/本地化变更的保持行为、Inspector/远程/CDP/chii/代理生命周期与路由、系统 fixed-container alpha/dialog 呈现、滚动条策略对齐、backing scale/输入/无障碍和销毁。Open 延伸与缺失的宿主屏幕边缘指示器属于待研究的实现差异，不只是没跑的测试格。[Windows 原生结果及剩余门禁](009-WINDOWS-HANDOFF.md)独立保留。
+原始状态／窗口截图、运行时／能力分支及源码／二进制来源保存在新建的忽略证据会话。报告只列变化范围、实际执行测试、沿用基线及剩余限制。macOS 点、backing 像素、CSS 视口和原生窗口截图分别记录，Windows DPI 或源栅格结果不能替代。
 
 [English](../en/015-PLATFORM-PARITY.md) | [中文](015-PLATFORM-PARITY.md)

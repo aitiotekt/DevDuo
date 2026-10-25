@@ -140,6 +140,6 @@ curl -X POST http://127.0.0.1:9224/api/screenshot \
 
 页面加载失败时，检查完整网址及本地开发服务器是否运行，再点击**重试**或**重新加载**。Windows 报运行时缺失通常是应用归档未完整解压，请保留整个 `webkit/` 文件夹。运行时覆盖和源码构建统一见 [Windows WebKit 指南](014-WINDOWS-WEBKIT.md#avalonia-后端)，下载被阻止见[安装帮助](013-RELEASE.md#发行包签名与安装帮助)。
 
-两种容器均使用观察到的移动 Safari 请求身份，但真实引擎、platform 和 DPR 仍为原生桌面值。兼容性限制见[移动页面请求身份](014-WINDOWS-WEBKIT.md#移动页面请求身份)。现有平台缺口集中记录在[平台对齐](015-PLATFORM-PARITY.md)，未来宿主 UI 改进见[路线图](100-ROADMAP.md)。
+两种容器均使用观察到的移动 Safari 请求身份，但真实引擎、platform 和 DPR 仍为原生桌面值。兼容性限制见[移动页面请求身份](014-WINDOWS-WEBKIT.md#移动请求身份)。现有平台缺口集中记录在[平台对齐](015-PLATFORM-PARITY.md)，未来宿主 UI 改进见[路线图](100-ROADMAP.md)。
 
 [English](../en/004-USAGE.md) | [中文](004-USAGE.md)

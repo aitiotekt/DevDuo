@@ -73,7 +73,12 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-navigation-latency` | Cold HTTP/inline, first source pixels, resource-free navigation timing and a separate Network crash-recovery process; opens Windows UI |
 | `just test-windows-presentation` | Physical WebKit bounds, repaint damage and live raster checks across maximize/Inspector/restore; opens Windows UI |
 | `just test-windows-presentation-insets` | Isolated live-source checks for unmodified color-page pixels exposed by compact chrome; opens Windows UI, separate from final DWM acceptance |
+| `just test-windows-presentation-rotations` | Fresh-document animation frames through eight poses, modal close and rapid rotation; opens Windows UI and is separate from the full fixed-overlay history |
 | `just test-windows-fixed-overlay` | Native modal-overlay viewport alpha, inset colors and geometry preservation; opens Windows UI, not full Safari optical acceptance |
+| `just test-windows-page-dialogs` | Real WebKit alert/confirm/prompt listeners, localized native UI, OS keyboard/UIA, DPI and navigation/disposal cancellation |
+| `just test-windows-accessibility` | Real Windows UIA page names, values, actions, rotated bounds and stale-document rejection; requires desktop API v1 |
+| `just test-windows-popups` | Actual native select anchors, mouse/keyboard selection and Escape dismissal across eight body poses |
+| `just test-windows-ime` | Installed Chinese text service preedit, candidate commit, cancellation and selected-range replacement in input/textarea/contenteditable |
 | `just test-windows-screenshots` | Native REST/CDP screenshots, eight poses and unchanged scroll/fixed geometry; opens Windows UI |
 | `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI, without claiming exact Safari thickness or fade timing |
 | `just test-windows-run-loop` | Actual pinned WTF timers under an external Windows message pump and WTF's own loop; requires the native runtime build |
@@ -90,6 +95,8 @@ The commands below assume an activated mise environment. Use separate terminals 
 
 Core, localization and debugging checks use dependency-free .NET harnesses and their committed locks. They do not launch a native app. Windows app scenarios live in `tests/DevDuo.Windows.Tests/Checks/`, with lifecycle/server support in `Harness/` and capture/provenance support in `Evidence/`. Building that project does not execute its native checks. Keep portable results, compilation and presented-window acceptance separate; use [Platform parity and macOS acceptance](docs/en/015-PLATFORM-PARITY.md) for the cross-platform handoff.
 
+For incremental Windows work, use the [accepted milestone and regression selection](docs/en/009-WINDOWS-HANDOFF.md#windows-milestone-and-incremental-regression). Reuse unaffected baseline evidence and run the affected recipe at one available actual DPI. System scale changes, all native recipes and a three-DPI matrix are not routine requirements. `just verify` remains the portable/build integration check; it does not launch the Windows native acceptance suites. Engine rebuilds are needed only when engine inputs change, not for documentation or managed-host edits.
+
 Pass custom arguments directly to the relevant ecosystem, for example `mise exec -- uv run --locked devduo-tools --help` or `mise exec -- pnpm --dir docsite dev --port 5174 --strictPort`. Restart static preview after rebuilding. Install optional hooks explicitly with `mise exec -- prek install`.
 
 Generated builds/caches belong in `temp/build/` and `temp/cache/`; .NET also uses standard ignored `bin/` and `obj/`. `just clean` retains packaged apps, installed dependencies and original evidence. Use OS temporary directories for disposable validation checkouts and remove them afterwards. Keep original captures and measurements in their dedicated ignored directories. `.gitignore` does not untrack existing index entries; review the diff before publishing.
@@ -98,7 +105,7 @@ The required Windows WebKit source build uses portable tools from `mise.windows-
 
 Windows engine releases are manual and independent from application releases. A dedicated persistent self-hosted runner keeps native caches; ordinary release packaging downloads the metadata-selected runtime version. See [runtime release setup and commands](docs/en/013-RELEASE.md#windows-webkit-runtime-releases).
 
-Native developer tools and proxy acceptance is separate from service tests: verify a detached Inspector without viewport changes, native remote connect/disconnect, actual chii DOM/Console interactions, target navigation reconnect, listener release and per-platform proxy routing. Windows requires a rebuilt runtime with `hostDeveloperApiVersion: 1` and the third host patch; macOS uses system WebKit and still needs native acceptance for these changes. Direct `dotnet` commands require `just prepare-debugging` first; packaged users need no Node installation. See [developer architecture](docs/en/001-ARCHITECTURE.md#developer-tools-and-page-proxy).
+Native developer tools and proxy acceptance is separate from service tests: verify a detached Inspector without viewport changes, native remote connect/disconnect, actual chii DOM/Console interactions, target navigation reconnect, listener release and per-platform proxy routing. Windows requires a rebuilt runtime with `hostDeveloperApiVersion: 1` and the third host patch. macOS uses system WebKit; current native acceptance status is recorded in [Platform parity](docs/en/015-PLATFORM-PARITY.md). Direct `dotnet` commands require `just prepare-debugging` first; packaged users need no Node installation. See [developer architecture](docs/en/001-ARCHITECTURE.md#developer-tools-and-page-proxy).
 
 ## Dependencies and versions
 
@@ -114,7 +121,7 @@ Normal setup/check/build uses frozen pnpm, uv and per-target NuGet locks. For in
 
 Tests must exercise behavior and assert results or failure states. Do not scan source or workflow/task/tool configuration to assert command spelling, fixed job/runner names or preferred wiring, including regex/token equivalents of command snapshots. Run functions, CLIs, protocols or native operations instead. Keep configuration schemas, generated artifacts and external API contracts covered by their observable behavior. Review this requirement directly; do not add a test that scans for prohibited tests.
 
-Update English and Chinese sources together, with language-local links and a bidirectional footer. Root English convention files are canonical; `docs/en` aliases them with relative symlinks, while `docs/zh` holds their translations. `docsite` links the same sources. Update `scripts/docs-manifest.json` when adding or removing a technical page; do not create website copies.
+Update English and Chinese sources together, with language-local links and a bidirectional footer. Keep topic guides focused on current behavior/procedures and durable decisions; detailed run logs stay in evidence and summary metrics belong only to the current acceptance baseline. Root English convention files are canonical; `docs/en` aliases them with relative symlinks, while `docs/zh` holds their translations. `docsite` links the same sources. Update `scripts/docs-manifest.json` when adding or removing a technical page; do not create website copies.
 
 Keep identifiers/comments in English. Describe changed behavior, relevant checks and untested platforms in a review. Native changes need platform builds and actual UI acceptance; Windows cross compilation is insufficient. Keep simulator coordinates distinct from hardware dimensions, keep original evidence intact, and review the [measurement contract](docs/en/002-MEASUREMENT-CONTRACT.md) before changing calibrated data. Do not commit or push unless requested.
 

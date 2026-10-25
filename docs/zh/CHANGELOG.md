@@ -2,6 +2,27 @@
 
 <!-- Unreleased -->
 
+- 发布 dry-run CLI 测试按 metadata 选择版本标签或开发分支，修复升级正式版后测试前提失效的问题；正式发布来源与 dry-run 保护保持不变。
+
+## 0.1.0
+
+DevDuo 与 bundled Windows WebKit 均使用 `0.1.0`，分别以 `v0.1.0`、`webkit-v0.1.0` 独立发布。WebKit 上游 revision 不变，本版包含维护中的宿主补丁；版本提升不扩大已记录的原生验收范围。
+
+### DevDuo
+
+- 修正旋转原生 select 定位，支持真实中文 IME 预编辑，并提供唯一可发现的 WebCore MSAA／UIA 树，包含名称、值、动作及变换后边界。讲述人名称／导航已有记录，UIA TextPattern／IAccessible2 仍不支持。
+- 提供本地化原生 JavaScript alert／confirm／prompt 对话框，支持键盘操作及确定的导航／销毁取消。
+- 保证迟到 HWND／DPI 销毁安全，保留同步回复期间的无障碍失效通知；AX 查询等待文档提交，避免阻塞启动。
+
+### Bundled Windows WebKit
+
+- 新增 desktop API v1，提供物理弹窗／caret 映射、TSF／IMM 组合输入及文档限定的 WebCore 无障碍传输；缺少该 API 的旧运行时与更新后宿主不兼容。
+- 修复绘制／几何损伤，非合成帧及非加速快照使用引擎自有共享 CPU bitmap，图层提升之间采用后端无关字形缓存；保持真实视口、fixed／sticky 位置及滚动范围。
+
+### 开发流程
+
+- 建立限定 Windows 里程碑及按改动／单 DPI 回归策略，跨屏显式开启；双语指南集中记录当前能力、流程与长期有效裁决，保留原始证据。
+
 ## 0.1.0-beta.3
 
 原生截图候选版本。Windows WebKit 继续使用 `0.1.0-beta.1`；更新后的截图桥接与宿主合成器随应用提供。

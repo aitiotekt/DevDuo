@@ -53,6 +53,11 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     internal PointerMessageHandler? PointerMessage;
     protected override void WndProc(ref System.Windows.Forms.Message message)
     {
+        if (message.Msg == 0x3D && unchecked((int)message.LParam) == -25)
+        {
+            message.Result = webkit.GetPresentedUiaProvider(Handle, message.WParam, message.LParam);
+            if (message.Result != 0) return;
+        }
         if (PointerMessage?.Invoke(ref message) != true) base.WndProc(ref message);
     }
     public WindowsWebViewPanel(DeviceProfile geometry, string? url, SafariContainerOptions configuration, string observerSource, IntPtr nativeParent)
@@ -738,6 +743,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     protected override void OnDpiChangedAfterParent(EventArgs e)
     {
         base.OnDpiChangedAfterParent(e);
+        if (disposed || Disposing || !webkit.IsReady) return;
         ApplyMask();
         ApplyLayout();
     }

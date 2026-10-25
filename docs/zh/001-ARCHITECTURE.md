@@ -29,7 +29,7 @@ Avalonia 管理宿主窗口和设备/场景选择。`NativeWebView` 在 macOS �
 
 Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。两种容器使用已记录的移动 Safari 请求身份；真实引擎、platform、DPR、方向、safe area 和键盘仍保持原生行为。Safari 外观不代表引擎变成 iPhone Safari。
 
-机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v3 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
+机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v4 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
 
 ## 宿主控件与导航
 
@@ -44,7 +44,7 @@ Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。�
 | 机身角度 | 在同一原生视图内更新遮罩、逻辑几何和实时呈现，保留文档、表单/JavaScript 状态及历史；新视口可能将滚动位置限制到有效范围 |
 | 设备形态、容器模式 | 在当前网站、欢迎页或颜色实验室重新创建；滚动和历史重置，状态栏给出说明 |
 
-快捷键：⌘L/Ctrl+L 聚焦地址栏，⌘R/Ctrl+R 或 F5 重新加载，Esc 停止加载，⌘[ ⌘] 或 Alt+←/→ 浏览历史，⌘S/Ctrl+S 保存状态，⌘\\/Ctrl+\\ 显示或隐藏设置。macOS 同时在原生**导航**菜单中列出这些命令，因此 WKWebView 持有焦点时仍可使用。Windows 通过原生 WKView 键盘消息和面板命令键链转发快捷键；IME 与完整键盘遍历仍待验收。宿主控件具有本地化的无障碍名称、带快捷键的提示，以及禁用项的说明文字；状态消息为 polite live region。
+快捷键：⌘L/Ctrl+L 聚焦地址栏，⌘R/Ctrl+R 或 F5 重新加载，Esc 停止加载，⌘[ ⌘] 或 Alt+←/→ 浏览历史，⌘S/Ctrl+S 保存状态，⌘\\/Ctrl+\\ 显示或隐藏设置。macOS 同时在原生**导航**菜单中列出这些命令，因此 WKWebView 持有焦点时仍可使用。Windows 通过原生 WKView 键盘消息和面板命令键链转发快捷键；IME 已有原生限定验收，广泛键盘遍历仍按平台记录。宿主控件具有本地化的无障碍名称、带快捷键的提示，以及禁用项的说明文字；状态消息为 polite live region。
 
 `Host/PreferenceStore.cs` 将宿主设置保存在 `DevDuo/preferences.json` 的可选 `host` 对象中：`theme`、`containerMode`、`fold`、`previewScale`、`deviceOutline`、`showTabStrip`、四个材质值（null 表示沿用 `config/safari-shell.json`）、面板展开状态和 `lastUrl`（仅 http/https）。各字段独立校验，无效字段使用默认值并给出说明。机身角度从不保存，因此折叠 180° 只能经由记录的顺时针序列到达。有效的 `DEVDUO_URL` 优先于记住的网站；两者都没有时直接加载内置离线欢迎页，没有先行网络导航。主页和颜色实验室是独立的内置页面，不覆盖记住的网站；链接来自项目元数据。标定是开发者工具区的显式操作，需要接收器服务。**重置设置**恢复默认值和机身 0°，不改变语言和当前页面。文件格式与语言行为见[本地化](011-LOCALIZATION.md)。
 
@@ -67,7 +67,7 @@ CDP 默认只绑定回环，显式选择局域网后才开放活动 IPv4 接口�
 
 chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观测到的 Network 操作，不能提供原生 JavaScript 断点、CPU/堆分析、完整导航/资源流量、浏览器级目标或等价引擎协议；部分上游兼容命令为空操作。中途启用无法补回此前的 Console/Network 观测。新文档会重置传输，只刷新已有 chii 工具窗口以重连；外部客户端自行重连。同文档重复就绪不会刷新工具。停止时关闭 socket/监听、拒绝过期回调并移除专用后续脚本，不移除被动测量观察器；当前桥会静音，已安装的 JavaScript hook 需用户明确刷新目标页才会消失。
 
-代理更改保留文档、视口和滚动，为后续请求配置原生网站数据存储。Windows 支持系统、直连和自定义。macOS 通过公开 `WKWebsiteDataStore.proxyConfigurations` 支持系统/自定义，空列表恢复系统行为，不能强制直连，因此直连明确报告不支持。自定义 `http`、`https` 或 `socks5` 端点带端口，不含凭据、query 或 fragment；认证/PAC 不在此 UI 范围。已有连接可能按原生网络规则继续使用。macOS Inspector、注入及代理更改仍需 macOS 原生验收。
+代理更改保留文档、视口和滚动，为后续请求配置原生网站数据存储。Windows 支持系统、直连和自定义。macOS 通过公开 `WKWebsiteDataStore.proxyConfigurations` 支持系统/自定义，空列表恢复系统行为，不能强制直连，因此直连明确报告不支持。自定义 `http`、`https` 或 `socks5` 端点带端口，不含凭据、query 或 fragment；认证/PAC 不在此 UI 范围。已有连接可能按原生网络规则继续使用。平台专项验收及限制由[平台能力](015-PLATFORM-PARITY.md)记录。
 
 ## 原生截图管线
 
@@ -90,7 +90,7 @@ chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观�
 | 下一步 | 输入依靠合成 JS，无法等同原生焦点、默认行为和 IME。 | 桥接经验证的原生点击/输入/滚轮/触控，并保留场景/Fit 映射。 |
 | 下一步 | 导航/历史/资源为页面近似，没有能力清单。 | 复用原生导航，暴露真实布局指标/生命周期及逐方法的实现/近似/不支持状态。 |
 | 后续 | Network hook 无法补回早期请求、主导航或完整资源/cookie；缓存/配额响应存在占位。 | 明确接入原生网络/存储，不能把页面 JS 当成 HttpOnly cookie 或完整流量来源。 |
-| 独立项目 | 断点、Target 自动附加、Emulation 含空操作；缺少 CPU/heap profile、原生 AX、真实 worker/browser 会话。 | 评估 WebKit Inspector Protocol/JSC 适配及平台/版本边界；JS 注入无法提供这些引擎能力。 |
+| 独立项目 | 断点、Target 自动附加、Emulation 含空操作；缺少 CPU/heap profile、CDP Accessibility 域、真实 worker/browser 会话。 | 评估 WebKit Inspector Protocol/JSC 适配及平台/版本边界；JS 注入无法提供这些引擎能力。 |
 
 优先完成状态 → DOM/几何 → 原生输入/导航 → 截图的 agent 闭环。DevDuo 专用 MCP 可封装已验证的 REST/CDP 操作，不必伪装成 Chromium。[Playwright 的 CDP 连接](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)仅支持 Chromium；其 [WebKit 后端](https://playwright.dev/docs/browsers#webkit)依赖补丁，不能直接附着系统 WKWebView。完整 CDP/Playwright 兼容不属于已验收能力。
 
@@ -104,7 +104,7 @@ macOS 展开仍采用较小原生内容框，顶部延伸为衍生颜色近似�
 
 API 参考：[WKWebView obscuredContentInsets](https://developer.apple.com/documentation/webkit/wkwebview/obscuredcontentinsets)、[WebKit viewport 支持](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)。
 
-WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用时，macOS 桥接启用系统 content-inset 背景填充实现，并在该路径移除宿主自己的不透明底部/侧边表面，使用引擎的固定容器和 backdrop 颜色延伸，不改变 DOM 样式、视口预留、fixed 框或滚动范围。变更后的 macOS 路径仍需原生验收。私有能力缺失时，诊断明确记录限制，保留旧的只读 DOM 不透明通栏 fixed 底栏近似；该回退不能证明半透明遮罩兼容。Windows 使用明确的[原生四边颜色 API](014-WINDOWS-WEBKIT.md#半透明-fixed-遮罩)。[标定指南](003-CALIBRATION-WORKFLOW.md#半透明弹窗背景)分别记录 Safari 目标行为和桌面验收。
+WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用时，macOS 桥接启用系统 content-inset 背景填充实现，并在该路径移除宿主自己的不透明底部/侧边表面，使用引擎的固定容器和 backdrop 颜色延伸，不改变 DOM 样式、视口预留、fixed 框或滚动范围。验收按实际系统／回退能力分支记录，见[平台能力](015-PLATFORM-PARITY.md)。私有能力缺失时，诊断明确记录限制，保留旧的只读 DOM 不透明通栏 fixed 底栏近似；该回退不能证明半透明遮罩兼容。Windows 使用明确的[原生四边颜色 API](014-WINDOWS-WEBKIT.md#半透明固定遮罩)。[标定指南](003-CALIBRATION-WORKFLOW.md#半透明弹窗背景)分别记录 Safari 目标行为和桌面验收。
 
 原生位置在 Avalonia 布局后的 `Loaded` 调度优先级统一同步，包括裁剪/内容配置。AppKit 容器关闭隐式子视图缩放，并在自身框尺寸变化时重新布局，使冷启动、resize 和 Fit 时屏幕内容与外框保持对齐；`nativeClipGeometry` 记录完整容器、逻辑 bounds 和裁剪偏移。详见[验收记录](003-CALIBRATION-WORKFLOW.md)。
 

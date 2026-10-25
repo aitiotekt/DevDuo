@@ -1,4 +1,9 @@
 {
+  "PageDialog.Title": "来自 {0} 的消息",
+  "PageDialog.LocalPage": "本地页面",
+  "PageDialog.Response": "回复",
+  "PageDialog.Accept": "确定",
+  "PageDialog.Cancel": "取消",
   "Window.Title": "DevDuo · Safari / 应用 WebView",
   "Language.Label": "语言",
   "Language.System": "跟随系统",

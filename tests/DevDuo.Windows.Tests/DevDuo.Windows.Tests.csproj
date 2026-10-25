@@ -8,6 +8,8 @@
     <ApplicationManifest>../../src/DevDuo/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The native acceptance harness queries the real Windows UIA provider. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <ProjectReference Include="../../src/DevDuo/DevDuo.csproj" />
   </ItemGroup>
   <!-- WebView2's transitive targets include WPF even though this harness uses WinForms. -->

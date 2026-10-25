@@ -42,6 +42,7 @@ internal static class Evidence
         foreach (var relative in new[]
         {
             "src/DevDuo/WebAssets/Scripts/browser-observer.js", "src/DevDuo/WebAssets/Scripts/remote-debugging.js",
+            "src/DevDuo/WebAssets/Scripts/touch-input.js",
             "src/DevDuo/WebAssets/Pages/color-scroll.html", "src/DevDuo/WebAssets/Pages/welcome.html",
             "src/DevDuo/Localization/en.json", "src/DevDuo/Localization/zh-Hans.json",
             "src/DevDuo/App.axaml", "src/DevDuo/Styles/DevDuoStyles.axaml",
@@ -62,16 +63,21 @@ internal static class Evidence
         }
         foreach (var path in Directory.GetFiles(Path.Combine(repository, "config"), "*.json"))
             Copy(repository, output, "config/" + Path.GetFileName(path), sources);
-        var runtimeRoot = Path.Combine(repository, "temp/build/windows-webkit-host");
+        var runtimeRoot = Path.GetFullPath(Path.Combine(WindowsWebKitApi.RuntimeDirectory(), ".."));
+        var releasedRuntime = File.Exists(Path.Combine(runtimeRoot, "runtime-release.json"));
+        var runtimeInputs = Path.Combine(runtimeRoot, releasedRuntime ? "source-inputs" : "inputs");
+        var provenance = releasedRuntime ? "build-provenance.json" : "build-inputs.json";
         File.Copy(Path.Combine(runtimeRoot, "runtime-manifest.json"), Path.Combine(output, "runtime-manifest.json"));
-        File.Copy(Path.Combine(runtimeRoot, "build-inputs.json"), Path.Combine(output, "runtime-build-inputs.json"));
+        File.Copy(Path.Combine(runtimeRoot, provenance), Path.Combine(output, "runtime-" + provenance));
+        if (releasedRuntime)
+            File.Copy(Path.Combine(runtimeRoot, "runtime-release.json"), Path.Combine(output, "runtime-release.json"));
         using (var runtime = JsonDocument.Parse(File.ReadAllText(Path.Combine(output, "runtime-manifest.json"))))
         {
             foreach (var input in runtime.RootElement.GetProperty("inputFiles").EnumerateArray())
             {
                 var relative = input.GetProperty("path").GetString()!;
-                var source = Path.GetFullPath(Path.Combine(runtimeRoot, "inputs", relative));
-                if (!source.StartsWith(Path.GetFullPath(Path.Combine(runtimeRoot, "inputs")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                var source = Path.GetFullPath(Path.Combine(runtimeInputs, relative));
+                if (!source.StartsWith(runtimeInputs + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Frozen WebKit build input path escapes its directory: " + relative);
                 var destination = Path.Combine(output, "runtime-inputs", relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
@@ -80,7 +86,7 @@ internal static class Evidence
         }
         File.WriteAllText(Path.Combine(output, "build-evidence.json"), JsonSerializer.Serialize(new
         {
-            schemaVersion = 1, binaries,
+            schemaVersion = 1, binaries, runtimeDirectory = Path.Combine(runtimeRoot, "bin"),
             sources = sources.Select(file => new { path = file.Key, sha256 = file.Value }),
             nativeAcceptancePassed = false
         }, new JsonSerializerOptions { WriteIndented = true }));

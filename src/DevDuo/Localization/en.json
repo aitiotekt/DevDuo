@@ -1,4 +1,9 @@
 {
+  "PageDialog.Title": "Message from {0}",
+  "PageDialog.LocalPage": "local page",
+  "PageDialog.Response": "Response",
+  "PageDialog.Accept": "OK",
+  "PageDialog.Cancel": "Cancel",
   "Window.Title": "DevDuo · Safari / App WebView",
   "Language.Label": "Language",
   "Language.System": "System default",

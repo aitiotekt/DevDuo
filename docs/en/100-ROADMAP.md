@@ -10,12 +10,12 @@ The desktop host is a calibration workbench around the measured device preview: 
 - **Visual and interaction design.** SukiUI control themes plus DevDuo tokens for typography, spacing, icons, focus/hover/pressed/disabled states and light/dark themes. The preview is the visual focus; detailed metrics moved to Diagnostics and the status bar shows actionable state. Fit follows the available preview area.
 - **Keyboard and accessibility.** Shortcuts for address focus, reload, stop, history, save state and the settings panel (also in the macOS **Navigate** menu); localized automation names, help text for disabled options, shortcut tooltips and a live status region.
 
-Earlier host controls were exercised against an actual macOS WKWebView (scripted controls, native telemetry and rendered host UI; see [Calibration and validation](003-CALIBRATION-WORKFLOW.md)). Those records cover their recorded source versions; they do not accept later shared or Windows-driven changes on macOS. Current implementation and acceptance gaps are separated in [Platform parity and macOS acceptance](015-PLATFORM-PARITY.md).
+Current platform capabilities and acceptance are recorded in [Platform capabilities](015-PLATFORM-PARITY.md); subsequent changes verify only affected native behavior.
 
 ## Remaining work
 
-- Windows native acceptance of the same host UI, including Windows WebKit navigation events, accelerator keys while Windows WebKit has focus, DPI scaling and SukiUI rendering: follow [Windows handoff](009-WINDOWS-HANDOFF.md).
-- Current macOS native acceptance, including shortcuts with WKWebView focus, VoiceOver reading order, popup placement over the native child and the SukiWindow title bar: follow [Platform parity and macOS acceptance](015-PLATFORM-PARITY.md).
+- Reuse the accepted Windows baseline and verify changed native behavior or uncovered boundaries under [Windows handoff](009-WINDOWS-HANDOFF.md).
+- Deliver and accept the rebuilt desktop API v1 engine/application pair after the scoped popup, Microsoft Pinyin and WebCore UIA repairs. Extend accessibility text navigation, surrounding-text/reconversion and broader assistive-technology compatibility separately; current Value/Invoke and Narrator label/value checks do not implement TextPattern or IAccessible2.
 - Further host control and visual polish, with keyboard/accessibility and presented-window checks at each affected platform.
 - Real tab management is separate future work; the current two-tab strip remains an illustration of measured shell variants.
 - Optional: keep the page across fold/mode changes by reconfiguring the mask in place. Body rotation already preserves the native view; any broader preservation needs new native evidence that viewport, insets and Closed 180° behavior match the accepted scene.

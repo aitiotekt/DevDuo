@@ -92,6 +92,15 @@ test-windows-fixed-overlay: prepare-debugging
 test-windows-screenshots: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/screenshot-tests -p:RestoreLockedMode=true -- --screenshots
 
+# Real JavaScript dialog listeners and OS UIA provider checks; opens Windows UI.
+[windows]
+test-windows-page-dialogs: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/page-dialog-tests -p:RestoreLockedMode=true -- --page-dialogs
+
+[windows]
+test-windows-accessibility: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/accessibility-tests -p:RestoreLockedMode=true -- --desktop-accessibility
+
 [windows]
 test-windows-interaction: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/interaction-tests -p:RestoreLockedMode=true -- --interaction
@@ -105,6 +114,11 @@ test-windows-scroll-indicators: prepare-debugging
 [windows]
 test-windows-presentation-insets: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/presentation-damage-tests -p:RestoreLockedMode=true -- --presentation-insets
+
+# Fresh-document animation callbacks after all eight native presentation mappings.
+[windows]
+test-windows-presentation-rotations: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/presentation-damage-tests -p:RestoreLockedMode=true -- --presentation-rotations
 
 # Requires the source-built pinned runtime and its native headers/import library.
 [windows]
@@ -185,3 +199,13 @@ clean:
 
 release-check:
     node scripts/release.mts check
+
+# Actual native select placement and OS keyboard selection through all eight poses.
+[windows]
+test-windows-popups: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/desktop-popup-tests -p:RestoreLockedMode=true -- --desktop-popups
+
+# Real installed Chinese IME: native TSF/IMM preedit, commit and cancellation.
+[windows]
+test-windows-ime: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/desktop-ime-tests -p:RestoreLockedMode=true -- --desktop-ime

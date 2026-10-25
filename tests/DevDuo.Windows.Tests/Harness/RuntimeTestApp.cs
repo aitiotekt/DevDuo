@@ -107,6 +107,10 @@ public sealed class RuntimeTestApp : Application
         {
             if (Program.Presented)
             {
+                try { await DesktopTestScreen.Select(window); }
+                catch (Exception error) { Console.Error.WriteLine(error); desktop.Shutdown(1); return; }
+                var inputProfile = WindowsChecks.ActivatePresentedInputProfile();
+                window.Closed += (_, _) => inputProfile?.Dispose();
                 if (Program.PresentedLeft)
                 {
                     var settings = window.GetVisualDescendants().OfType<HostSettingsPanel>().Single();
@@ -146,8 +150,9 @@ public sealed class RuntimeTestApp : Application
                 Console.Error.WriteLine(error);
                 File.WriteAllText(Path.Combine(Program.Output, "failure.txt"), error.ToString());
                 var failedWeb = window.GetVisualDescendants().OfType<NativeWebView>().Single();
-                var failedPeek = await failedWeb.EvaluateResultAsync("JSON.stringify({url:location.href,ready:document.readyState,observation:window.devduoShellObservation,canvas:window.canvasAcceptance})").WaitAsync(TimeSpan.FromSeconds(3));
-                File.WriteAllText(Path.Combine(Program.Output, "failed-document-peek.json"), JsonSerializer.Serialize(new { failedPeek }));
+                var failedPeek = await failedWeb.EvaluateResultAsync("JSON.stringify({url:location.href,ready:document.readyState,observation:window.devduoShellObservation,canvas:window.canvasAcceptance,interaction:window.inputAcceptanceState?.()})").WaitAsync(TimeSpan.FromSeconds(3));
+                File.WriteAllText(Path.Combine(Program.Output, "failed-document-peek.json"), JsonSerializer.Serialize(new { failedPeek,
+                    host = JsonSerializer.Deserialize<JsonElement>(failedWeb.ReadState()) }));
             }
             finally
             {
@@ -164,13 +169,14 @@ public sealed class RuntimeTestApp : Application
     private static async Task CapturePresented(MainWindow window, bool paintEvidence = false)
     {
         var web = window.GetVisualDescendants().OfType<NativeWebView>().Single();
-        var actual = await web.EvaluateResultAsync("JSON.stringify({url:location.href,documentId:window.devduoShellObservation?.documentId,inner:[innerWidth,innerHeight],document:[document.scrollingElement.scrollWidth,document.scrollingElement.scrollHeight],scroll:[scrollX,scrollY],range:[document.scrollingElement.scrollWidth-innerWidth,document.scrollingElement.scrollHeight-innerHeight],input:document.querySelector('input')?.value,active:document.activeElement?.tagName,animation:document.querySelector('#animation')?.textContent,fixed:[...document.querySelectorAll('*')].filter(e=>getComputedStyle(e).position==='fixed').map(e=>{const r=e.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom]}),sticky:[...document.querySelectorAll('*')].filter(e=>getComputedStyle(e).position==='sticky').map(e=>{const r=e.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom]}),units:[...document.querySelectorAll('[data-unit]')].map(e=>[e.dataset.unit,e.getBoundingClientRect().height])})");
+        var actual = await web.EvaluateResultAsync("JSON.stringify({url:location.href,visibility:document.visibilityState,focused:document.hasFocus(),documentId:window.devduoShellObservation?.documentId,inner:[innerWidth,innerHeight],document:[document.scrollingElement.scrollWidth,document.scrollingElement.scrollHeight],scroll:[scrollX,scrollY],range:[document.scrollingElement.scrollWidth-innerWidth,document.scrollingElement.scrollHeight-innerHeight],input:document.querySelector('input')?.value,active:document.activeElement?.tagName,animation:document.querySelector('#animation')?.textContent,fixed:[...document.querySelectorAll('*')].filter(e=>getComputedStyle(e).position==='fixed').map(e=>{const r=e.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom]}),sticky:[...document.querySelectorAll('*')].filter(e=>getComputedStyle(e).position==='sticky').map(e=>{const r=e.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom]}),units:[...document.querySelectorAll('[data-unit]')].map(e=>[e.dataset.unit,e.getBoundingClientRect().height])})");
         using var host = JsonDocument.Parse(web.ReadState());
         using var dom = actual is null ? null : JsonDocument.Parse(actual);
         var prefix = Path.Combine(Program.Output, "presented-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ"));
         if (paintEvidence) NativePaintEvidence.Save(web.WindowsPanel!.Browser, host.RootElement, prefix);
         File.WriteAllText(prefix + ".json", JsonSerializer.Serialize(new {
             host = host.RootElement, dom = dom?.RootElement, windowScaling = window.RenderScaling,
+            interaction = await web.EvaluateResultAsync("JSON.stringify(window.inputAcceptanceState?.())"),
             remoteDesktop = System.Windows.Forms.SystemInformation.TerminalServerSession }));
     }
 }

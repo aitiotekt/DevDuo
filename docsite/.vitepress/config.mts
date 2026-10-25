@@ -36,7 +36,7 @@ function sidebar(prefix: string, language: "en" | "zh") {
 
 export default defineConfig({
   title: metadata.project.displayName,
-  description: "Pesudo iPhone Duo Viewport Simulator for Web Developers",
+  description: "Pseudo iPhone Duo Viewport Simulator for Web Developers",
   base: new URL(metadata.project.docsUrl).pathname,
   cleanUrls: true,
   outDir: join(repoRoot, "temp/build/docsite"),

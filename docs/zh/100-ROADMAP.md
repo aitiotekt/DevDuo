@@ -10,12 +10,12 @@
 - **视觉与交互。** SukiUI 控件主题加 DevDuo token，统一字体、间距、图标、focus/hover/pressed/disabled 状态及明暗主题。设备预览为视觉重点；详细指标移入诊断面板，状态栏只显示可操作状态。适应预览跟随可用预览区域。
 - **键盘与无障碍。** 聚焦地址栏、重新加载、停止、历史、保存状态和设置面板的快捷键（macOS 同时提供原生**导航**菜单）；本地化的无障碍名称、禁用项说明、带快捷键的提示和状态 live region。
 
-早期宿主控件已在真实 macOS WKWebView 上通过脚本操作控件、原生遥测和宿主界面渲染进行检查（见[标定与验证](003-CALIBRATION-WORKFLOW.md)）。这些记录仅覆盖各自记录的源码版本，不能据此认定后续共享代码或 Windows 驱动改动在 macOS 上通过验收。当前实现与验收缺口分别记录在[平台对齐与macOS验收](015-PLATFORM-PARITY.md)。
+当前平台能力与验收由[平台能力](015-PLATFORM-PARITY.md)维护，后续变化仅复验受影响原生行为。
 
 ## 待完成
 
-- 按 [Windows 交接](009-WINDOWS-HANDOFF.md)完成同一宿主界面的 Windows 原生验收，包括 Windows WebKit 导航事件、Windows WebKit 持有焦点时的加速键、DPI 缩放和 SukiUI 渲染。
-- 按[平台对齐与macOS验收](015-PLATFORM-PARITY.md)完成当前 macOS 原生验收，包括 WKWebView 持有焦点时的快捷键、VoiceOver 朗读顺序、原生子视图上方的弹出层位置及 SukiWindow 标题栏。
+- 按 [Windows 交接](009-WINDOWS-HANDOFF.md)沿用已验收基线，仅复验变化的原生行为及尚未覆盖的边界。
+- 完成本地限定弹窗、微软拼音与 WebCore UIA 修复后，交付并验收重建的 desktop API v1 引擎／应用组合。文本无障碍导航、周边文本／再转换和广泛辅助技术兼容性独立推进；当前 Value／Invoke 与讲述人名称／值检查未实现 TextPattern 或 IAccessible2。
 - 继续改进宿主控件和视觉外观，并在各受影响平台检查键盘、无障碍及实际呈现窗口。
 - 真实标签管理是独立的后续工作；当前双标签栏仍只是实测外壳变体的示意。
 - 可选：通过原地重新配置遮罩，在切换形态/模式时保留页面。机身旋转已保留原生视图；进一步保留页面需要新的原生证据，证明 viewport、inset 和折叠 180° 行为符合已验收场景。

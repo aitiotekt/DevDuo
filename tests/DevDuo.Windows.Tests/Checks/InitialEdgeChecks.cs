@@ -39,7 +39,9 @@ internal sealed partial class WindowsChecks
                 var geometry = state.GetProperty("webKit").GetProperty("logicalGeometry");
                 var scale = browser.BackingScale;
                 var bottom = WindowsWebKitView.RasterClipEdge((geometry.GetProperty("top").GetInt32() + 580) * scale);
-                using var raster = NativePaintEvidence.CaptureLiveRaster(browser);
+                // DOM completion and snapshot-based tint arrive independently of
+                // WM_PAINT. Observe the retained raster without requesting paint.
+                using var raster = await WaitInitialEdgeRaster(browser, bottom, scale, expected, label);
                 raster.Save(Path.Combine(Program.Output, label + "-live-raster.png"), ImageFormat.Png);
                 Save(label, JsonSerializer.SerializeToElement(new { host = state, dom = dom.RootElement, scale }));
                 foreach (var offset in new[] { 1, 2 })
@@ -64,6 +66,33 @@ internal sealed partial class WindowsChecks
                 Check(FixedExtension(State()).GetProperty("revision").GetInt64() == idle,
                     "A completed static initial document does not sustain color sampling IPC.");
             }
+        }
+    }
+
+    private async Task<System.Drawing.Bitmap> WaitInitialEdgeRaster(WindowsWebKitView browser, int bottom, double scale, int expected, string label)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var attempts = 0;
+        while (true)
+        {
+            var raster = NativePaintEvidence.CaptureLiveRaster(browser);
+            attempts++;
+            var accepted = true;
+            foreach (var offset in new[] { 1, 2 })
+                foreach (var x in new[] { 40, 191, 340 })
+                {
+                    var pixel = raster.GetPixel(WindowsWebKitView.RasterClipEdge(x * scale), bottom - offset);
+                    accepted &= Math.Abs(pixel.R - expected) <= 3 && Math.Abs(pixel.G - expected) <= 3 && Math.Abs(pixel.B - expected) <= 3;
+                }
+            if (!accepted && attempts == 1)
+                raster.Save(Path.Combine(Program.Output, label + "-pending-live-raster.png"), ImageFormat.Png);
+            if (accepted || elapsed.Elapsed > TimeSpan.FromSeconds(2))
+            {
+                Save(label + "-readback", JsonSerializer.SerializeToElement(new { accepted, attempts, elapsedMilliseconds = elapsed.Elapsed.TotalMilliseconds, host = State() }));
+                return raster;
+            }
+            raster.Dispose();
+            await Task.Delay(50);
         }
     }
 }

@@ -57,8 +57,8 @@ internal sealed partial class WindowsChecks
         }
         Check(elements.Any(element => element.Kind == WindowsComposition.Kind.Menu) == !compact &&
             elements.Any(element => element.Kind == WindowsComposition.Kind.Reload) == !compact, "Compact address hides menu/reload glyphs.");
-        Check(state.GetProperty("webKit").GetProperty("composition").GetProperty("apiVersion").GetInt32() == 3,
-            "Native shell uses composition API v3.");
+        Check(state.GetProperty("webKit").GetProperty("composition").GetProperty("apiVersion").GetInt32() == 4,
+            "Native shell uses composition API v4.");
         Check(state.GetProperty("webKit").GetProperty("contentColorApiVersion").GetInt32() == 1, "Native edge color capability is versioned separately.");
     }
 

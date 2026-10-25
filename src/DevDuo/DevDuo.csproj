@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <Product>DevDuo</Product>
     <Description>Pesudo iPhone Duo Viewport Simulator for Web Developers</Description>
-    <Version>0.1.0-beta.3</Version>
+    <Version>0.1.0</Version>
     <RepositoryUrl>https://github.com/aitiotekt/DevDuo</RepositoryUrl>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -20,6 +20,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <FrameworkReference Condition="'$(TargetFramework)' == 'net10.0-windows'" Include="Microsoft.WindowsDesktop.App.WPF" />
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="SukiUI" Version="7.0.1" />

@@ -11,6 +11,9 @@ internal sealed partial class WindowsChecks
 {
     internal async Task Run()
     {
+        await DesktopTestScreen.Select(window);
+        if (Environment.GetEnvironmentVariable("DEVDUO_TEST_FOREGROUND_GATE") == "1" && !Environment.GetCommandLineArgs().Contains("--desktop-ime"))
+            await WaitDesktopInputStart();
         if (Environment.GetCommandLineArgs().Contains("--screenshots"))
         {
             await CheckScreenshots();
@@ -23,6 +26,26 @@ internal sealed partial class WindowsChecks
         }
         // Existing wheel-driven scene/paint scenarios explicitly use desktop input.
         Select(Settings.Interaction, 1);
+        if (Environment.GetCommandLineArgs().Contains("--page-dialogs"))
+        {
+            await CheckPageDialogs();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--desktop-popups"))
+        {
+            await CheckDesktopPopups();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--desktop-ime"))
+        {
+            await CheckDesktopIme();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--desktop-accessibility"))
+        {
+            await CheckDesktopAccessibility();
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--scroll-indicators"))
         {
             await CheckScrollIndicators();
@@ -51,6 +74,11 @@ internal sealed partial class WindowsChecks
         if (Environment.GetCommandLineArgs().Contains("--presentation-damage"))
         {
             await CheckPresentationDamage();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--presentation-rotations"))
+        {
+            await CheckPresentationRotations();
             return;
         }
         if (Environment.GetCommandLineArgs().Contains("--developer-tools"))
@@ -110,6 +138,9 @@ internal sealed partial class WindowsChecks
         }
         var device = Settings.Fold;
         await CheckBrowserTools();
+        // Home's reset check restores the default Touch mode. The following
+        // scene scenarios require real wheel input and must select Mouse again.
+        Select(Settings.Interaction, 1);
         CheckShellStatePolicy();
         await CheckFractionalPageBoundaries();
         var sizing = Settings.Scale;

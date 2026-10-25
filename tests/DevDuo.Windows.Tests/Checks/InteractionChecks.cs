@@ -20,10 +20,18 @@ internal sealed partial class WindowsChecks
         await WaitForScript("window.__devduoInput?.state.mode", value => value == "touch", "Document-start touch input");
         await WaitForScript("document.readyState", value => value == "complete", "Interaction fixture load");
         var initial = await InteractionSnapshot();
+        var foreground = PresentationGetAncestor(Web.WindowsPanel.Browser.Handle, 2);
+        PresentationSetForegroundWindow(foreground);
+        await Task.Delay(150);
+        Check(PresentationGetForegroundWindow() == foreground, "Touch-pointer acceptance requires the active host window.");
         CheckTouchPointer(true);
         await InteractionPointer(0x201, 70, 36);
         await InteractionPointer(0x202, 70, 36);
-        await WaitForScript("String(interactionSnapshot().tapCount)", value => value == "1", "One tap activates the button once");
+        try
+        {
+            await WaitForScript("String(interactionSnapshot().tapCount)", value => value == "1", "One tap activates the button once");
+        }
+        finally { Save("interaction-after-tap", await InteractionSnapshot()); }
         await InteractionPointer(0x201, 280, 300);
         await InteractionPointer(0x200, 280, 160);
         await InteractionPointer(0x202, 280, 160);
@@ -102,6 +110,12 @@ internal sealed partial class WindowsChecks
                 System.Windows.Forms.Cursor.Position = browser.PresentationBounds!(new Rectangle(point, new Size(1, 1))).Location;
                 browser.UpdateTouchPointer();
                 var pointer = State().GetProperty("webKit").GetProperty("touchPointer");
+                Save("interaction-pointer-" + DateTime.UtcNow.ToString("HHmmssfff"), JsonSerializer.SerializeToElement(new
+                {
+                    expected, point, actualCursor = System.Windows.Forms.Cursor.Position,
+                    foreground = PresentationGetForegroundWindow().ToInt64(),
+                    host = PresentationGetAncestor(browser.Handle, 2).ToInt64(), state = State()
+                }));
                 Check(pointer.GetProperty("visible").GetBoolean() == expected &&
                     pointer.GetProperty("systemCursorHidden").GetBoolean() == expected,
                     "The page and Safari shell show a circular pointer only in touch mode.");
@@ -121,6 +135,10 @@ internal sealed partial class WindowsChecks
         var geometry = State().GetProperty("webKit").GetProperty("logicalGeometry");
         var point = new Point((int)Math.Round((geometry.GetProperty("left").GetDouble() + cssX) * browser.BackingScale),
             (int)Math.Round((geometry.GetProperty("top").GetDouble() + cssY) * browser.BackingScale));
+        // Keep queued OS mouse moves consistent with the injected coordinates;
+        // otherwise a stationary tap can become a pan toward the real cursor.
+        System.Windows.Forms.Cursor.Position = browser.PresentationBounds!(new Rectangle(point, new Size(1, 1))).Location;
+        await Task.Delay(80);
         PresentationSetFocus(browser.BrowserWindow);
         PresentationSendMessage(browser.BrowserWindow, message, message == 0x202 ? 0 : 1,
             (nint)((point.X & 0xffff) | ((point.Y & 0xffff) << 16)));

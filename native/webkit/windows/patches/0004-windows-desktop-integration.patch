@@ -1,0 +1,1514 @@
+diff --git a/Source/WebCore/Headers.cmake b/Source/WebCore/Headers.cmake
+index 6550edac1..588488859 100644
+--- a/Source/WebCore/Headers.cmake
++++ b/Source/WebCore/Headers.cmake
+@@ -729,6 +729,7 @@ set(WebCore_PRIVATE_FRAMEWORK_HEADERS
+     accessibility/AXLogger.h
+     accessibility/AXLoggerBase.h
+     accessibility/AXNotifications.h
++    accessibility/win/HostAccessibilityWin.h
+     accessibility/AXObjectCache.h
+     accessibility/AXObjectCacheInlines.h
+     accessibility/AXObjectTypes.h
+diff --git a/Source/WebCore/accessibility/win/AXObjectCacheWin.cpp b/Source/WebCore/accessibility/win/AXObjectCacheWin.cpp
+index 8bf568b21..162633029 100644
+--- a/Source/WebCore/accessibility/win/AXObjectCacheWin.cpp
++++ b/Source/WebCore/accessibility/win/AXObjectCacheWin.cpp
+@@ -29,6 +29,7 @@
+ #include "AXObjectCache.h"
+ 
+ #include "AXNotifications.h"
++#include "HostAccessibilityWin.h"
+ #include "AccessibilityObject.h"
+ #include "Chrome.h"
+ #include "ChromeClient.h"
+@@ -43,6 +44,12 @@
+ 
+ 
+ namespace WebCore {
++static HostAccessibilityNotification hostAccessibilityNotification;
++void setHostAccessibilityNotification(HostAccessibilityNotification callback)
++{
++    hostAccessibilityNotification = callback;
++}
++
+ 
+ void AXObjectCache::detachWrapper(AXCoreObject* obj, AccessibilityDetachmentType)
+ {
+@@ -74,11 +81,13 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject& object, AXNoti
+         return;
+ 
+     Page* page = document->page();
+-    if (!page || !page->chrome().platformPageClient())
++    if (!page)
+         return;
+ 
+     DWORD msaaEvent;
+     switch (notification) {
++    case AXNotification::DisabledStateChanged:
++    case AXNotification::ReadOnlyStatusChanged:
+     case AXNotification::CheckedStateChanged:
+         msaaEvent = EVENT_OBJECT_STATECHANGE;
+         break;
+@@ -92,6 +101,10 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject& object, AXNoti
+         msaaEvent = EVENT_SYSTEM_SCROLLINGSTART;
+         break;
+ 
++    case AXNotification::ChildrenChanged:
++    case AXNotification::PageScrolled:
++    case AXNotification::RoleChanged:
++    case AXNotification::VisibilityChanged:
+     case AXNotification::LayoutComplete:
+         msaaEvent = EVENT_OBJECT_REORDER;
+         break;
+@@ -100,6 +113,8 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject& object, AXNoti
+         msaaEvent = IA2_EVENT_DOCUMENT_LOAD_COMPLETE;
+         break;
+ 
++    case AXNotification::TextChanged:
++    case AXNotification::TextCompositionChanged:
+     case AXNotification::ValueChanged:
+     case AXNotification::MenuListValueChanged:
+         msaaEvent = EVENT_OBJECT_VALUECHANGE;
+@@ -109,9 +124,20 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject& object, AXNoti
+         msaaEvent = EVENT_OBJECT_SELECTION;
+         break;
+ 
++    case AXNotification::LabelChanged:
++    case AXNotification::NameChanged:
++        msaaEvent = EVENT_OBJECT_NAMECHANGE;
++        break;
++    case AXNotification::LiveRegionChanged:
++        msaaEvent = EVENT_OBJECT_LIVEREGIONCHANGED;
++        break;
+     default:
+         return;
+     }
++    if (hostAccessibilityNotification)
++        hostAccessibilityNotification(*page, msaaEvent, object.objectID().toUInt64());
++    if (!page->chrome().platformPageClient())
++        return;
+ 
+     // Windows will end up calling get_accChild() on the root accessible
+     // object for the WebView, passing the child ID that we specify below. We
+@@ -160,7 +186,7 @@ void AXObjectCache::platformHandleFocusedUIElementChanged(AccessibilityObject*,
+         return;
+ 
+     Page* page = newFocus->page();
+-    if (!page || !page->chrome().platformPageClient())
++    if (!page)
+         return;
+ 
+     if (RefPtr focusedObject = focusedObjectForPage(page)) {
+diff --git a/Source/WebCore/accessibility/win/HostAccessibilityWin.h b/Source/WebCore/accessibility/win/HostAccessibilityWin.h
+new file mode 100644
+index 000000000..65e8f3f7d
+--- /dev/null
++++ b/Source/WebCore/accessibility/win/HostAccessibilityWin.h
+@@ -0,0 +1,9 @@
++// Windows Port AX notifications cross the WebProcess/UIProcess boundary.
++#pragma once
++#include <cstdint>
++#include <wtf/Platform.h>
++namespace WebCore {
++class Page;
++using HostAccessibilityNotification = void (*)(Page&, uint32_t event, uint64_t objectID);
++WEBCORE_EXPORT void setHostAccessibilityNotification(HostAccessibilityNotification);
++}
+diff --git a/Source/WebCore/editing/Editor.cpp b/Source/WebCore/editing/Editor.cpp
+index 55be1f593..aff1b850f 100644
+--- a/Source/WebCore/editing/Editor.cpp
++++ b/Source/WebCore/editing/Editor.cpp
+@@ -2501,16 +2501,17 @@ void Editor::setComposition(const String& text, SetCompositionMode mode)
+ 
+     insertTextForConfirmedComposition(text);
+ 
+-    // Clicking outside the editable element moves focus away before the composition is torn down, so
+-    // there is no focused element left to dispatch to. Fall back to the element the composition belongs
+-    // to rather than dropping the compositionend event altogether.
+-    RefPtr<Element> target = document->focusedElement();
+-    if (!target && previousCompositionNode) {
++    // Focus can already belong to another editor when this composition ends.
++    // Dispatch to the composition owner, preserving the current focused selection.
++    RefPtr<Element> target;
++    if (previousCompositionNode) {
+         if (RefPtr textControl = enclosingTextFormControl(firstPositionInOrBeforeNode(previousCompositionNode.get())))
+             target = WTF::move(textControl);
+         else
+             target = previousCompositionNode->rootEditableElement();
+     }
++    if (!target)
++        target = document->focusedElement();
+ 
+     if (target)
+         target->dispatchEvent(CompositionEvent::create(eventNames().compositionendEvent, document->windowProxy(), textForCompositionEndEvent));
+diff --git a/Source/WebCore/platform/graphics/FontCascade.cpp b/Source/WebCore/platform/graphics/FontCascade.cpp
+index 8fcedaa6b..7c171fda9 100644
+--- a/Source/WebCore/platform/graphics/FontCascade.cpp
++++ b/Source/WebCore/platform/graphics/FontCascade.cpp
+@@ -241,7 +241,12 @@ RefPtr<const DisplayList::DisplayList> FontCascade::displayListForGlyphBuffer(Gr
+     if (glyphBuffer.isEmpty())
+         return nullptr;
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && PLATFORM(WIN)
++    // WC can paint locally, then replay this cached run through a remote GPU
++    // recorder after layer promotion. A Skia-only DrawTextBlob cannot be
++    // applied to that recorder; retain backend-neutral glyph operations.
++    constexpr auto drawGlyphsMode = DisplayList::Recorder::DrawGlyphsMode::Normal;
++#elif USE(SKIA)
+     const auto drawGlyphsMode = context.hasPlatformContext() ? DisplayList::Recorder::DrawGlyphsMode::TextBlob : DisplayList::Recorder::DrawGlyphsMode::Normal;
+ #else
+     constexpr auto drawGlyphsMode = DisplayList::Recorder::DrawGlyphsMode::Deconstruct;
+diff --git a/Source/WebKit/PlatformWin.cmake b/Source/WebKit/PlatformWin.cmake
+index 43f69e20f..dadc55c9d 100644
+--- a/Source/WebKit/PlatformWin.cmake
++++ b/Source/WebKit/PlatformWin.cmake
+@@ -61,6 +61,7 @@ list(APPEND WebKit_SOURCES
+     UIProcess/win/WebPasteboardProxyWin.cpp
+     UIProcess/win/WebPopupMenuProxyWin.cpp
+     UIProcess/win/WebProcessPoolWin.cpp
++    UIProcess/win/HostTextInputWin.cpp
+     UIProcess/win/WebView.cpp
+ 
+     WebProcess/GPU/media/win/VideoLayerRemoteWin.cpp
+@@ -119,6 +120,9 @@ list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
+ 
+ list(APPEND WebKit_PRIVATE_LIBRARIES
+     comctl32
++    imm32
++    uuid
++    ole32
+ )
+ 
+ list(APPEND WebProcess_SOURCES
+diff --git a/Source/WebKit/Scripts/webkit/opaque_ipc_types.tracking.in b/Source/WebKit/Scripts/webkit/opaque_ipc_types.tracking.in
+index b4f1ff531..e8bdf291b 100644
+--- a/Source/WebKit/Scripts/webkit/opaque_ipc_types.tracking.in
++++ b/Source/WebKit/Scripts/webkit/opaque_ipc_types.tracking.in
+@@ -238,6 +238,8 @@
+ }
+ 
+ [UnsafeWrapper] Vector<uint8_t> {
++    # Native IMM clause attributes, supplied only by the UI-process Windows IME.
++    [NotSentFromWebContent] MessageParam WebPage.HostSetComposition attributes
+     [Legacy] MessageParamReply WebPage.BindRemoteAccessibilityFrames token
+     [Legacy] MessageParam NetworkConnectionToWebProcess.NavigatorSubscribeToPushService applicationServerKey
+     [Legacy] MessageParam PushClientConnection.SubscribeToPushService vapidPublicKey
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+index ca09290a1..9d97a4b7c 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -33,6 +33,12 @@
+ #include "WKAPICast.h"
+ #include "WebPageProxy.h"
+ #include "WebView.h"
++#include "HostDesktopGeometry.h"
++#include "HostInputMethodWin.h"
++#include "APIString.h"
++#include "MessageSenderInlines.h"
++#include "WebPageMessages.h"
++#include "WebProcessProxy.h"
+ #include <WebCore/ShareableBitmap.h>
+ #include <algorithm>
+ #include <cmath>
+@@ -307,6 +313,8 @@ bool WKViewSetHostPresentationGeometry(WKViewRef viewRef, WKSize logicalSize, fl
+     if (!view->page() || view->page()->isClosed())
+         return false;
+     view->setHostPresentationGeometry(toIntSize(logicalSize), backingScaleFactor);
++    if (GetFocus() == view->window())
++        hostUpdateCaret(view->window(), *view->page());
+     return true;
+ }
+ 
+@@ -344,3 +352,84 @@ bool WKViewSetUnobscuredSizeRange(WKViewRef viewRef, WKSize minimum, WKSize maxi
+     page->setMaximumUnobscuredSize(maximumSize);
+     return true;
+ }
++
++unsigned WKViewGetHostDesktopAPIVersion(void)
++{
++    return 1;
++}
++
++bool WKViewSetHostDesktopGeometry(WKViewRef viewRef, HWND target, int degrees, int offsetX, int offsetY)
++{
++    if (!viewRef || (target && !IsWindow(target)) || (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270))
++        return false;
++    auto window = toImpl(viewRef)->window();
++    if (!target) {
++        for (auto key : { hostTargetProperty, hostTurnProperty, hostXProperty, hostYProperty })
++            RemovePropW(window, key);
++        return true;
++    }
++    bool updated = SetPropW(window, hostTargetProperty, target)
++        && SetPropW(window, hostTurnProperty, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(degrees)))
++        && SetPropW(window, hostXProperty, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(offsetX)))
++        && SetPropW(window, hostYProperty, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(offsetY)));
++    if (auto* page = toImpl(viewRef)->page(); updated && GetFocus() == window && page && !page->isClosed())
++        hostUpdateCaret(window, *page);
++    return updated;
++}
++
++WKStringRef WKViewCopyHostAccessibilityTree(WKViewRef viewRef)
++{
++    if (!viewRef)
++        return nullptr;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed() || !page->hasRunningProcess())
++        return nullptr;
++    auto reply = page->legacyMainFrameProcess().sendSync(Messages::WebPage::GetHostAccessibilityTree(),
++        page->webPageIDInMainFrameProcess(), 1_s, IPC::SendSyncOption::MaintainOrderingWithAsyncMessages);
++    if (!reply.succeeded())
++        return nullptr;
++    auto [tree] = reply.takeReply();
++    return toAPILeakingRef(API::String::create(tree));
++}
++
++bool WKViewPerformHostAccessibilityAction(WKViewRef viewRef, WKStringRef document, unsigned long long objectID, unsigned action, WKStringRef value)
++{
++    if (!viewRef || !document || !objectID || action > 2)
++        return false;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed() || !page->hasRunningProcess())
++        return false;
++    auto reply = page->legacyMainFrameProcess().sendSync(Messages::WebPage::HostAccessibilityAction(toImpl(document)->string(), objectID, action, toWTFString(value)),
++        page->webPageIDInMainFrameProcess(), 1_s, IPC::SendSyncOption::MaintainOrderingWithAsyncMessages);
++    return reply.succeeded() && std::get<0>(reply.reply());
++}
++
++void WKViewResetHostTextInput(WKViewRef viewRef)
++{
++    if (!viewRef) return;
++    auto* view = toImpl(viewRef);
++    auto window = view->window();
++    hostDeactivateTextStore(window);
++    for (auto key : { hostCaretProperty, hostCompositionProperty, L"DevDuo.WebKit.Editable", L"DevDuo.WebKit.Editor" })
++        RemovePropW(window, key);
++    if (auto context = ImmGetContext(window)) {
++        ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
++        ImmReleaseContext(window, context);
++    }
++    hostDestroyCaret(window);
++    if (GetFocus() == window && view->page() && !view->page()->isClosed()) hostUpdateCaret(window, *view->page());
++}
++
++WKStringRef WKViewCopyHostTextInputDiagnostics(WKViewRef view)
++{
++    return view ? toAPILeakingRef(API::String::create(hostTextInputDiagnostics(toImpl(view)->window()))) : nullptr;
++}
++
++unsigned WKViewGetHostTextInputState(WKViewRef viewRef, unsigned* error, unsigned long long* editor)
++{
++    if (error) *error = 0;
++    if (editor) *editor = 0;
++    if (!viewRef)
++        return 0;
++    return hostTextInputState(toImpl(viewRef)->window(), error, editor);
++}
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+index d6fe43233..ffff12fc5 100644
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -64,6 +64,23 @@ WK_EXPORT bool WKViewSetUnobscuredSizeRange(WKViewRef view, WKSize minimum, WKSi
+ // Rendering, mouse and wheel input share this backing scale. Three zeros restore native DPI sizing.
+ WK_EXPORT bool WKViewSetHostPresentationGeometry(WKViewRef view, WKSize logicalSize, float backingScaleFactor);
+ 
++// Desktop API v1: native popup/caret/accessibility presentation coordinates.
++// The target HWND is borrowed; it must outlive the mapping. Null clears it.
++WK_EXPORT unsigned WKViewGetHostDesktopAPIVersion(void);
++WK_EXPORT bool WKViewSetHostDesktopGeometry(WKViewRef, HWND target, int degrees, int offsetX, int offsetY);
++
++// Read-only input diagnostics: active TSF=1, composing=2, hook=4, editable=16.
++// Reset input sessions after document navigation; does not navigate or resize.
++WK_EXPORT void WKViewResetHostTextInput(WKViewRef);
++WK_EXPORT WKStringRef WKViewCopyHostTextInputDiagnostics(WKViewRef);
++WK_EXPORT unsigned WKViewGetHostTextInputState(WKViewRef, unsigned* error, unsigned long long* editor);
++
++// AX tree and actions use WebCore accessibility objects over bounded production IPC.
++// Copy returns a retained WKString or null on unavailable/timeout. Action: 0 focus,
++// 1 default action, 2 set value. A stale document/object pair is always rejected.
++WK_EXPORT WKStringRef WKViewCopyHostAccessibilityTree(WKViewRef);
++WK_EXPORT bool WKViewPerformHostAccessibilityAction(WKViewRef, WKStringRef document, unsigned long long objectID, unsigned action, WKStringRef value);
++
+ // Content painting v2. Opaque under-page fallback for flattening the native GDI
+ // output; RGB is 0xRRGGBB. Does not affect CSS, viewport geometry or scroll state.
+ WK_EXPORT bool WKViewSetHostUnderPageBackgroundColor(WKViewRef view, unsigned rgb);
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.h b/Source/WebKit/UIProcess/WebPageProxy.h
+index f736bb2f2..d1d6b120f 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.h
++++ b/Source/WebKit/UIProcess/WebPageProxy.h
+@@ -1844,6 +1844,7 @@ public:
+ #if PLATFORM(WIN)
+     void setHostScrollIndicatorEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
++    void hostAccessibilityNotification(uint32_t, uint64_t);
+     void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+ #endif
+ #if PLATFORM(COCOA)
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.messages.in b/Source/WebKit/UIProcess/WebPageProxy.messages.in
+index 41ea4c5ab..bce681aab 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.messages.in
++++ b/Source/WebKit/UIProcess/WebPageProxy.messages.in
+@@ -27,6 +27,9 @@ Copyright (C) 2010-2024 Apple Inc. All rights reserved.
+     SharedPreferencesNeedsConnection
+ ]
+ messages -> WebPageProxy {
++#if PLATFORM(WIN)
++    HostAccessibilityNotification(uint32_t event, uint64_t objectID)
++#endif
+     # UI messages
+     CreateNewPage(struct WebCore::WindowFeatures windowFeatures, struct WebKit::NavigationActionData navigationActionData) -> (std::optional<WebCore::PageIdentifier> newPageID, std::optional<WebKit::WebPageCreationParameters> newPageParameters) Synchronous
+     ShowPage()
+diff --git a/Source/WebKit/UIProcess/win/HostDesktopGeometry.h b/Source/WebKit/UIProcess/win/HostDesktopGeometry.h
+new file mode 100644
+index 000000000..69a3283b6
+--- /dev/null
++++ b/Source/WebKit/UIProcess/win/HostDesktopGeometry.h
+@@ -0,0 +1,70 @@
++// DevDuo host desktop coordinates. Physical source pixels are transformed only
++// for native OS surfaces; the WebCore layout viewport is never resized here.
++#pragma once
++
++#include <WebCore/IntRect.h>
++#include <algorithm>
++#include <windows.h>
++
++namespace WebKit {
++inline constexpr auto hostTargetProperty = L"DevDuo.WebKit.DesktopTarget";
++inline constexpr auto hostTurnProperty = L"DevDuo.WebKit.DesktopTurn";
++inline constexpr auto hostXProperty = L"DevDuo.WebKit.DesktopX";
++inline constexpr auto hostYProperty = L"DevDuo.WebKit.DesktopY";
++
++inline HWND hostPresentationWindow(HWND source)
++{
++    auto target = reinterpret_cast<HWND>(GetPropW(source, hostTargetProperty));
++    return target && IsWindow(target) ? target : source;
++}
++
++inline WebCore::IntRect hostClientToScreen(HWND source, const WebCore::IntRect& rect)
++{
++    auto target = reinterpret_cast<HWND>(GetPropW(source, hostTargetProperty));
++    POINT a { rect.x(), rect.y() }, b { rect.maxX(), rect.maxY() };
++    if (target && IsWindow(target)) {
++        RECT bounds { };
++        GetClientRect(source, &bounds);
++        auto turn = reinterpret_cast<INT_PTR>(GetPropW(source, hostTurnProperty));
++        auto transform = [&](POINT point) -> POINT {
++            switch (turn) {
++            case 90: return { bounds.bottom - point.y, point.x };
++            case 180: return { bounds.right - point.x, bounds.bottom - point.y };
++            case 270: return { point.y, bounds.right - point.x };
++            default: return point;
++            }
++        };
++        a = transform(a);
++        b = transform(b);
++        auto x = static_cast<LONG>(reinterpret_cast<INT_PTR>(GetPropW(source, hostXProperty)));
++        auto y = static_cast<LONG>(reinterpret_cast<INT_PTR>(GetPropW(source, hostYProperty)));
++        a.x -= x; b.x -= x;
++        a.y -= y; b.y -= y;
++    } else
++        target = source;
++    ClientToScreen(target, &a);
++    ClientToScreen(target, &b);
++    return { std::min(a.x, b.x), std::min(a.y, b.y), std::abs(b.x - a.x), std::abs(b.y - a.y) };
++}
++
++inline WebCore::IntPoint hostScreenToClient(HWND source, const WebCore::IntPoint& screen)
++{
++    auto target = reinterpret_cast<HWND>(GetPropW(source, hostTargetProperty));
++    POINT point { screen.x(), screen.y() };
++    if (!target || !IsWindow(target)) {
++        ScreenToClient(source, &point);
++        return point;
++    }
++    ScreenToClient(target, &point);
++    point.x += static_cast<LONG>(reinterpret_cast<INT_PTR>(GetPropW(source, hostXProperty)));
++    point.y += static_cast<LONG>(reinterpret_cast<INT_PTR>(GetPropW(source, hostYProperty)));
++    RECT bounds { };
++    GetClientRect(source, &bounds);
++    switch (reinterpret_cast<INT_PTR>(GetPropW(source, hostTurnProperty))) {
++    case 90: return { point.y, bounds.bottom - point.x };
++    case 180: return { bounds.right - point.x, bounds.bottom - point.y };
++    case 270: return { bounds.right - point.y, point.x };
++    default: return point;
++    }
++}
++} // namespace WebKit
+diff --git a/Source/WebKit/UIProcess/win/HostInputMethodWin.h b/Source/WebKit/UIProcess/win/HostInputMethodWin.h
+new file mode 100644
+index 000000000..7aecb9976
+--- /dev/null
++++ b/Source/WebKit/UIProcess/win/HostInputMethodWin.h
+@@ -0,0 +1,194 @@
++// Native input composition uses ordinary production WebPage IPC and WebCore Editor.
++#pragma once
++
++#include "HostDesktopGeometry.h"
++#include "WebPageProxy.h"
++#include "MessageSenderInlines.h"
++#include "WebPageMessages.h"
++#include "WebProcessProxy.h"
++#include <imm.h>
++#include <wtf/text/WTFString.h>
++
++namespace WebKit {
++void hostActivateTextStore(HWND, WebPageProxy&);
++void hostDeactivateTextStore(HWND);
++String hostTextInputDiagnostics(HWND);
++void hostTextInputLayoutChanged(HWND, bool statusChanged);
++inline constexpr auto hostCompositionProperty = L"DevDuo.WebKit.Composition";
++inline constexpr auto hostCaretProperty = L"DevDuo.WebKit.CaretRequest";
++inline constexpr auto hostInputContextProperty = L"DevDuo.WebKit.InputContext";
++
++inline void hostInitializeInputMethod(HWND window)
++{
++    if (GetPropW(window, hostInputContextProperty))
++        return;
++    // Avalonia can disassociate its own default context when native children
++    // receive focus. This real editor owns an independent IMM context instead.
++    if (auto context = ImmCreateContext()) {
++        auto previous = ImmAssociateContext(window, context);
++        if (!SetPropW(window, hostInputContextProperty, context)) {
++            ImmAssociateContext(window, previous);
++            ImmDestroyContext(context);
++        }
++    }
++}
++
++
++inline void hostDestroyCaret(HWND window)
++{
++    GUITHREADINFO info { };
++    info.cbSize = sizeof(info);
++    if (GetGUIThreadInfo(GetCurrentThreadId(), &info) && info.hwndCaret == window)
++        DestroyCaret();
++}
++
++inline void hostUpdateCaret(HWND window, WebPageProxy& page)
++{
++    if (GetFocus() != window || page.isClosed())
++        return;
++    static uintptr_t nextRequest = 0;
++    auto request = ++nextRequest;
++    SetPropW(window, hostCaretProperty, reinterpret_cast<HANDLE>(request));
++    auto scale = page.intrinsicDeviceScaleFactor();
++    page.legacyMainFrameProcess().sendWithAsyncReply(Messages::WebPage::GetHostCaretRect(),
++        [window, request, scale, protectedPage = Ref { page }](bool editable, const WebCore::IntRect& logicalRect, uint64_t editor) {
++            if (protectedPage->isClosed() || !IsWindow(window) || GetFocus() != window || reinterpret_cast<uintptr_t>(GetPropW(window, hostCaretProperty)) != request)
++                return;
++            auto previousEditor = reinterpret_cast<uintptr_t>(GetPropW(window, L"DevDuo.WebKit.Editor"));
++            if (previousEditor != editor) hostDeactivateTextStore(window);
++            SetPropW(window, L"DevDuo.WebKit.Editor", reinterpret_cast<HANDLE>(static_cast<uintptr_t>(editor)));
++            bool changedStatus = !!GetPropW(window, L"DevDuo.WebKit.Editable") != editable;
++            SetPropW(window, L"DevDuo.WebKit.Editable", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(editable)));
++            SetPropW(window, L"DevDuo.WebKit.CaretX", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(logicalRect.x())));
++            SetPropW(window, L"DevDuo.WebKit.CaretY", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(logicalRect.y())));
++            SetPropW(window, L"DevDuo.WebKit.CaretW", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(logicalRect.width())));
++            SetPropW(window, L"DevDuo.WebKit.CaretH", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(logicalRect.height())));
++            // Activate only after WebCore identifies a real editable selection.
++            // Some TIPs cache a disabled initial context despite status updates.
++            if (editable) hostActivateTextStore(window, protectedPage.get());
++            else hostDeactivateTextStore(window);
++            hostTextInputLayoutChanged(window, changedStatus);
++            if (!editable) {
++                hostDestroyCaret(window);
++                return;
++            }
++            WebCore::FloatRect scaled(logicalRect);
++            scaled.scale(scale);
++            auto rect = hostClientToScreen(window, WebCore::enclosingIntRect(scaled));
++            POINT a { rect.x(), rect.y() }, b { rect.maxX(), rect.maxY() };
++            ScreenToClient(window, &a);
++            ScreenToClient(window, &b);
++            if (auto context = ImmGetContext(window)) {
++                CANDIDATEFORM candidate { };
++                candidate.dwStyle = CFS_EXCLUDE;
++                candidate.ptCurrentPos = { a.x, b.y };
++                candidate.rcArea = { a.x, a.y, b.x, b.y };
++                ImmSetCandidateWindow(context, &candidate);
++                COMPOSITIONFORM composition { };
++                composition.dwStyle = CFS_POINT;
++                composition.ptCurrentPos = { a.x, b.y };
++                ImmSetCompositionWindow(context, &composition);
++                ImmReleaseContext(window, context);
++            }
++            // Keep an invisible OS caret for IMEs that use GUIThreadInfo rather
++            // than CANDIDATEFORM. WebCore remains the only visible caret painter.
++            CreateCaret(window, nullptr, std::max(1L, b.x - a.x), std::max(1L, b.y - a.y));
++            SetCaretPos(a.x, a.y);
++        }, page.webPageIDInMainFrameProcess());
++}
++
++inline void hostSendComposition(WebPageProxy& page, uint32_t operation, const String& text = { }, uint32_t cursor = 0, const Vector<uint8_t>& attributes = { })
++{
++    page.legacyMainFrameProcess().send(Messages::WebPage::HostSetComposition(operation, text, cursor, attributes), page.webPageIDInMainFrameProcess());
++}
++
++inline String hostCompositionString(HIMC context, DWORD kind)
++{
++    auto size = ImmGetCompositionStringW(context, kind, nullptr, 0);
++    if (size <= 0)
++        return emptyString();
++    Vector<char16_t> buffer(static_cast<size_t>(size) / sizeof(char16_t));
++    auto copied = ImmGetCompositionStringW(context, kind, buffer.mutableSpan().data(), size);
++    if (copied < 0)
++        return emptyString();
++    return String(buffer.span().first(static_cast<size_t>(copied) / sizeof(char16_t)));
++}
++
++bool hostTextStoreOwnsComposition(HWND);
++unsigned hostTextInputState(HWND, unsigned*, uint64_t*);
++
++inline bool hostHandleInputMethod(HWND window, WebPageProxy& page, UINT message, LPARAM lParam)
++{
++    if (message == WM_SETFOCUS)
++        hostInitializeInputMethod(window);
++    if (message == WM_APP + 0x3f) {
++        hostUpdateCaret(window, page);
++        return true;
++    }
++    if (message == WM_APP + 0x3e) {
++        hostActivateTextStore(window, page);
++        return true;
++    }
++    if (message == WM_KILLFOCUS || message == WM_NCDESTROY)
++        hostDeactivateTextStore(window);
++    if ((message == WM_IME_STARTCOMPOSITION || message == WM_IME_COMPOSITION || message == WM_IME_ENDCOMPOSITION)
++        && hostTextStoreOwnsComposition(window))
++        return true;
++    if (message == WM_NCDESTROY) {
++        RemovePropW(window, hostCaretProperty);
++        if (auto context = reinterpret_cast<HIMC>(RemovePropW(window, hostInputContextProperty))) {
++            ImmAssociateContext(window, nullptr);
++            ImmDestroyContext(context);
++        }
++        return false;
++    }
++    if (message == WM_IME_STARTCOMPOSITION) {
++        SetPropW(window, hostCompositionProperty, reinterpret_cast<HANDLE>(1));
++        hostSendComposition(page, 0);
++        hostUpdateCaret(window, page);
++        return true;
++    }
++    if (message == WM_IME_ENDCOMPOSITION || message == WM_KILLFOCUS) {
++        if (message == WM_KILLFOCUS) {
++            RemovePropW(window, hostCaretProperty);
++            hostDestroyCaret(window);
++        }
++        if (RemovePropW(window, hostCompositionProperty))
++            hostSendComposition(page, 3);
++        return message == WM_IME_ENDCOMPOSITION;
++    }
++    if (message != WM_IME_COMPOSITION)
++        return false;
++    auto context = ImmGetContext(window);
++    if (!context)
++        return false;
++    if (!GetPropW(window, hostCompositionProperty)) {
++        SetPropW(window, hostCompositionProperty, reinterpret_cast<HANDLE>(1));
++        hostSendComposition(page, 0);
++    }
++    if (lParam & GCS_RESULTSTR) {
++        hostSendComposition(page, 2, hostCompositionString(context, GCS_RESULTSTR));
++        RemovePropW(window, hostCompositionProperty);
++    }
++    if (lParam & GCS_COMPSTR) {
++        if (!GetPropW(window, hostCompositionProperty)) {
++            SetPropW(window, hostCompositionProperty, reinterpret_cast<HANDLE>(1));
++            hostSendComposition(page, 0);
++        }
++        Vector<uint8_t> attributes;
++        auto size = ImmGetCompositionStringW(context, GCS_COMPATTR, nullptr, 0);
++        if (size > 0) {
++            attributes.resize(size);
++            ImmGetCompositionStringW(context, GCS_COMPATTR, attributes.mutableSpan().data(), size);
++        }
++        auto cursor = ImmGetCompositionStringW(context, GCS_CURSORPOS, nullptr, 0);
++        hostSendComposition(page, 1, hostCompositionString(context, GCS_COMPSTR), std::max(0L, cursor), attributes);
++    } else if (!lParam) {
++        hostSendComposition(page, 3);
++        RemovePropW(window, hostCompositionProperty);
++    }
++    ImmReleaseContext(window, context);
++    hostUpdateCaret(window, page);
++    return true;
++}
++} // namespace WebKit
+diff --git a/Source/WebKit/UIProcess/win/HostTextInputWin.cpp b/Source/WebKit/UIProcess/win/HostTextInputWin.cpp
+new file mode 100644
+index 000000000..8f3f26af8
+--- /dev/null
++++ b/Source/WebKit/UIProcess/win/HostTextInputWin.cpp
+@@ -0,0 +1,389 @@
++// Native TSF composition adapter for the Windows Port. The text store
++// contains IME staging text only; WebCore owns the actual field/selection.
++#include "config.h"
++#include "HostInputMethodWin.h"
++#include "NativeWebKeyboardEvent.h"
++#include <atomic>
++#include <limits>
++#include <msctf.h>
++#include <olectl.h>
++#include <textstor.h>
++#include <wrl/client.h>
++#include <string>
++
++namespace WebKit {
++using Microsoft::WRL::ComPtr;
++static constexpr auto storeProperty = L"DevDuo.WebKit.TextStore";
++static constexpr auto errorProperty = L"DevDuo.WebKit.TextStoreError";
++
++class HostTextStore final : public ITextStoreACP, public ITfContextOwnerCompositionSink, public ITfTextEditSink {
++public:
++    HostTextStore(HWND window, WebPageProxy& page) : m_window(window), m_page(page) { }
++    HRESULT activate()
++    {
++        HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
++        if (FAILED(result)) return result;
++        m_comInitialized = true;
++        result = CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_thread));
++        if (FAILED(result)) return result;
++        if (FAILED(result = m_thread->Activate(&m_client))) return result;
++        m_activated = true;
++        // The host message pump is external to WebKit. Route each focused
++        // keystroke once, instead of also allowing the system compatibility feed.
++        if (SUCCEEDED(m_thread.As(&m_feed)))
++            m_feedDisabled = SUCCEEDED(m_feed->DisableSystemKeystrokeFeed());
++        m_thread->GetFocus(&m_previousFocus);
++        if (FAILED(result = m_thread->CreateDocumentMgr(&m_document))) return result;
++        TfEditCookie cookie;
++        if (FAILED(result = m_document->CreateContext(m_client, 0, static_cast<ITextStoreACP*>(this), &m_context, &cookie))) return result;
++        if (FAILED(result = m_document->Push(m_context.Get()))) return result;
++        if (FAILED(result = m_context.As(&m_editSource))) return result;
++        if (FAILED(result = m_editSource->AdviseSink(__uuidof(ITfTextEditSink), static_cast<ITfTextEditSink*>(this), &m_editCookie))) return result;
++        if (FAILED(result = m_thread->AssociateFocus(m_window, m_document.Get(), &m_previousAssociation))) return result;
++        m_associated = true;
++        if (FAILED(result = m_thread->SetFocus(m_document.Get()))) return result;
++        if (FAILED(result = m_thread.As(&m_keys))) return result;
++        s_active = this;
++        m_hook = SetWindowsHookExW(WH_GETMESSAGE, messageHook, nullptr, GetCurrentThreadId());
++        return m_hook ? S_OK : HRESULT_FROM_WIN32(GetLastError());
++    }
++    void deactivate()
++    {
++        if (m_closing) return;
++        m_closing = true;
++        if (s_active == this) s_active = nullptr;
++        if (m_hook) { UnhookWindowsHookEx(m_hook); m_hook = nullptr; }
++        if (m_composing && !m_page->isClosed()) hostSendComposition(m_page.get(), 3);
++        m_composing = false;
++        if (m_associated) {
++            ComPtr<ITfDocumentMgr> ignored;
++            m_thread->AssociateFocus(m_window, m_previousAssociation.Get(), &ignored);
++            m_associated = false;
++        }
++        if (m_thread && m_document) {
++            ComPtr<ITfDocumentMgr> focused;
++            m_thread->GetFocus(&focused);
++            if (focused.Get() == m_document.Get()) m_thread->SetFocus(m_previousFocus.Get());
++        }
++        if (m_editSource && m_editCookie != TF_INVALID_COOKIE) m_editSource->UnadviseSink(m_editCookie);
++        m_editSource.Reset();
++        if (m_document) m_document->Pop(TF_POPF_ALL);
++        m_sink.Reset(); m_context.Reset(); m_document.Reset(); m_keys.Reset();
++        m_previousAssociation.Reset(); m_previousFocus.Reset();
++        if (m_feedDisabled) { m_feed->EnableSystemKeystrokeFeed(); m_feedDisabled = false; }
++        m_feed.Reset();
++        if (m_activated) { m_thread->Deactivate(); m_activated = false; }
++        m_thread.Reset();
++        if (m_comInitialized) { CoUninitialize(); m_comInitialized = false; }
++    }
++    String diagnostics() const { return String(std::span<const char16_t>(reinterpret_cast<const char16_t*>(m_trace.data()), m_trace.size())); }
++    unsigned state() const { return (m_activated ? 1u : 0u) | (m_composing ? 2u : 0u) | (m_hook ? 4u : 0u); }
++    bool ownsComposition() const { return m_composing || m_handledKey; }
++    void layoutChanged(bool statusChanged)
++    {
++        if (m_closing || !m_sink) return;
++        if (m_lock) { m_layoutPending = true; m_statusPending |= statusChanged; PostMessageW(m_window, WM_APP + 0x3e, 0, 0); return; }
++        auto sink = m_sink;
++        if (statusChanged) sink->OnStatusChange(GetPropW(m_window, L"DevDuo.WebKit.Editable") ? 0 : TS_SD_READONLY);
++        if (m_sinkMask & TS_AS_LAYOUT_CHANGE) sink->OnLayoutChange(TS_LC_CHANGE, 1);
++    }
++    void grantPendingLock()
++    {
++        if (m_layoutPending && !m_lock) { m_layoutPending = false; layoutChanged(std::exchange(m_statusPending, false)); }
++        if (!m_pendingLock || m_lock || !m_sink || m_closing) return;
++        DWORD flags = std::exchange(m_pendingLock, 0);
++        HRESULT session;
++        RequestLock(flags, &session);
++    }
++
++    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
++    {
++        if (!object) return E_POINTER;
++        *object = nullptr;
++        if (iid == __uuidof(IUnknown) || iid == __uuidof(ITextStoreACP)) *object = static_cast<ITextStoreACP*>(this);
++        else if (iid == __uuidof(ITfContextOwnerCompositionSink)) *object = static_cast<ITfContextOwnerCompositionSink*>(this);
++        else if (iid == __uuidof(ITfTextEditSink)) *object = static_cast<ITfTextEditSink*>(this);
++        if (!*object) return E_NOINTERFACE;
++        AddRef(); return S_OK;
++    }
++    ULONG STDMETHODCALLTYPE AddRef() override { return ++m_references; }
++    ULONG STDMETHODCALLTYPE Release() override { auto count = --m_references; if (!count) delete this; return count; }
++
++    HRESULT STDMETHODCALLTYPE AdviseSink(REFIID iid, IUnknown* unknown, DWORD mask) override
++    {
++        if (iid != __uuidof(ITextStoreACPSink) || !unknown) return E_INVALIDARG;
++        ComPtr<ITextStoreACPSink> sink;
++        HRESULT result = unknown->QueryInterface(IID_PPV_ARGS(&sink));
++        if (FAILED(result)) return result;
++        if (m_sink && m_sink.Get() != sink.Get()) return CONNECT_E_ADVISELIMIT;
++        m_sink = sink; m_sinkMask = mask; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE UnadviseSink(IUnknown* unknown) override
++    {
++        ComPtr<ITextStoreACPSink> sink;
++        if (!unknown || FAILED(unknown->QueryInterface(IID_PPV_ARGS(&sink))) || sink.Get() != m_sink.Get()) return CONNECT_E_NOCONNECTION;
++        m_sink.Reset(); return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE RequestLock(DWORD flags, HRESULT* session) override
++    {
++        if (!session || !m_sink) return E_INVALIDARG;
++        if (m_lock) {
++            if (flags & TS_LF_SYNC) { *session = TS_E_SYNCHRONOUS; return S_OK; }
++            m_pendingLock |= flags & TS_LF_READWRITE;
++            *session = TS_S_ASYNC;
++            PostMessageW(m_window, WM_APP + 0x3e, 0, 0);
++            return S_OK;
++        }
++        AddRef();
++        m_lock = flags & TS_LF_READWRITE;
++        auto sink = m_sink;
++        *session = sink->OnLockGranted(m_lock);
++        m_lock = 0;
++        finishTransaction();
++        if (m_pendingLock) PostMessageW(m_window, WM_APP + 0x3e, 0, 0);
++        Release();
++        return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetStatus(TS_STATUS* status) override
++    {
++        if (!status) return E_POINTER;
++        status->dwStaticFlags = TS_SS_NOHIDDENTEXT;
++        status->dwDynamicFlags = GetPropW(m_window, L"DevDuo.WebKit.Editable") ? 0 : TS_SD_READONLY;
++        return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE QueryInsert(LONG start, LONG end, ULONG count, LONG* resultStart, LONG* resultEnd) override
++    {
++        if (!resultStart || !resultEnd || !validRange(start, end) || count > static_cast<ULONG>(LONG_MAX - start)) return E_INVALIDARG;
++        *resultStart = start; *resultEnd = start + count; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetSelection(ULONG index, ULONG count, TS_SELECTION_ACP* selection, ULONG* fetched) override
++    {
++        if (!m_lock) return TS_E_NOLOCK;
++        if (!selection || !fetched || !count || (index != TS_DEFAULT_SELECTION && index)) return E_INVALIDARG;
++        *selection = { m_start, m_end, { TS_AE_END, FALSE } }; *fetched = 1; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE SetSelection(ULONG count, const TS_SELECTION_ACP* selection) override
++    {
++        if ((m_lock & TS_LF_READWRITE) != TS_LF_READWRITE) return TS_E_NOLOCK;
++        if (count != 1 || !selection || !validRange(selection->acpStart, selection->acpEnd)) return E_INVALIDARG;
++        m_start = selection->acpStart; m_end = selection->acpEnd;
++        publishComposition(); return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetText(LONG start, LONG end, WCHAR* text, ULONG capacity, ULONG* copied, TS_RUNINFO* runs, ULONG runCapacity, ULONG* runCount, LONG* next) override
++    {
++        if (!m_lock) return TS_E_NOLOCK;
++        if (end == -1) end = static_cast<LONG>(m_text.size());
++        if (!validRange(start, end) || !copied || !runCount || !next || (capacity && !text) || (runCapacity && !runs)) return E_INVALIDARG;
++        *copied = std::min<ULONG>(capacity, end - start);
++        if (*copied) std::copy_n(m_text.data() + start, *copied, text);
++        auto length = capacity ? *copied : static_cast<ULONG>(end - start);
++        *runCount = runCapacity ? 1 : 0;
++        if (*runCount) runs[0] = { length, TS_RT_PLAIN };
++        *next = start + length; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE SetText(DWORD, LONG start, LONG end, const WCHAR* text, ULONG count, TS_TEXTCHANGE* change) override
++    {
++        if ((m_lock & TS_LF_READWRITE) != TS_LF_READWRITE) return TS_E_NOLOCK;
++        if (!change || !validRange(start, end) || (count && !text) || count > static_cast<ULONG>(LONG_MAX - start)) return E_INVALIDARG;
++        *change = { start, end, start + static_cast<LONG>(count) };
++        trace(L"set", count);
++        m_text.replace(start, end - start, text ? text : L"", count);
++        m_start = m_end = start + count; m_dirty = true;
++        publishComposition(); return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetFormattedText(LONG, LONG, IDataObject** data) override { if (data) *data = nullptr; return E_NOTIMPL; }
++    HRESULT STDMETHODCALLTYPE GetEmbedded(LONG, REFGUID, REFIID, IUnknown** object) override { if (object) *object = nullptr; return TS_E_FORMAT; }
++    HRESULT STDMETHODCALLTYPE QueryInsertEmbedded(const GUID*, const FORMATETC*, BOOL* insertable) override { if (!insertable) return E_POINTER; *insertable = FALSE; return S_OK; }
++    HRESULT STDMETHODCALLTYPE InsertEmbedded(DWORD, LONG, LONG, IDataObject*, TS_TEXTCHANGE*) override { return TS_E_FORMAT; }
++    HRESULT STDMETHODCALLTYPE InsertTextAtSelection(DWORD flags, const WCHAR* text, ULONG count, LONG* start, LONG* end, TS_TEXTCHANGE* change) override
++    {
++        if (!m_lock) return TS_E_NOLOCK;
++        if (!(flags & TS_IAS_NOQUERY) && (!start || !end)) return E_INVALIDARG;
++        if (start) *start = m_start;
++        if (end) *end = flags & TS_IAS_QUERYONLY ? m_end : m_start + count;
++        if (flags & TS_IAS_QUERYONLY) return S_OK;
++        return SetText(0, m_start, m_end, text, count, change);
++    }
++    HRESULT STDMETHODCALLTYPE InsertEmbeddedAtSelection(DWORD, IDataObject*, LONG*, LONG*, TS_TEXTCHANGE*) override { return TS_E_FORMAT; }
++    HRESULT STDMETHODCALLTYPE RequestSupportedAttrs(DWORD, ULONG, const TS_ATTRID*) override { return S_OK; }
++    HRESULT STDMETHODCALLTYPE RequestAttrsAtPosition(LONG, ULONG, const TS_ATTRID*, DWORD) override { return S_OK; }
++    HRESULT STDMETHODCALLTYPE RequestAttrsTransitioningAtPosition(LONG, ULONG, const TS_ATTRID*, DWORD) override { return S_OK; }
++    HRESULT STDMETHODCALLTYPE FindNextAttrTransition(LONG, LONG halt, ULONG, const TS_ATTRID*, DWORD, LONG* next, BOOL* found, LONG* offset) override
++    {
++        if (!next || !found || !offset) return E_POINTER;
++        *next = halt; *found = FALSE; *offset = 0; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE RetrieveRequestedAttrs(ULONG, TS_ATTRVAL*, ULONG* fetched) override { if (!fetched) return E_POINTER; *fetched = 0; return S_OK; }
++    HRESULT STDMETHODCALLTYPE GetEndACP(LONG* end) override { if (!end) return E_POINTER; if (!m_lock) return TS_E_NOLOCK; *end = static_cast<LONG>(m_text.size()); return S_OK; }
++    HRESULT STDMETHODCALLTYPE GetActiveView(TsViewCookie* view) override { if (!view) return E_POINTER; *view = 1; return S_OK; }
++    HRESULT STDMETHODCALLTYPE GetACPFromPoint(TsViewCookie, const POINT*, DWORD, LONG*) override { return TS_E_INVALIDPOINT; }
++    HRESULT STDMETHODCALLTYPE GetTextExt(TsViewCookie, LONG start, LONG end, RECT* rect, BOOL* clipped) override
++    {
++        if (!rect || !clipped || !validRange(start, end)) return E_INVALIDARG;
++        auto number = [&](LPCWSTR key) { return static_cast<int>(reinterpret_cast<INT_PTR>(GetPropW(m_window, key))); };
++        WebCore::FloatRect logical(number(L"DevDuo.WebKit.CaretX"), number(L"DevDuo.WebKit.CaretY"), number(L"DevDuo.WebKit.CaretW"), number(L"DevDuo.WebKit.CaretH"));
++        if (logical.height() <= 0) return TS_E_NOLAYOUT;
++        logical.setWidth(std::max(1.0f, logical.width()));
++        logical.scale(m_page->intrinsicDeviceScaleFactor());
++        *rect = hostClientToScreen(m_window, WebCore::enclosingIntRect(logical));
++        *clipped = FALSE; return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetScreenExt(TsViewCookie, RECT* rect) override
++    {
++        if (!rect) return E_POINTER;
++        auto target = hostPresentationWindow(m_window);
++        GetClientRect(target, rect);
++        POINT origin { }; ClientToScreen(target, &origin);
++        OffsetRect(rect, origin.x, origin.y); return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE GetWnd(TsViewCookie, HWND* window) override { if (!window) return E_POINTER; *window = m_window; return S_OK; }
++    HRESULT STDMETHODCALLTYPE OnEndEdit(ITfContext*, TfEditCookie, ITfEditRecord*) override
++    {
++        if (m_dirty && !m_closing && !m_page->isClosed()) hostUpdateCaret(m_window, m_page.get());
++        return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE OnStartComposition(ITfCompositionView*, BOOL* accept) override
++    {
++        if (!accept) return E_POINTER;
++        *accept = !m_closing && !m_page->isClosed() && GetPropW(m_window, L"DevDuo.WebKit.Editable");
++        trace(L"start", *accept);
++        if (*accept) {
++            m_composing = true; m_lastText.clear(); m_lastCursor = -1;
++            hostSendComposition(m_page.get(), 0); publishComposition();
++        }
++        return S_OK;
++    }
++    HRESULT STDMETHODCALLTYPE OnUpdateComposition(ITfCompositionView*, ITfRange*) override { trace(L"update", m_text.size()); publishComposition(); return S_OK; }
++    HRESULT STDMETHODCALLTYPE OnEndComposition(ITfCompositionView*) override
++    {
++        trace(L"end", m_text.size());
++        if (m_composing && !m_closing && !m_page->isClosed())
++            hostSendComposition(m_page.get(), m_text.empty() ? 3 : 2, string());
++        m_composing = false; m_reset = true;
++        if (!m_lock) finishTransaction();
++        return S_OK;
++    }
++private:
++    ~HostTextStore() { deactivate(); }
++    void trace(const wchar_t* event, size_t value) { m_trace += event; m_trace += L":" + std::to_wstring(value) + L","; if (m_trace.size() > 2048) m_trace.erase(0, 1024); }
++    bool validRange(LONG start, LONG end) const { return start >= 0 && end >= start && static_cast<size_t>(end) <= m_text.size(); }
++    String string() const { return String(std::span<const char16_t>(reinterpret_cast<const char16_t*>(m_text.data()), m_text.size())); }
++    void publishComposition()
++    {
++        // An empty initial TSF range is not an Editor composition. Publishing
++        // it would terminate WebCore's session before the first real preedit.
++        if (m_text.empty() || !m_composing || m_closing || m_page->isClosed() || (m_lastText == m_text && m_lastCursor == m_end)) return;
++        m_lastText = m_text; m_lastCursor = m_end;
++        trace(L"publish", m_text.size());
++        hostSendComposition(m_page.get(), 1, string(), m_end);
++        hostUpdateCaret(m_window, m_page.get());
++    }
++    void finishTransaction()
++    {
++        if (m_closing) return;
++        if (!m_composing && m_dirty && !m_reset && !m_text.empty() && !m_page->isClosed()) {
++            hostSendComposition(m_page.get(), 0);
++            hostSendComposition(m_page.get(), 2, string());
++            m_reset = true;
++        }
++        m_dirty = false;
++        if (!m_reset) return;
++        trace(L"reset", m_text.size());
++        m_reset = false;
++        LONG previousLength = static_cast<LONG>(m_text.size());
++        m_text.clear(); m_start = m_end = 0;
++        auto sink = m_sink;
++        if (sink && (m_sinkMask & TS_AS_TEXT_CHANGE) && previousLength) {
++            TS_TEXTCHANGE change { 0, previousLength, 0 };
++            sink->OnTextChange(0, &change);
++        }
++        if (sink && (m_sinkMask & TS_AS_SEL_CHANGE)) sink->OnSelectionChange();
++        if (!m_page->isClosed()) hostUpdateCaret(m_window, m_page.get());
++    }
++    static LRESULT CALLBACK messageHook(int code, WPARAM removed, LPARAM data)
++    {
++        auto* store = s_active;
++        if (code >= 0 && removed == PM_REMOVE && store && !store->m_closing) {
++            auto& message = *reinterpret_cast<MSG*>(data);
++            if (message.hwnd == store->m_window && GetFocus() == store->m_window
++                && (message.message == WM_KEYDOWN || message.message == WM_KEYUP)) {
++                store->AddRef();
++                ComPtr<ITfDocumentMgr> focused;
++                store->m_thread->GetFocus(&focused);
++                if (focused.Get() != store->m_document.Get())
++                    store->m_thread->SetFocus(store->m_document.Get());
++                auto key = message.wParam == VK_PROCESSKEY ? ImmGetVirtualKey(message.hwnd) : message.wParam;
++                BOOL eaten = FALSE;
++                bool down = message.message == WM_KEYDOWN;
++                HRESULT result = down ? store->m_keys->TestKeyDown(key, message.lParam, &eaten) : store->m_keys->TestKeyUp(key, message.lParam, &eaten);
++                if (SUCCEEDED(result) && eaten)
++                    result = down ? store->m_keys->KeyDown(key, message.lParam, &eaten) : store->m_keys->KeyUp(key, message.lParam, &eaten);
++                if (SUCCEEDED(result) && eaten && !store->m_closing && !store->m_page->isClosed()) {
++                    store->m_handledKey = true;
++                    store->m_page->handleKeyboardEvent(NativeWebKeyboardEvent::create(message.hwnd, message.message, VK_PROCESSKEY, message.lParam, { }));
++                    message.message = WM_NULL;
++                } else if (down && !store->m_composing)
++                    store->m_handledKey = false;
++                store->Release();
++            }
++        }
++        return CallNextHookEx(nullptr, code, removed, data);
++    }
++    static thread_local HostTextStore* s_active;
++    std::atomic<ULONG> m_references { 1 };
++    HWND m_window;
++    Ref<WebPageProxy> m_page;
++    ComPtr<ITfThreadMgr> m_thread;
++    ComPtr<ITfKeystrokeMgr> m_keys;
++    ComPtr<ITfConfigureSystemKeystrokeFeed> m_feed;
++    bool m_feedDisabled { false };
++    ComPtr<ITfDocumentMgr> m_document, m_previousAssociation, m_previousFocus;
++    ComPtr<ITfContext> m_context;
++    ComPtr<ITfSource> m_editSource;
++    DWORD m_editCookie { TF_INVALID_COOKIE };
++    ComPtr<ITextStoreACPSink> m_sink;
++    TfClientId m_client { 0 };
++    HHOOK m_hook { nullptr };
++    DWORD m_lock { 0 }, m_pendingLock { 0 }, m_sinkMask { 0 };
++    bool m_comInitialized { false }, m_layoutPending { false }, m_statusPending { false };
++    bool m_activated { false }, m_associated { false }, m_closing { false }, m_composing { false }, m_dirty { false }, m_reset { false }, m_handledKey { false };
++    LONG m_start { 0 }, m_end { 0 }, m_lastCursor { -1 };
++    std::wstring m_text, m_lastText, m_trace;
++};
++thread_local HostTextStore* HostTextStore::s_active;
++
++void hostActivateTextStore(HWND window, WebPageProxy& page)
++{
++    if (auto* store = reinterpret_cast<HostTextStore*>(GetPropW(window, storeProperty))) { store->grantPendingLock(); return; }
++    if (GetFocus() != window || page.isClosed() || !GetPropW(window, L"DevDuo.WebKit.Editable")) return;
++    auto* store = new HostTextStore(window, page);
++    auto result = store->activate();
++    SetPropW(window, errorProperty, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(result)));
++    if (FAILED(result) || !SetPropW(window, storeProperty, store)) { store->deactivate(); store->Release(); }
++}
++void hostTextInputLayoutChanged(HWND window, bool statusChanged)
++{
++    if (auto* store = reinterpret_cast<HostTextStore*>(GetPropW(window, storeProperty))) store->layoutChanged(statusChanged);
++}
++void hostDeactivateTextStore(HWND window)
++{
++    if (auto* store = reinterpret_cast<HostTextStore*>(RemovePropW(window, storeProperty))) { store->deactivate(); store->Release(); }
++}
++bool hostTextStoreOwnsComposition(HWND window)
++{
++    auto* store = reinterpret_cast<HostTextStore*>(GetPropW(window, storeProperty));
++    return store && store->ownsComposition();
++}
++String hostTextInputDiagnostics(HWND window)
++{
++    auto* store = reinterpret_cast<HostTextStore*>(GetPropW(window, storeProperty));
++    return store ? store->diagnostics() : emptyString();
++}
++unsigned hostTextInputState(HWND window, unsigned* error, uint64_t* editor)
++{
++    if (editor) *editor = reinterpret_cast<uintptr_t>(GetPropW(window, L"DevDuo.WebKit.Editor"));
++    if (error) *error = static_cast<unsigned>(reinterpret_cast<INT_PTR>(GetPropW(window, errorProperty)));
++    auto* store = reinterpret_cast<HostTextStore*>(GetPropW(window, storeProperty));
++    return (store ? store->state() : 0) | (GetPropW(window, L"DevDuo.WebKit.Editable") ? 16u : 0u);
++}
++} // namespace WebKit
+diff --git a/Source/WebKit/UIProcess/win/PageClientImpl.cpp b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+index accf06cb5..60d4ea57a 100644
+--- a/Source/WebKit/UIProcess/win/PageClientImpl.cpp
++++ b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include "config.h"
++#include "HostDesktopGeometry.h"
+ #include "PageClientImpl.h"
+ 
+ #include "APIOpenPanelParameters.h"
+@@ -168,17 +169,21 @@ FloatRect PageClientImpl::convertToUserSpace(const FloatRect& viewRect)
+ 
+ IntPoint PageClientImpl::screenToRootView(const IntPoint& point)
+ {
+-    return IntPoint();
++    auto result = hostScreenToClient(m_view.window(), point);
++    return roundedIntPoint(FloatPoint(result).scaled(1 / m_view.page()->intrinsicDeviceScaleFactor()));
+ }
+ 
+ IntPoint PageClientImpl::rootViewToScreen(const IntPoint& point)
+ {
+-    return IntPoint();
++    auto scaled = roundedIntPoint(FloatPoint(point).scaled(m_view.page()->intrinsicDeviceScaleFactor()));
++    return hostClientToScreen(m_view.window(), IntRect(scaled, { })).location();
+ }
+ 
+ IntRect PageClientImpl::rootViewToScreen(const IntRect& rect)
+ {
+-    return IntRect();
++    FloatRect scaled(rect);
++    scaled.scale(m_view.page()->intrinsicDeviceScaleFactor());
++    return hostClientToScreen(m_view.window(), enclosingIntRect(scaled));
+ }
+ 
+ WebCore::IntPoint PageClientImpl::accessibilityScreenToRootView(const WebCore::IntPoint& point)
+diff --git a/Source/WebKit/UIProcess/win/WebPageProxyWin.cpp b/Source/WebKit/UIProcess/win/WebPageProxyWin.cpp
+index b5788f257..ff5a7ab3c 100644
+--- a/Source/WebKit/UIProcess/win/WebPageProxyWin.cpp
++++ b/Source/WebKit/UIProcess/win/WebPageProxyWin.cpp
+@@ -69,6 +69,8 @@ void WebPageProxy::loadRecentSearches(IPC::Connection&, const String& name, Comp
+ 
+ void WebPageProxy::didUpdateEditorState(const EditorState&, const EditorState&)
+ {
++    if (auto client = pageClient())
++        PostMessageW(static_cast<PageClientImpl&>(*client).viewWidget(), WM_APP + 0x3f, 0, 0);
+ }
+ 
+ #if USE(GRAPHICS_LAYER_TEXTURE_MAPPER) || USE(GRAPHICS_LAYER_WC)
+@@ -90,4 +92,12 @@ void WebPageProxy::dispatchPendingCharEvents(const NativeWebKeyboardEvent& keydo
+     }
+ }
+ 
++void WebPageProxy::hostAccessibilityNotification(uint32_t event, uint64_t objectID)
++{
++    // Defer into the native window pump; never call a COM client while servicing
++    // a synchronous accessibility/editor IPC reply.
++    if (auto client = pageClient())
++        PostMessageW(static_cast<PageClientImpl&>(*client).viewWidget(), WM_APP + 0x3d, event, static_cast<LPARAM>(objectID));
++}
++
+ } // namespace WebKit
+diff --git a/Source/WebKit/UIProcess/win/WebPopupMenuProxyWin.cpp b/Source/WebKit/UIProcess/win/WebPopupMenuProxyWin.cpp
+index e47b8c90f..df9d1eec5 100644
+--- a/Source/WebKit/UIProcess/win/WebPopupMenuProxyWin.cpp
++++ b/Source/WebKit/UIProcess/win/WebPopupMenuProxyWin.cpp
+@@ -28,6 +28,7 @@
+ // We should try and factor out the common bits and share them.
+ 
+ #include "config.h"
++#include "HostDesktopGeometry.h"
+ #include "WebPopupMenuProxyWin.h"
+ 
+ #include "NativeWebMouseEvent.h"
+@@ -219,7 +220,7 @@ void WebPopupMenuProxyWin::showPopupMenu(const IntRect& rect, TextDirection, dou
+         m_popup = ::CreateWindowEx(exStyle, kWebKit2WebPopupMenuProxyWindowClassName, TEXT("PopupMenu"),
+             WS_POPUP | WS_BORDER,
+             m_windowRect.x(), m_windowRect.y(), m_windowRect.width(), m_windowRect.height(),
+-            hostWindow, 0, instanceHandle(), this);
++            hostPresentationWindow(hostWindow), 0, instanceHandle(), this);
+ 
+         if (!m_popup)
+             return;
+@@ -318,7 +319,7 @@ void WebPopupMenuProxyWin::showPopupMenu(const IntRect& rect, TextDirection, dou
+         if (!m_showPopup)
+             break;
+         activeWindow = ::GetActiveWindow();
+-        if (activeWindow != hostWindow && !::IsChild(activeWindow, hostWindow))
++        if (!activeWindow || GetAncestor(activeWindow, GA_ROOTOWNER) != GetAncestor(hostPresentationWindow(hostWindow), GA_ROOTOWNER))
+             break;
+         if (::GetCapture() != hostWindow)
+             break;
+@@ -371,10 +372,7 @@ void WebPopupMenuProxyWin::calculatePositionAndSize(const IntRect& rect)
+     IntRect rectInScreenCoords(rect);
+     rectInScreenCoords.scale(m_scaleFactor * intrinsicDeviceScaleFactor);
+ 
+-    POINT location(rectInScreenCoords.location());
+-    if (!::ClientToScreen(m_webView->window(), &location))
+-        return;
+-    rectInScreenCoords.setLocation(location);
++    rectInScreenCoords = hostClientToScreen(m_webView->window(), rectInScreenCoords);
+ 
+     int itemCount = m_items.size();
+     m_itemHeight = m_data.m_itemHeight;
+@@ -394,7 +392,8 @@ void WebPopupMenuProxyWin::calculatePositionAndSize(const IntRect& rect)
+ 
+     // Adjust Height
+     // The popup needs to stay within the bounds of the screen and not overlap any toolbars
+-    HMONITOR monitor = ::MonitorFromWindow(m_webView->window(), MONITOR_DEFAULTTOPRIMARY);
++    RECT anchor = rectInScreenCoords;
++    HMONITOR monitor = ::MonitorFromRect(&anchor, MONITOR_DEFAULTTONEAREST);
+     MONITORINFOEX monitorInfo;
+     monitorInfo.cbSize = sizeof(MONITORINFOEX);
+     ::GetMonitorInfo(monitor, &monitorInfo);
+@@ -434,6 +433,8 @@ void WebPopupMenuProxyWin::calculatePositionAndSize(const IntRect& rect)
+     else
+         popupRect.setX(rectInScreenCoords.x() + clientInsetLeftInDevicePixel);
+ 
++    popupRect.setWidth(std::min(popupRect.width(), screen.width() - 2));
++    popupRect.setX(std::clamp(popupRect.x(), screen.x() + 1, screen.maxX() - popupRect.width() - 1));
+     m_clientSize = popupRect.size();
+     RECT rectWithBorder = popupRect;
+     ::AdjustWindowRectEx(&rectWithBorder, WS_POPUP | WS_BORDER, false, WS_EX_LTRREADING);
+diff --git a/Source/WebKit/UIProcess/win/WebView.cpp b/Source/WebKit/UIProcess/win/WebView.cpp
+index d7bfd765c..95d787bfa 100644
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -26,6 +26,7 @@
+ 
+ #include "config.h"
+ #include "WebView.h"
++#include "HostInputMethodWin.h"
+ 
+ #include "APIPageConfiguration.h"
+ #include "DrawingAreaProxyCoordinatedGraphics.h"
+@@ -101,6 +102,7 @@ LRESULT CALLBACK WebView::WebViewWndProc(HWND hWnd, UINT message, WPARAM wParam,
+ 
+         // Associate the WebView with the window.
+         ::SetWindowLongPtr(hWnd, 0, (LONG_PTR)createStruct->lpCreateParams);
++        hostInitializeInputMethod(hWnd);
+         return 0;
+     }
+ 
+@@ -111,6 +113,14 @@ LRESULT WebView::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+     LRESULT lResult = 0;
+     bool handled = true;
++    if (hostHandleInputMethod(hWnd, *m_page, message, lParam))
++        return 0;
++    if (message == WM_IME_SETCONTEXT)
++        return DefWindowProcW(hWnd, message, wParam, lParam & ~ISC_SHOWUICOMPOSITIONWINDOW);
++    if (message == WM_IME_CHAR)
++        return 0; // Committed UTF-16 text is delivered once through Editor IPC.
++    if (message == WM_LBUTTONUP || message == WM_KEYUP || message == WM_SETFOCUS)
++        hostUpdateCaret(hWnd, *m_page);
+ 
+     switch (message) {
+     case WM_CLOSE:
+@@ -469,9 +479,9 @@ LRESULT WebView::onKeyEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
+     }
+     m_page->handleKeyboardEvent(NativeWebKeyboardEvent::create(hWnd, message, wParam, lParam, WTF::move(pendingCharEvents)));
+ 
+-    // We claim here to always have handled the event. If the event is not in fact handled, we will
+-    // find out later in didNotHandleKeyEvent.
+-    handled = true;
++    // The IME owns VK_PROCESSKEY. Preserve the DOM key notification, but let
++    // the default window procedure complete native input-method processing.
++    handled = wParam != VK_PROCESSKEY;
+     return 0;
+ }
+ 
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.cpp b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+index fc491a68c..bee446f8a 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -3955,7 +3955,15 @@ RefPtr<WebImage> WebPage::snapshotAtSize(const IntRect& rect, const IntSize& bit
+     if (options.contains(SnapshotOption::AllowHDR))
+         imageOptions.add(ImageOption::AllowHDR);
+ 
+-    auto snapshot = WebImage::create(bitmapSize, imageOptions, snapshotColorSpace(options, *this), &m_page->chrome().client());
++    auto* snapshotClient = &m_page->chrome().client();
++#if PLATFORM(WIN)
++    // Unaccelerated snapshots return a CPU-shareable bitmap to the UI process.
++    // Keep that bitmap local, as for WC software painting, rather than requiring
++    // a remote GPU backend and another handle transfer for a small color strip.
++    if (!options.contains(SnapshotOption::Accelerated))
++        snapshotClient = nullptr;
++#endif
++    auto snapshot = WebImage::create(bitmapSize, imageOptions, snapshotColorSpace(options, *this), snapshotClient);
+     if (!snapshot->context())
+         return nullptr;
+ 
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.h b/Source/WebKit/WebProcess/WebPage/WebPage.h
+index 50011bf41..ddb4a0afd 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -2546,6 +2546,13 @@ private:
+ 
+     void getContentsAsString(ContentAsStringIncludesChildFrames, CompletionHandler<void(const String&)>&&);
+ #if PLATFORM(WIN)
++    void hostSetComposition(uint32_t, const String&, uint32_t, const Vector<uint8_t>&);
++    void getHostCaretRect(CompletionHandler<void(bool, const WebCore::IntRect&, uint64_t)>&&);
++    void getHostAccessibilityTree(CompletionHandler<void(const String&)>&&);
++    void hostAccessibilityAction(const String&, uint64_t, uint32_t, const String&, CompletionHandler<void(bool)>&&);
++    WeakPtr<WebCore::LocalFrame> m_hostCompositionFrame;
++    WeakPtr<WebCore::Document, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionDocument;
++    WeakPtr<WebCore::Element, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionElement;
+     void setHostScrollIndicatorEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
+     void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+index 6a8ef0c7e..97de63bf8 100644
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+@@ -272,6 +272,10 @@ messages -> WebPage WantsAsyncDispatchMessage {
+     # Callbacks.
+     GetContentsAsString(enum:bool WebKit::ContentAsStringIncludesChildFrames inChildFrames) -> (String string)
+ #if PLATFORM(WIN)
++    HostSetComposition(uint32_t operation, String text, uint32_t cursor, Vector<uint8_t> attributes)
++    GetHostCaretRect() -> (bool editable, WebCore::IntRect rect, uint64_t editor)
++    GetHostAccessibilityTree() -> (String tree) Synchronous
++    HostAccessibilityAction(String document, uint64_t objectID, uint32_t action, String value) -> (bool success) Synchronous
+     SetHostScrollIndicatorEnabled(bool enabled)
+     GetHostScrollIndicatorState() -> (uint32_t status, uint32_t flags, uint64_t epoch, uint64_t userSequence, double position, double range, double viewportHeight)
+     GetHostFixedContainerColors() -> (uint32_t status, uint32_t states, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+index eac847573..4778e0472 100644
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -148,6 +148,11 @@ void DrawingAreaWC::updateGeometryWC(uint64_t backingStoreStateID, IntSize viewS
+     m_webPage->setDeviceScaleFactor(deviceScaleFactor);
+     m_webPage->setIntrinsicDeviceScaleFactor(intrinsicDeviceScaleFactor);
+     m_webPage->setSize(viewSize);
++#if PLATFORM(WIN)
++    // The proxy discards its backing store for every geometry generation,
++    // including a backing-scale change with an unchanged logical view size.
++    setNeedsDisplay();
++#endif
+ }
+ 
+ void DrawingAreaWC::setNeedsDisplay()
+@@ -372,7 +377,15 @@ void DrawingAreaWC::sendUpdateNonAC()
+     ASSERT(webPage->bounds().contains(bounds));
+     IntSize bitmapSize = bounds.size();
+     float deviceScaleFactor = webPage->corePage()->deviceScaleFactor();
++#if PLATFORM(WIN)
++    // The Windows software painter consumes a CPU bitmap. Own that shared
++    // memory in the Web process instead of requiring a GPU-process backend
++    // and handle exchange for each non-composited frame.
++    auto image = ImageBuffer::create<ImageBufferShareableBitmapBackend>(bitmapSize, deviceScaleFactor, ColorSpace::SRGB(), { PixelFormat::BGRA8 }, RenderingPurpose::DOM, { });
++#else
+     auto image = createImageBuffer(bitmapSize, deviceScaleFactor);
++#endif
++    RELEASE_ASSERT(image);
+     auto rects = m_dirtyRegion.rects();
+     if (shouldPaintBoundsRect(bounds, rects)) {
+         rects.clear();
+@@ -396,7 +409,12 @@ void DrawingAreaWC::sendUpdateNonAC()
+         webPage->drawRect(graphicsContext, rect);
+     image->flushDrawingContextAsync();
+ 
++#if PLATFORM(WIN)
++    // Local raster drawing is complete before the commit task reads its handle.
++    auto fence = [] { return true; };
++#else
+     auto fence = m_webPage->ensureRemoteRenderingBackendProxy().flushImageBuffers();
++#endif
+ 
+     m_commitQueue->dispatch([this, weakThis = WeakPtr(*this), stateID = m_backingStoreStateID, updateInfo = WTF::move(updateInfo), image = WTF::move(image), fence = WTF::move(fence)]() mutable {
+         fence();
+diff --git a/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp b/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp
+index 506ae38c6..edb003194 100644
+--- a/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp
++++ b/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp
+@@ -28,6 +28,14 @@
+ #include "WebPage.h"
+ 
+ #include "EditorState.h"
++#include "MessageSenderInlines.h"
++#include <WebCore/AXObjectCache.h>
++#include <WebCore/HostAccessibilityWin.h>
++#include <WebCore/AccessibilityObject.h>
++#include <WebCore/CompositionUnderline.h>
++#include <WebCore/DocumentView.h>
++#include <WebCore/FrameSelection.h>
++#include <wtf/JSONValues.h>
+ #include "WebFrame.h"
+ #include "WebKeyboardEvent.h"
+ #include "WebPageProxyMessages.h"
+@@ -57,6 +65,10 @@ using namespace WebCore;
+ 
+ void WebPage::platformInitialize(const WebPageCreationParameters&)
+ {
++    setHostAccessibilityNotification([](Page& page, uint32_t event, uint64_t objectID) {
++        if (auto* webPage = WebPage::fromCorePage(page))
++            webPage->send(Messages::WebPageProxy::HostAccessibilityNotification(event, objectID));
++    });
+ }
+ 
+ void WebPage::platformReinitializeAccessibilityToken()
+@@ -256,4 +268,179 @@ bool WebPage::handleEditingKeyboardEvent(WebCore::KeyboardEvent& event)
+     return frame->editor().insertText(keyEvent->text(), &event);
+ }
+ 
++
++void WebPage::hostSetComposition(uint32_t operation, const String& text, uint32_t cursor, const Vector<uint8_t>& attributes)
++{
++    RefPtr frame = corePage()->focusController().focusedOrMainFrame();
++    if (operation == 0) {
++        m_hostCompositionFrame = frame;
++        m_hostCompositionDocument = frame ? frame->document() : nullptr;
++        m_hostCompositionElement = frame && frame->document() ? frame->document()->focusedElement() : nullptr;
++        return;
++    }
++    RefPtr originalFrame = m_hostCompositionFrame.get();
++    RefPtr document = m_hostCompositionDocument.get();
++    RefPtr element = m_hostCompositionElement.get();
++    if (operation == 3 && originalFrame && document && originalFrame->document() == document
++        && (frame != originalFrame || document->focusedElement() != element)) {
++        // A new focused selection must never be replaced by the old composition.
++        // CancelComposition retires the old range without selecting it again.
++        Ref editor = originalFrame->editor();
++        if (element && editor->compositionNode() && editor->compositionNode()->isShadowIncludingDescendantOf(*element))
++            editor->cancelComposition();
++        m_hostCompositionFrame = nullptr;
++        m_hostCompositionDocument = nullptr;
++        m_hostCompositionElement = nullptr;
++        return;
++    }
++    if (!frame || frame != originalFrame || !document || frame->document() != document || frame->document()->focusedElement() != element || !frame->editor().canEdit())
++        return;
++    Ref editor = frame->editor();
++    if (operation == 1) {
++        Vector<CompositionUnderline> underlines;
++        // IMM attributes distinguish the selected conversion clause. Offsets are
++        // UTF-16, the same unit used by WebCore's native composition editor.
++        unsigned start = 0;
++        while (start < text.length()) {
++            bool thick = start < attributes.size() && (attributes[start] == 1 || attributes[start] == 3);
++            unsigned end = start + 1;
++            while (end < text.length() && (end < attributes.size() && (attributes[end] == 1 || attributes[end] == 3)) == thick)
++                ++end;
++            underlines.append({ start, end, CompositionUnderlineColor::TextColor, { }, thick });
++            start = end;
++        }
++        auto selection = std::min(cursor, text.length());
++        editor->setComposition(text, underlines, { }, { }, selection, selection);
++    } else {
++        if (operation == 2)
++            editor->confirmComposition(text);
++        else if (editor->hasComposition())
++            editor->setComposition(emptyString(), { }, { }, { }, 0, 0);
++        m_hostCompositionFrame = nullptr;
++        m_hostCompositionDocument = nullptr;
++        m_hostCompositionElement = nullptr;
++    }
++}
++
++void WebPage::getHostCaretRect(CompletionHandler<void(bool, const IntRect&, uint64_t)>&& callback)
++{
++    RefPtr frame = corePage()->focusController().focusedOrMainFrame();
++    if (!frame || !frame->editor().canEdit()) {
++        callback(false, { }, 0);
++        return;
++    }
++    frame->view()->updateLayoutAndStyleIfNeededRecursive();
++    RefPtr element = frame->document()->focusedElement();
++    callback(true, frame->view()->contentsToRootView(frame->selection().absoluteCaretBounds()), element ? element->nodeIdentifier().toUInt64() : 0);
++}
++
++// Export WebCore's semantic AX tree, never a DOM approximation. Object IDs are
++// valid only with their owning document token; protected values stay private.
++void WebPage::getHostAccessibilityTree(CompletionHandler<void(const String&)>&& callback)
++{
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr document = frame ? frame->document() : nullptr;
++    if (!document) {
++        callback(String());
++        return;
++    }
++    AXObjectCache::enableAccessibility();
++    frame->view()->updateLayoutAndStyleIfNeededRecursive();
++    auto* cache = document->axObjectCache();
++    RefPtr root = cache ? cache->rootObjectForFrame(*frame) : nullptr;
++    if (!root) {
++        callback(String());
++        return;
++    }
++    auto result = JSON::Object::create();
++    result->setString("document"_s, document->identifier().toString());
++    auto nodes = JSON::Array::create();
++    Vector<std::pair<Ref<AXCoreObject>, uint64_t>> pending;
++    pending.append({ *root, 0 });
++    HashSet<uint64_t> visited;
++    while (!pending.isEmpty()) {
++        auto [object, parent] = pending.takeLast();
++        auto id = object->objectID().toUInt64();
++        if (!visited.add(id).isNewEntry)
++            continue;
++        auto node = JSON::Object::create();
++        node->setString("id"_s, String::number(id));
++        node->setString("parent"_s, String::number(parent));
++        auto name = object->title();
++        if (name.isEmpty())
++            name = object->description();
++        // UIA reads ordinary text through Name, not an editable Value pattern.
++        if (name.isEmpty() && object->isStaticText())
++            name = object->stringValue();
++        if (name.isEmpty() && object->isWebArea())
++            name = document->title();
++        node->setString("name"_s, name);
++        node->setString("value"_s, object->isSecureField() ? String() : object->stringValue());
++        node->setString("description"_s, object->description());
++        // Stable platform roles, independent of WebCore's internal enum values.
++        unsigned role = 0x14; // ROLE_SYSTEM_GROUPING
++        if (object->isWebArea()) role = 0x0f;
++        else if ((object->role() == AccessibilityRole::TextField || object->role() == AccessibilityRole::TextArea || object->role() == AccessibilityRole::SearchField)) role = 0x2a;
++        else if (object->role() == AccessibilityRole::Button) role = 0x2b;
++        else if (object->isCheckbox() || object->isSwitch()) role = 0x2c;
++        else if (object->isRadioButton()) role = 0x2d;
++        else if ((object->isComboBox() || object->isPopUpButton())) role = 0x2e;
++        else if (object->isLink()) role = 0x1e;
++        else if (object->isImage()) role = 0x28;
++        else if (object->isStaticText()) role = 0x29;
++        else if (object->isListBox()) role = 0x21;
++        else if (object->isListBoxOption()) role = 0x22;
++        else if (object->isSlider()) role = 0x33;
++        else if (object->isProgressIndicator()) role = 0x30;
++        unsigned state = 0;
++        if (!object->isEnabled()) state |= 0x1;
++        if (object->isSelected()) state |= 0x2;
++        if (object->isFocused()) state |= 0x4;
++        if (object->isChecked()) state |= 0x10;
++        if (!object->canSetValueAttribute()) state |= 0x40;
++        if (!object->isVisible()) state |= 0x8000;
++        if (object->isOffScreen()) state |= 0x10000;
++        if (object->canSetFocusAttribute()) state |= 0x100000;
++        if (object->isSecureField()) state |= 0x20000000;
++        node->setInteger("role"_s, role);
++        node->setInteger("state"_s, state);
++        auto rect = enclosingIntRect(object->relativeFrame());
++        node->setInteger("x"_s, rect.x());
++        node->setInteger("y"_s, rect.y());
++        node->setInteger("width"_s, rect.width());
++        node->setInteger("height"_s, rect.height());
++        nodes->pushObject(WTF::move(node));
++        auto children = object->unignoredChildren();
++        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
++            pending.append({ iterator->copyRef(), id });
++    }
++    result->setArray("nodes"_s, WTF::move(nodes));
++    callback(result->toJSONString());
++}
++
++void WebPage::hostAccessibilityAction(const String& token, uint64_t id, uint32_t action, const String& value, CompletionHandler<void(bool)>&& callback)
++{
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr document = frame ? frame->document() : nullptr;
++    if (!document || document->identifier().toString() != token || !AXID::isValidIdentifier(id)) {
++        callback(false);
++        return;
++    }
++    auto* cache = document->axObjectCache();
++    RefPtr object = cache ? cache->objectForID(AXID { id }) : nullptr;
++    if (!object || !object->isEnabled()) {
++        callback(false);
++        return;
++    }
++    if (action == 0 && object->canSetFocusAttribute()) {
++        object->setFocused(true);
++        callback(true);
++    } else if (action == 1)
++        callback(object->press());
++    else if (action == 2 && object->canSetValueAttribute())
++        callback(object->setValue(value));
++    else
++        callback(false);
++}
++
+ } // namespace WebKit

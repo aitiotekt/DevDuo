@@ -2,7 +2,7 @@
 
 # DevDuo
 
-**Pesudo iPhone Duo Viewport Simulator for Web Developers**
+**Pseudo iPhone Duo Viewport Simulator for Web Developers**
 
 [![Release](https://img.shields.io/github/v/release/aitiotekt/DevDuo?include_prereleases&filter=v*&label=release)](https://github.com/aitiotekt/DevDuo/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -28,7 +28,7 @@ DevDuo is an experimental layout aid using desktop WebKit, not an iOS runtime. S
 
 ## Download and install
 
-Open **[application releases](https://github.com/aitiotekt/DevDuo/releases)** and choose a `v…` release, including the beta prerelease. The separate `webkit-v…` releases contain an engine dependency, not the DevDuo app. If the first application release is still being prepared, check back on that page.
+Open **[application releases](https://github.com/aitiotekt/DevDuo/releases)** and choose a `v…` release, including the beta prerelease. The separate `webkit-v…` releases contain an engine dependency, not the DevDuo app.
 
 | Your computer | Download | Install |
 | --- | --- | --- |

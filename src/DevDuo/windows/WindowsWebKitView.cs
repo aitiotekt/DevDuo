@@ -82,7 +82,8 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     public event Action<HostCommand>? CommandRequested;
     internal double BackingScale => geometry?.Scale ?? 0;
     internal Color UnderPageColor => rootColor;
-    internal bool IsReady => page != 0 && !disposed;
+    private bool sourceDestroyed;
+    internal bool IsReady => page != 0 && !disposed && !sourceDestroyed;
     internal sealed record ContentEdgeColor(uint Status, uint Rgb, Rectangle SampleRect, long NavigationGeneration, long GeometryGeneration);
 
     internal void Initialize(string observer, bool safariScrollIndicator = true)
@@ -124,11 +125,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         finally { WKRelease(developerChannel); }
         browserWindow = WKViewGetWindow(view);
         keyboardWindow = new HostKeyboardWindow(browserWindow, command => CommandRequested?.Invoke(command));
+        keyboardWindow.SourceDestroyed = () => sourceDestroyed = true;
+        keyboardWindow.AccessibleObjectRequested = GetWebAccessibility;
+        keyboardWindow.UiaProviderRequested = GetWebUiaProvider;
+        keyboardWindow.AccessibilityChanged = AccessibilityChanged;
         keyboardWindow.PointerMessage = FilterBrowserPointer;
         keyboardWindow.ScrollInput = (direction, source) => { RecordScrollIndicatorInput(); NativeScrollInput?.Invoke(direction, source); };
         composition = new WindowsComposition(Handle, browserWindow);
         touchPointerWindow = new TouchPointerWindow(GetAncestor(Handle, 2), HideTouchPointer);
-        if (presentation is { } output) composition.SetPresentation(output.Target, output.Degrees, output.X, output.Y);
+        if (presentation is { } output)
+        {
+            composition.SetPresentation(output.Target, output.Degrees, output.X, output.Y);
+            SetNativeDesktopGeometry(output.Target, output.Degrees, output.X, output.Y);
+        }
         WKViewWindowAncestryDidChange(view);
         keyboardWindow.ChromeHit = (x, y) => composition.Hit(x, y);
         keyboardWindow.ChromeClick = role => ChromeInvoked?.Invoke(role);
@@ -145,6 +154,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             Crash = Marshal.GetFunctionPointerForDelegate(crashCallback)
         };
         WKPageSetPageNavigationClient(page, ref client);
+        ConfigurePageDialogs();
         metadataTimer.Tick += (_, _) =>
         {
             // Connect without showing, then detach before making the frontend
@@ -369,6 +379,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     internal void Navigate(string target)
     {
         if (!IsReady) return;
+        ClosePageDialogs();
         url = target;
         var callStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         LastNavigationRequestTimestamp = callStarted;
@@ -388,6 +399,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     internal void ShowHtml(string html, string? baseUrl = null)
     {
         if (!IsReady) return;
+        ClosePageDialogs();
         var callStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         LastNavigationRequestTimestamp = callStarted;
         requestCallMilliseconds = null;
@@ -397,10 +409,10 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         try { WKPageLoadHTMLString(page, text, origin); }
         finally { WKRelease(text); WKRelease(origin); requestCallMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(callStarted).TotalMilliseconds; }
     }
-    internal void GoBack() { if (IsReady && WKPageCanGoBack(page)) WKPageGoBack(page); }
-    internal void GoForward() { if (IsReady && WKPageCanGoForward(page)) WKPageGoForward(page); }
-    internal void Reload() { if (IsReady) WKPageReload(page); }
-    internal void Stop() { if (IsReady) { WKPageStopLoading(page); loading = false; ReportNavigation(); } }
+    internal void GoBack() { if (IsReady && WKPageCanGoBack(page)) { ClosePageDialogs(); WKPageGoBack(page); } }
+    internal void GoForward() { if (IsReady && WKPageCanGoForward(page)) { ClosePageDialogs(); WKPageGoForward(page); } }
+    internal void Reload() { if (IsReady) { ClosePageDialogs(); WKPageReload(page); } }
+    internal void Stop() { if (IsReady) { ClosePageDialogs(); WKPageStopLoading(page); loading = false; ReportNavigation(); } }
     internal float MeasureText(string text, float pixels) => composition?.MeasureText(text, pixels) ?? 0;
     internal WindowsComposition.Action HitChrome(int x, int y) => composition?.Hit(x, y) ?? WindowsComposition.Action.None;
     internal void InvokeChrome(WindowsComposition.Action action) => ChromeInvoked?.Invoke(action);
@@ -591,7 +603,16 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         ResetScrollIndicator(false);
         composition?.SetPresentation(target, degrees, offsetX, offsetY);
         if (clearedFixedColors) Present();
-        if (view != 0) WKViewWindowAncestryDidChange(view);
+        if (view != 0)
+        {
+            SetNativeDesktopGeometry(target, degrees, offsetX, offsetY);
+            WKViewWindowAncestryDidChange(view);
+        }
+    }
+    private void SetNativeDesktopGeometry(nint target, int degrees, int x, int y)
+    {
+        if (!WKViewSetHostDesktopGeometry(view, target, degrees, x, y))
+            throw new InvalidOperationException("Windows WebKit rejected the native desktop coordinate mapping.");
     }
     internal void SetInteractionMode(string mode)
     {
@@ -632,12 +653,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     private bool ForwardPointer(ref System.Windows.Forms.Message message) => PointerMessage?.Invoke(ref message) == true;
     protected override void WndProc(ref System.Windows.Forms.Message message)
     {
+        if (message.Msg == 0x3D && unchecked((int)message.LParam) == -25)
+        {
+            message.Result = GetPresentedUiaProvider(Handle, message.WParam, message.LParam);
+            if (message.Result != 0) return;
+        }
         ObserveTouchPointer(ref message);
         if (!ForwardPointer(ref message)) base.WndProc(ref message);
     }
     internal object Diagnostics => new
     {
-        hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 1, hostScrollIndicatorApiVersion = 1,
+        hostDesktopApiVersion = 1, hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 1, hostScrollIndicatorApiVersion = 1,
+        accessibility = webAccessibility?.Diagnostics,
+        textInput = TextInputDiagnostics(),
         touchPointer = new { visible = touchPointerVisible, systemCursorHidden = touchPointerVisible, diameterDip = 20, error = touchPointerError, source = "host composition; excluded from WebKit snapshots" },
         interactionMode, nativeWheelBlocked = interactionMode == "touch",
         pageInput = observation is { } inputObservation && inputObservation.TryGetProperty("pageInput", out var inputState) ? inputState : (JsonElement?)null,
@@ -653,6 +681,16 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         composition = new { apiVersion = 4, error = composition?.Error, resources = composition?.Diagnostics, sourceWindow = SourceWindowDiagnostics(), strategy = "live DWM WebKit surface; DirectComposition blur/color matrix; layered Direct2D chrome", screenshotsUsedForRendering = false },
         continuation = new { cornerPriority = "side-over-horizontal", validFlowRectanglePx = new[] { validFlow.Left, validFlow.Top, validFlow.Right, validFlow.Bottom }, visible = validFlow != ClientRectangle, fixedFooterColorApproximation = false, fixedContainerColorExtension = FixedContainerColorDiagnostics(), backgroundSource = "read-only opaque html/body CSS fallback; otherwise white" }
     };
+    private object TextInputDiagnostics()
+    {
+        uint error = 0;
+        ulong editorId = 0;
+        var flags = view != 0 && !disposed ? WKViewGetHostTextInputState(view, out error, out editorId) : 0;
+        var diagnostics = view != 0 && !disposed ? WKViewCopyHostTextInputDiagnostics(view) : 0;
+        var trace = diagnostics != 0 ? String(diagnostics) : null;
+        if (diagnostics != 0) WKRelease(diagnostics);
+        return new { flags, error, editorId, trace, editable = (flags & 16) != 0, tsfActive = (flags & 1) != 0, composing = (flags & 2) != 0 };
+    }
     private object RenderingPipelineDiagnostics()
     {
         ulong updates = 0, acceleratedTransitions = 0, staleUpdates = 0;
@@ -667,16 +705,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         GetClientRect(parent, out var bounds);
         GetClientRect(browserWindow, out var client);
         return new { detached = parent != 0 && parent != Handle,
+            visibleStyle = browserWindow != 0 && (GetWindowLongPtr(browserWindow, -16).ToInt64() & 0x10000000) != 0,
             keyboardFocus = GetFocus() == browserWindow ? "WebKit source" : GetFocus() == presentation?.Target ? "physical presenter" : "other host control",
             parentHasRedirectionBitmap = parent != 0 && (GetWindowLongPtr(parent, -20).ToInt64() & 0x00200000) == 0,
             parentClientWidth = bounds.Right, parentClientHeight = bounds.Bottom,
             clientWidth = client.Right, clientHeight = client.Bottom, presentationRepaintGeneration };
     }
 
-    private static WindowsWebKitView? Owner(nint page, nint context) => views.TryGetValue(context, out var owner) && !owner.disposed && owner.page == page ? owner : null;
+    private static WindowsWebKitView? Owner(nint page, nint context) => views.TryGetValue(context, out var owner) && owner.IsReady && owner.page == page ? owner : null;
     private static void Started(nint page, nint navigation, nint data, nint context)
     {
         if (Owner(page, context) is not { } owner) return;
+        owner.ClosePageDialogs();
+        WKViewResetHostTextInput(owner.view);
         owner.navigationGeneration++;
         owner.reportedRenderingUpdate = null;
         owner.InvalidateFixedContainerColors();
@@ -700,6 +741,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     private static void Committed(nint page, nint navigation, nint data, nint context)
     {
         if (Owner(page, context) is not { } owner || navigation != owner.activeNavigation) return;
+        WKViewResetHostTextInput(owner.view);
         owner.committed = true;
         owner.commitMilliseconds = owner.navigationClock.Elapsed.TotalMilliseconds;
         owner.ReportNavigation();
@@ -747,6 +789,8 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     {
         if (disposing && !disposed)
         {
+            ClosePageDialogs();
+            if (view != 0) WKViewResetHostTextInput(view);
             StopRemoteInspection();
             CloseInspector();
             disposed = true; views.Remove(token); metadataTimer.Stop(); metadataTimer.Dispose();
@@ -793,11 +837,17 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         internal Action<WindowsComposition.Action>? ChromeClick;
         internal PointerMessageHandler? PointerMessage;
         internal Action<int, string>? ScrollInput;
+        internal Func<nint, nint>? AccessibleObjectRequested;
+        internal Func<nint, nint, nint>? UiaProviderRequested;
+        internal Action<uint, ulong>? AccessibilityChanged;
+        internal Action? SourceDestroyed;
         private WindowsComposition.Action pressed;
         private long paints, wheels, lastPaintTick;
+        private long compositionStarts, compositionUpdates, compositionResults, compositionEnds;
         private double paintWorkMilliseconds, maximumPaintWorkMilliseconds;
         private readonly Queue<double> recentPaintMilliseconds = new();
         internal object Diagnostics => new { paints, wheels, paintWorkMilliseconds, maximumPaintWorkMilliseconds,
+            compositionStarts, compositionUpdates, compositionResults, compositionEnds,
             lastPaintMilliseconds = lastPaintTick * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
             recentPaintMilliseconds = recentPaintMilliseconds.ToArray() };
         internal HostKeyboardWindow(nint window, Action<HostCommand> callback)
@@ -807,6 +857,32 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         }
         protected override void WndProc(ref System.Windows.Forms.Message message)
         {
+            // The OS can destroy an owned source before Avalonia detaches its
+            // managed host. Reject late layout/DPI work during that interval.
+            if (message.Msg == 0x2) SourceDestroyed?.Invoke();
+            if (message.Msg == 0x3D && unchecked((int)message.LParam) == -25 && UiaProviderRequested is { } uia)
+            {
+                message.Result = uia(message.WParam, message.LParam);
+                if (message.Result != 0) return;
+            }
+            if (message.Msg == 0x10D) compositionStarts++;
+            if (message.Msg == 0x10E) compositionEnds++;
+            if (message.Msg == 0x10F)
+            {
+                if ((message.LParam.ToInt64() & 8) != 0) compositionUpdates++;
+                if ((message.LParam.ToInt64() & 0x800) != 0) compositionResults++;
+            }
+            if (message.Msg == 0x803D)
+            {
+                AccessibilityChanged?.Invoke((uint)message.WParam, unchecked((ulong)message.LParam.ToInt64()));
+                message.Result = 0;
+                return;
+            }
+            if (message.Msg == 0x3D && unchecked((int)message.LParam) == -4 && AccessibleObjectRequested is { } accessibility)
+            {
+                message.Result = accessibility(message.WParam);
+                if (message.Result != 0) return;
+            }
             if (message.Msg == 0x20A) wheels++;
             if (PointerMessage?.Invoke(ref message) == true) return;
             if (message.Msg == 0x20A)

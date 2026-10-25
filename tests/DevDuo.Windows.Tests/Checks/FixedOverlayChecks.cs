@@ -126,6 +126,42 @@ internal sealed partial class WindowsChecks
         await WaitForScript("document.readyState", value => value == "complete", "Overlay fixture completion");
     }
 
+    private async Task CheckPresentationRotations()
+    {
+        await Wait(state => Text(state, "initializationState", "ready"), "Rotation rendering runtime");
+        Select(Settings.Scale, 1);
+        window.WindowState = WindowState.Maximized;
+        window.Activate();
+        await LoadFixedOverlayDocument();
+        var dialogRevision = await Web.EvaluateResultAsync("String(setFixedOverlay(true,false,'dialog'))");
+        await WaitFixedOverlayFrames("rotation-frames-dialog-open", dialogRevision);
+        var closedRevision = await Web.EvaluateResultAsync("String(setFixedOverlay(false))");
+        await WaitFixedOverlayFrames("rotation-frames-dialog-closed", closedRevision);
+        for (var index = 0; index < 3; index++) Rotate();
+        await LoadFixedOverlayDocument();
+        var burstRevision = await Web.EvaluateResultAsync("String(setFixedOverlay(false))");
+        await WaitFixedOverlayFrames("rotation-frames-rapid-270", burstRevision);
+        Check(State().GetProperty("bodyRotationDegrees").GetInt32() == 270, "Rapid rotations retain live fresh-document frames.");
+        Save("rotation-frames-rapid-270", State());
+        Rotate();
+        foreach (var fold in new[] { 0, 1 })
+        {
+            Select(Settings.Fold, fold);
+            for (var angle = 0; angle < 4; angle++)
+            {
+                await LoadFixedOverlayDocument();
+                var name = $"rotation-frames-{fold}-{angle * 90}";
+                var revision = await Web.EvaluateResultAsync("String(setFixedOverlay(false))");
+                await WaitFixedOverlayFrames(name, revision);
+                Check(State().GetProperty("bodyRotationDegrees").GetInt32() == angle * 90,
+                    "The fresh document renders in the commanded body pose.");
+                Save(name, State());
+                Rotate();
+            }
+        }
+        Console.WriteLine($"PASS rotation frames: {assertions} assertions; fresh documents complete two animation frames across eight poses.");
+    }
+
     private async Task CheckFixedOverlayToggle(string label, string mode, bool footer, List<string> captures)
     {
         string? identity = null;
@@ -169,12 +205,26 @@ internal sealed partial class WindowsChecks
         return true;
     }
 
+    private async Task WaitFixedOverlayFrames(string name, string? revision)
+    {
+        try
+        {
+            await WaitForScript("String(window.fixedOverlaySettled)", value => value == revision, "Overlay paint frames and observation");
+        }
+        catch (TimeoutException)
+        {
+            var snapshot = await Web.EvaluateResultAsync("JSON.stringify({revision:window.fixedOverlayRevision,settled:window.fixedOverlaySettled,visibility:document.visibilityState,focused:document.hasFocus(),fixture:fixedOverlayState()})");
+            Save(name + "-settle-failure", JsonSerializer.SerializeToElement(new { requestedRevision = revision, snapshot, host = State() }));
+            throw;
+        }
+    }
+
     private async Task<(JsonElement Dom, JsonElement Host, bool ViewportPixelsAccepted)> CaptureFixedOverlay(
         string name, bool visible, bool footer, string mode)
     {
         var revision = await Web.EvaluateResultAsync("String(setFixedOverlay(" + (visible ? "true" : "false") + "," +
             (footer ? "true" : "false") + "," + JsonSerializer.Serialize(mode) + "))");
-        await WaitForScript("String(window.fixedOverlaySettled)", value => value == revision, "Overlay paint frames and observation");
+        await WaitFixedOverlayFrames(name, revision);
         await Task.Delay(150);
         var browser = Web.WindowsPanel!.Browser;
         using var domDocument = JsonDocument.Parse((await Web.EvaluateResultAsync("JSON.stringify(fixedOverlayState())"))!);

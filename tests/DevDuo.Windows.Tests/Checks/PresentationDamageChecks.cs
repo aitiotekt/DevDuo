@@ -210,10 +210,13 @@ internal sealed partial class WindowsChecks
             "Native wheel input actually scrolls the accelerated document.");
         var observerBefore = before.GetProperty("observerPipeline");
         var observerAfter = after.GetProperty("observerPipeline");
+        // Indicator fades and fixed-edge results publish without relaying out
+        // the page. Their legitimate updates are included in the total count.
         Check(observerAfter.GetProperty("observations").GetInt64() > observerBefore.GetProperty("observations").GetInt64() &&
-            observerAfter.GetProperty("telemetryPublications").GetInt64() - observerBefore.GetProperty("telemetryPublications").GetInt64() ==
+            observerAfter.GetProperty("layouts").GetInt64() > observerBefore.GetProperty("layouts").GetInt64() &&
+            observerAfter.GetProperty("telemetryPublications").GetInt64() - observerBefore.GetProperty("telemetryPublications").GetInt64() >=
             observerAfter.GetProperty("layouts").GetInt64() - observerBefore.GetProperty("layouts").GetInt64(),
-            "Each actual scroll layout publishes telemetry once, including any subsequent color layout.");
+            "Scroll layouts publish telemetry alongside independent indicator and fixed-edge updates.");
         await Web.EvaluateResultAsync("window.presentationWarmAnimation={frames:0,started:performance.now()};" +
             "requestAnimationFrame(function tick(){let p=window.presentationWarmAnimation;p.frames++;" +
             "if(p.frames<30)requestAnimationFrame(tick);else p.finished=performance.now()});'started'");

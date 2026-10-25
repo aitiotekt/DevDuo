@@ -2,6 +2,27 @@
 
 <!-- Unreleased -->
 
+- Keep publication dry-run CLI tests valid after promotion to a stable version by selecting the metadata-defined version tag or development branch, without weakening release-source or dry-run guards.
+
+## 0.1.0
+
+DevDuo and its bundled Windows WebKit dependency both use version `0.1.0`, published independently as `v0.1.0` and `webkit-v0.1.0`. The WebKit upstream revision is unchanged; this release includes the maintained host patches. Version promotion does not expand the recorded native acceptance scope.
+
+### DevDuo
+
+- Correct rotated native select placement, support real Chinese IME preedit and expose one discoverable WebCore-backed MSAA/UIA tree with names, values, actions and transformed bounds. Narrator label/navigation checks are recorded; UIA TextPattern/IAccessible2 remain unsupported.
+- Show localized native JavaScript alert/confirm/prompt dialogs with keyboard support and deterministic navigation/disposal cancellation.
+- Preserve late HWND/DPI teardown safety and accessibility invalidation during synchronous replies; defer AX queries until a document commits to avoid startup stalls.
+
+### Bundled Windows WebKit
+
+- Add desktop API v1 for physical popup/caret mapping, TSF/IMM composition and document-scoped WebCore accessibility transport. Older runtimes without this API are incompatible with the updated host.
+- Repair drawing/geometry damage, use engine-owned shared CPU bitmaps for non-composited frames and unaccelerated snapshots, and keep cached glyph commands backend-neutral across layer promotion. Preserve the real viewport, fixed/sticky positions and scroll range.
+
+### Development
+
+- Establish the scoped Windows milestone and affected-check/single-DPI regression policy; monitor transitions require explicit opt-in. Consolidate bilingual guides around current capabilities, procedures and durable decisions while preserving original evidence.
+
 ## 0.1.0-beta.3
 
 Native screenshot release candidate. Windows WebKit remains at `0.1.0-beta.1`; the updated capture bridge and host compositor ship with the application.

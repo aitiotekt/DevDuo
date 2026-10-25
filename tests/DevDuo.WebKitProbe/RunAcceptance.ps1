@@ -27,9 +27,14 @@ $session = Join-Path $repository ('captures/desktop-validation/windows-webkit/' 
 Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $binary) 'build-inputs.json') -Destination (Join-Path $session 'probe-build-inputs.json')
 if ($HostApi) {
     Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $session 'runtime-manifest.json')
-    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $runtime) 'build-inputs.json') -Destination (Join-Path $session 'runtime-build-inputs.json')
+    $runtimeRoot = Split-Path -Parent $runtime
+    $releasedRuntime = Test-Path -LiteralPath (Join-Path $runtimeRoot 'runtime-release.json')
+    $provenance = if ($releasedRuntime) { 'build-provenance.json' } else { 'build-inputs.json' }
+    $inputDirectory = if ($releasedRuntime) { 'source-inputs' } else { 'inputs' }
+    Copy-Item -LiteralPath (Join-Path $runtimeRoot $provenance) -Destination (Join-Path $session ('runtime-' + $provenance))
+    if ($releasedRuntime) { Copy-Item -LiteralPath (Join-Path $runtimeRoot 'runtime-release.json') -Destination (Join-Path $session 'runtime-release.json') }
     foreach ($buildInput in $runtimeManifest.inputFiles) {
-        $frozenRoot = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $runtime) 'inputs'))
+        $frozenRoot = [IO.Path]::GetFullPath((Join-Path $runtimeRoot $inputDirectory))
         $path = [IO.Path]::GetFullPath((Join-Path $frozenRoot $buildInput.path))
         if (-not $path.StartsWith($frozenRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
             throw 'Frozen native build input path escapes its directory'
