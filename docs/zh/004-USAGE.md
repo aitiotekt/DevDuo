@@ -25,7 +25,7 @@ Safari 模式下，向下滚动收窄外壳，向上滚动展开；不能仅凭�
 
 触控模式向网页提供一个触点，支持嵌套滚动，遵循 `touch-action`、事件取消及滚动约束。手势方向驱动 Safari 外壳展开或收起。鼠标模式恢复桌面触点数。所选模式适用于已有及后续 frame。
 
-支持 host touch API v1 的 Windows 实验运行时分发可信的 WebKit 触摸与指针事件，由 WebKit 处理拖动和惯性。其他运行时使用 `isTrusted = false` 的 DOM 仿真，按动画帧合并拖动更新。两种路径的 CSS pointer 和 hover 媒体查询均反映桌面引擎。也可通过 `PATCH /api/settings` 设置 `{"interactionMode":"touch"}` 或 `{"interactionMode":"mouse"}`。`/api/state` 遥测标明当前路径。
+Windows 从 0.1.4 起默认启用 host touch API v1，分发可信的 WebKit 触摸与指针事件，由 WebKit 处理拖动和惯性。其他平台及旧运行时可能使用 `isTrusted = false` 的 DOM 仿真，按动画帧合并拖动更新。CSS pointer 和 hover 媒体查询反映桌面引擎。也可通过 `PATCH /api/settings` 设置 `{"interactionMode":"touch"}` 或 `{"interactionMode":"mouse"}`。`/api/state` 遥测标明当前路径。
 
 Windows Safari 控件遵循系统动画偏好，在实测展开和紧凑尺寸之间缓动。网页视口每次过渡只调整一次，直接采用目标尺寸。
 

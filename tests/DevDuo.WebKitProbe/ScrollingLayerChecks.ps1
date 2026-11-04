@@ -6,13 +6,13 @@ $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $build = Join-Path $repository 'temp/build/windows-webkit-host'
 $pin = Get-Content -LiteralPath (Join-Path $repository 'native/webkit/windows/runtime.lock.json') -Raw | ConvertFrom-Json
 $source = Join-Path $repository ('temp/cache/windows-webkit/source-' + $pin.revision.Substring(0, 8))
-if (-not $RuntimeDirectory) { $RuntimeDirectory = Join-Path $repository 'temp/build/windows-webkit-async/bin' }
+if (-not $RuntimeDirectory) { $RuntimeDirectory = Join-Path $build 'bin' }
 $RuntimeDirectory = [IO.Path]::GetFullPath($RuntimeDirectory)
 $manifestPath = Join-Path $RuntimeDirectory '../runtime-manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath) -or
-    -not (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).experimentalAsyncScrolling -or
+    -not (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).asyncScrollingEnabled -or
     (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).hostScrollFrameApiVersion -ne 1) {
-    throw 'Build the experimental async runtime before running scrolling-layer primitive checks.'
+    throw 'Rebuild the current runtime before running scrolling-layer primitive checks.'
 }
 $output = Join-Path $repository 'temp/build/windows-scrolling-layer-checks'
 $evidence = Join-Path $repository ('captures/desktop-validation/windows-scrolling-layers/' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))

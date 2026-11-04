@@ -36,6 +36,8 @@ macOS 官方应用发行包必须通过 Developer ID 签名、Apple 公证并附
 
 ## Windows WebKit 运行时发布
 
+从 0.1.4 起默认构建始终启用异步滚动和原生触摸。运行时暂存检查构建选项与能力清单；复用归档、新下载及缓存的运行时、最终 Windows 应用归档均须通过能力与元数据身份检查。不合格的旧包会明确报错并要求重建，不会静默回退。0.1.3 已发布引擎包含最新补丁，但关闭了这些能力，本地原生验收不能算作该发布产物的验收。请先发布新 WebKit 版本，再推送对应应用版本标签。
+
 应用 dev/build/package 命令执行 `just prepare-debugging`，将根 pnpm 锁定的精确 chii/chobitsu 浏览器资源及许可复制到 `temp/build/debugging/`，MSBuild 再将该树作为 `debugging/` 复制到应用输出/发布目录。安装后的应用通过 .NET 和原生 WebView 离线提供资源，不要求用户安装 Node，也不启动 chii Node 服务。每个包须保留生成清单及许可目录；资源缺失时启用 CDP 会明确失败。Windows 运行时包须提供当前宿主要求的全部 API，包括 desktop API v1；旧视口／开发 API 构建不够。原生运行时验收与资源打包、CDP 传输测试分别记录。
 
 `devduo-metadata.toml` 的 `[webkit]` 统一管理独立的引擎版本、tag/产物前缀、Windows 目标、DLL 标识、上游 revision、手动发布分支和 runner 标签。当前 ABI 保留上游 `WebKit2.dll` 名称，ZIP 名称按 `<asset_prefix>-<version>-win-x64.zip` 派生。应用版本变化不会提升引擎版本。`runtime.lock.json` 继续固定官方诊断归档，并须与 metadata 的上游 revision 一致；更新上游时还须审查原生绑定及其要求的能力。
@@ -49,7 +51,7 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 发布顺序：
 
 1. 设置新的 `[webkit].version`，保留预期源码 revision/补丁。审查并将这些输入合并到配置分支。
-2. 手动以 `dry-run=true` 准备产物而不发布，再以 `dry-run=false` 正式发布。已有版本 ZIP 及配套文件直接复用，跳过引擎工具安装和原生编译；否则构建并打包运行时，保留导出、声明和源码记录。托管发布器在 tag 缺失时于包的源码提交创建 tag，Release 不存在时创建草稿，只上传缺失资产，并以 `latest=false` 发布。已有资产不替换也不比较。
+2. 手动以 `dry-run=true` 准备产物而不发布，再以 `dry-run=false` 正式发布。已有版本 ZIP 通过校验后，与配套文件一起复用，跳过引擎工具安装和原生编译；否则构建并打包运行时，保留导出、声明和源码记录。托管发布器在 tag 缺失时于包的源码提交创建 tag，Release 不存在时创建草稿，只上传缺失资产，并以 `latest=false` 发布。已有资产不替换也不比较。
 3. Windows 应用打包下载精确版本资产，解压后放入 `DevDuo/webkit/`。同版本的下载缓存直接复用，不查找 `latest`，不自动编译引擎。
 
 使用 `mise exec -- just test-webkit-release-tools` 测试工具。`package-webkit-release` 复用或创建版本包，`publish-webkit-release` 发布该包。`just release-preflight` 只要求 Release 已公开并含该版本资产。流水线不比较归档、文件、源码或构建哈希；`SHA256SUMS`、运行时清单和构建来源记录作为供下载者使用的输出保留。ZIP 解压兼容旧 Windows 反斜杠路径，新包统一使用标准 `/` 路径。

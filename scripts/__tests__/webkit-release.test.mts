@@ -23,6 +23,8 @@ import {
   publishWebKitOutput,
   safeRelative,
   stageRuntime,
+  validateRuntimeCapabilities,
+  validateRuntimeRelease,
   webkitNames,
   webkitPlan,
 } from "../lib/webkit-release.mts";
@@ -70,6 +72,7 @@ function runtimeFixture(root: string) {
   writeJson(join(build, "build-inputs.json"), {
     upstreamRevision: config.webkit.upstreamRevision,
     clangSha256: "c".repeat(64),
+    cmakeArguments: ["-DENABLE_ASYNC_SCROLLING=ON", "-DENABLE_TOUCH_EVENTS=ON"],
     tools: [
       {
         name: "compiler",
@@ -82,6 +85,10 @@ function runtimeFixture(root: string) {
     schemaVersion: 1,
     upstreamRevision: config.webkit.upstreamRevision,
     hostViewportApiVersion: 2,
+    asyncScrollingEnabled: true,
+    hostTouchApiVersion: 1,
+    hostScrollFrameApiVersion: 1,
+    hostFrameSurfaceApiVersion: 1,
     inputFiles: [{ path: buildRecipe }],
     files,
     runtimeAcceptancePassed: false,
@@ -103,6 +110,90 @@ function runtimeFixture(root: string) {
   writeFileSync(join(dependency, "copyright"), "unit dependency fixture");
   return { build, manifest };
 }
+
+test("runtime staging rejects disabled or missing release capabilities before copying files", () => {
+  const root = fixture();
+  try {
+    const { build, manifest } = runtimeFixture(root);
+    for (const field of [
+      "asyncScrollingEnabled",
+      "hostTouchApiVersion",
+      "hostScrollFrameApiVersion",
+      "hostFrameSurfaceApiVersion",
+    ]) {
+      for (const value of [undefined, false, 0]) {
+        writeJson(join(build, "runtime-manifest.json"), {
+          ...manifest,
+          [field]: value,
+        });
+        const stage = join(root, "rejected-stage");
+        assert.throws(
+          () => stageRuntime(build, stage, sha, root),
+          /requires asynchronous scrolling/,
+        );
+        assert.equal(existsSync(stage), false);
+      }
+    }
+    writeJson(join(build, "runtime-manifest.json"), manifest);
+    for (const option of ["ENABLE_ASYNC_SCROLLING", "ENABLE_TOUCH_EVENTS"]) {
+      writeJson(join(build, "build-inputs.json"), {
+        cmakeArguments: [`-D${option}=OFF`],
+      });
+      assert.throws(
+        () => stageRuntime(build, join(root, "disabled-stage"), sha, root),
+        /did not enable/,
+      );
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("downloaded or cached runtime must match the selected release and capabilities", () => {
+  const root = fixture();
+  try {
+    const { build } = runtimeFixture(root);
+    const stage = join(root, "package");
+    stageRuntime(build, stage, sha, root);
+    validateRuntimeRelease(stage, root);
+    const release = JSON.parse(
+      readFileSync(join(stage, "runtime-release.json"), "utf8"),
+    );
+    for (const field of ["version", "tag", "asset", "upstreamRevision"]) {
+      writeJson(join(stage, "runtime-release.json"), {
+        ...release,
+        [field]: "wrong-release",
+      });
+      assert.throws(
+        () => validateRuntimeRelease(stage, root),
+        /does not match/,
+      );
+    }
+    writeJson(join(stage, "runtime-release.json"), release);
+    const manifest = JSON.parse(
+      readFileSync(join(stage, "runtime-manifest.json"), "utf8"),
+    );
+    writeJson(join(stage, "runtime-manifest.json"), {
+      ...manifest,
+      upstreamRevision: "wrong-revision",
+    });
+    assert.throws(() => validateRuntimeRelease(stage, root), /does not match/);
+    writeJson(join(stage, "runtime-manifest.json"), {
+      ...manifest,
+      hostTouchApiVersion: 0,
+    });
+    assert.throws(
+      () => validateRuntimeCapabilities(stage),
+      /requires asynchronous scrolling/,
+    );
+    assert.throws(
+      () => validateRuntimeRelease(stage, root),
+      /requires asynchronous scrolling/,
+    );
+  } finally {
+    cleanup(root);
+  }
+});
 
 test("WebKit release identities are independent and unsafe metadata fails closed", () => {
   const metadata = loadMetadata();

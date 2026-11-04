@@ -166,17 +166,17 @@ test-windows-webkit runtime_directory="./temp/build/windows-webkit-host/bin": bu
 build-windows-webkit-runtime *args:
     & ./native/webkit/windows/BuildRuntime.ps1 {{args}}
 
-# Headless native layer publication checks; requires the experimental runtime.
+# Headless native layer publication checks; requires the current runtime.
 [windows]
 test-windows-scrolling-layers *args:
     & ./tests/DevDuo.WebKitProbe/ScrollingLayerChecks.ps1 {{args}}
 
-# Busy-page-main-thread native wheel and composed pixels; experimental runtime only.
+# Busy-page-main-thread native wheel and composed pixels; current runtime required.
 [windows]
 test-windows-async-scrolling: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/async-scrolling-tests -p:RestoreLockedMode=true -- --async-scrolling
 
-# Native contacts, default gestures and busy-page GPU frames; experimental runtime only.
+# Native contacts, default gestures and busy-page GPU frames; current runtime required.
 [windows]
 test-windows-native-touch: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/native-touch-tests -p:RestoreLockedMode=true -- --native-touch

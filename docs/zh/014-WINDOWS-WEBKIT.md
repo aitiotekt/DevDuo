@@ -58,7 +58,7 @@ mise 管理便携 CMake／Ninja／Ruby／Perl／gperf／pkgconf／vcpkg 和常�
 
 宿主确认传输前仅允许一帧在途。过期几何仍归还生产者锁，但不呈现；资源重放区分已消费的锁与新帧。原始正文和延伸分开保留，填色到期不会累积旧填色。失败明确报告能力／呈现错误。多适配器共享及设备丢失恢复仍未验收。
 
-已验收参照运行时仍关闭异步滚动。DOM 仿真触控可能与页面主线程工作竞争，GPU 传输本身不能证明输入到呈现延迟已达标；鼠标模式会移除宿主的非 passive 仿真滚轮监听器。补丁 `0010`–`0012` 将上游滚动树接至保留式 GPU 图层，只租借一帧并合并待处理位置。实验视图在创建 WebPage 前选择帧模式；滚动线程时钟由已处理输入唤醒，在近期活动和原生动画结束后停止。页面 JavaScript 被阻塞时的独立滚轮及原生触摸呈现已有范围限定的原生验收，包含触摸取消、touch-action、overflow 锁定及嵌套滚动。提升为正式实现前还须验收动态结构、高速惯性及复杂页面流畅性。`build-windows-webkit-runtime -ExperimentalAsyncScrolling -RuntimeRoot <绝对构建目录>` 启用实验构建，不为后续 checkout 启动选择它；普通诊断构建也可用 `-KeepRuntimeSelection` 保留原选择。提交几何代次拒绝旧帧，Windows 缓存字形显示列表在本地 Skia 与远端 GPU 记录上下文之间使用后端无关操作。
+Windows 运行时默认启用异步滚动和原生触摸。补丁 `0010`–`0013` 将上游滚动树与可信触摸事件接至保留式 GPU 图层，只租借一帧并合并待处理位置。在创建 WebPage 前选择帧模式，滚动线程时钟由已处理输入唤醒，在近期活动和原生动画结束后停止。范围限定的原生验收覆盖页面 JavaScript 阻塞、触摸取消、touch-action、overflow 锁定及嵌套滚动。复杂页面流畅性仍需按场景验收，不再通过编译开关关闭已验证路径。`build-windows-webkit-runtime -RuntimeRoot <绝对构建目录> -KeepRuntimeSelection` 可隔离构建且不改变 checkout 运行时选择。提交几何代次拒绝旧帧，缓存字形显示列表在本地 Skia 与远端 GPU 记录上下文之间使用后端无关操作。
 
 实验性 host scroll-frame API v1 返回源绘制标识、文档／几何代次、滚动修订、真实根滚动位置及输入／提交／GPU／宿主时序，独立合成的滚动帧不填写主线程渲染阶段。只读原生滚动树请求使用正式 IPC，不返回页面图像；现有 frame timing API v2 的 ABI 不变。两种接口均不能证明 DWM 扫描输出。
 
@@ -147,7 +147,7 @@ Scroll-indicator API v1 提供文档 epoch、根范围／位置、CSS 抑制及�
 
 macOS 桥接在选用系统 WKWebView 的 inset 填充前检查私有偏好 `_setContentInsetBackgroundFillEnabled:` 和 `_updateFixedColorExtensionViews`，可用性随系统 WebKit 版本变化。实测 macOS 27.0.1 提供 `_updateFixedColorExtensionViews` 及视图级的 `_setUsesAutomaticContentInsetBackgroundFill:`，但缺少偏好设置接口。独立探针用视图级接口观察图层，应用桥接兼容性还需独立验证。
 
-`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素，并检查卡片出现及遮罩变色、替换和关闭时的连续遮罩。可用 `just build-windows-webkit-runtime -RuntimeRoot <绝对临时构建目录>` 链接独立验证运行时，成功构建的非实验版本供后续 checkout 启动使用，已运行实例继续保留加载的 DLL。`DEVDUO_WEBKIT_RUNTIME` 可显式覆盖选择。
+`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素，并检查卡片出现及遮罩变色、替换和关闭时的连续遮罩。可用 `just build-windows-webkit-runtime -RuntimeRoot <绝对临时构建目录>` 链接独立验证运行时，成功构建的运行时供后续 checkout 启动使用，已运行实例继续保留加载的 DLL。`DEVDUO_WEBKIT_RUNTIME` 可显式覆盖选择。
 
 Frame presentation API v1 将边缘状态绑定到产出的页面帧及其提交几何。渲染帧内确认无覆盖时立即撤除对应边缘；可靠颜色替换旧值，不确定颜色最多保留 600ms，重复失败不续期。一次性原生失效使用保留页面过期静态不确定颜色，不循环强制 WebCore 重绘。导航／文档及 backing-store 代次拒绝旧结果，侧边拥有角部交点；fixed 取色快照仍只产出标量。
 

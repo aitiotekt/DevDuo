@@ -4,7 +4,13 @@ Windows uses the pinned WebKit Windows Port through Avalonia; macOS retains syst
 
 The 0.1.3 source build adds fixed-layer clipping and region-specific Safari material colors to the frame-bound continuation and retained composition in 0.1.2. The original-page bottom tint and fixed visibility have a scoped live retest. Sustained live-page responsiveness, full popup coverage, shared macOS service restoration and packaged delivery remain open.
 
-## 0.1.3 affected checks
+## 0.1.4 release configuration
+
+The 0.1.3 published engine included the current patches but disabled asynchronous scrolling and native touch. Its release artifact did not use the path validated below. From 0.1.4, the default build enables both capabilities, and package staging, archive reuse, download/cache consumption and final application archiving reject missing capabilities or mismatched release metadata.
+
+The default build completed locally without an experimental switch. Loading its DLL reports touch, scroll-frame and frame-surface API v1; 18 native scrolling-layer assertions pass. Release tooling tests cover missing/disabled capabilities, disabled build options and wrong package identity. Page presentation evidence below is inherited; the GitHub-produced 0.1.4 application still needs a packaged smoke check after publication.
+
+## Inherited 0.1.3 local checks
 
 At **120 DPI and Fit**, the experimental Windows runtime and compositor v6 pass **47 render-stability checks** (`20261105T091316271Z`). The Closed portrait footer enters and exits through CSS transitions driven by native touch and wheel, and through a script that changes `transform` in `requestAnimationFrame`. Across **54 touch, 67 wheel and 69 scripted-transform WGC frames**, the red button is visible in the real viewport with no red pixels at the checked bottom extension point. The real footer geometry and viewport width are preserved. A finished transform with forwards fill yields its settled blue edge color.
 

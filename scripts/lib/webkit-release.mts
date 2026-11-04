@@ -156,6 +156,43 @@ function readJson(path: string) {
   return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
 }
 
+export function validateRuntimeCapabilities(directory: string): void {
+  const manifest = readJson(join(directory, "runtime-manifest.json"));
+  if (
+    manifest.asyncScrollingEnabled !== true ||
+    manifest.hostTouchApiVersion !== 1 ||
+    manifest.hostScrollFrameApiVersion !== 1 ||
+    manifest.hostFrameSurfaceApiVersion !== 1
+  )
+    throw new Error(
+      "Windows WebKit requires asynchronous scrolling, native touch v1, scroll frames v1 and frame surfaces v1. Rebuild the runtime with the current default build recipe; do not reuse an older package.",
+    );
+}
+
+export function validateRuntimeRelease(
+  directory: string,
+  root = repoRoot,
+): void {
+  validateRuntimeCapabilities(directory);
+  const metadata = loadMetadata(root),
+    names = webkitNames(metadata);
+  const release = readJson(
+    join(directory, "runtime-release.json"),
+  ) as RuntimeRelease;
+  const manifest = readJson(join(directory, "runtime-manifest.json"));
+  if (
+    release.schemaVersion !== 1 ||
+    release.version !== metadata.webkit.version ||
+    release.tag !== names.tag ||
+    release.asset !== names.asset ||
+    release.upstreamRevision !== metadata.webkit.upstreamRevision ||
+    manifest.upstreamRevision !== metadata.webkit.upstreamRevision
+  )
+    throw new Error(
+      "Windows WebKit package does not match the metadata-selected release.",
+    );
+}
+
 export function stageRuntime(
   build: string,
   stage: string,
@@ -163,8 +200,18 @@ export function stageRuntime(
   root = repoRoot,
 ): void {
   const metadata = loadMetadata(root);
+  validateRuntimeCapabilities(build);
   const manifest = readJson(join(build, "runtime-manifest.json"));
   const inputs = readJson(join(build, "build-inputs.json"));
+  for (const option of ["ENABLE_ASYNC_SCROLLING", "ENABLE_TOUCH_EVENTS"]) {
+    const value = inputs.cmakeArguments
+      ?.filter((argument: string) => argument.startsWith(`-D${option}=`))
+      .at(-1);
+    if (value !== `-D${option}=ON`)
+      throw new Error(
+        `Windows WebKit build did not enable ${option}. Rebuild before packaging.`,
+      );
+  }
   // Build output can include PDBs and MiniBrowser; only the explicit runtime inventory is shipped.
   for (const file of manifest.inputFiles as FileRecord[]) {
     const path = safeRelative(file.path);

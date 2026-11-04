@@ -18,6 +18,7 @@ import {
   preflightPublishedWebKit,
   publishWebKitOutput,
   stageRuntime,
+  validateRuntimeRelease,
   webkitNames,
   webkitPlan,
 } from "./lib/webkit-release.mts";
@@ -50,6 +51,11 @@ function zip(mode: "Pack" | "Unpack", directory: string, file: string): void {
 function packageRuntime(): void {
   mkdirSync(output, { recursive: true });
   if (existsSync(archive)) {
+    temporary((path) => {
+      const extracted = join(path, "runtime");
+      zip("Unpack", extracted, archive);
+      validateRuntimeRelease(extracted);
+    });
     console.log(`Reusing ${names.asset} without rebuilding or repacking.`);
     return;
   }
@@ -59,6 +65,7 @@ function packageRuntime(): void {
       stage,
       sourceSha(),
     );
+    validateRuntimeRelease(stage);
     zip("Pack", stage, archive);
     writeJson(join(output, names.manifest), {
       schemaVersion: 1,
@@ -105,6 +112,7 @@ function fetchRuntime(): string {
     temporary((path) => {
       const extracted = join(path, "runtime");
       zip("Unpack", extracted, downloaded);
+      validateRuntimeRelease(extracted);
       // Stage then rename so an interrupted copy never looks like a complete cache.
       const staged = join(cache, "runtime.partial");
       rmSync(staged, { recursive: true, force: true });
@@ -115,6 +123,7 @@ function fetchRuntime(): string {
         rmSync(staged, { recursive: true, force: true });
       }
     });
+  validateRuntimeRelease(unpacked);
   return unpacked;
 }
 function bundleRuntime(): void {

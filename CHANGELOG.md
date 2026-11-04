@@ -2,6 +2,13 @@
 
 <!-- Unreleased -->
 
+## 0.1.4
+
+DevDuo and its bundled Windows WebKit both use `0.1.4`. The pinned upstream WebKit revision is unchanged.
+
+- Enable native touch and asynchronous scrolling in the default Windows engine build, matching the locally validated path. The 0.1.3 release included the latest patches but compiled these features out.
+- Reject runtime packages with missing capabilities or mismatched release metadata when packaging, reusing cached archives, downloading and archiving the Windows application.
+
 ## 0.1.3
 
 DevDuo and its bundled Windows WebKit both use `0.1.3`. The pinned upstream WebKit revision is unchanged.

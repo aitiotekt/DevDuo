@@ -1,4 +1,4 @@
-param([switch]$ConfigureOnly, [int]$Jobs = 8, [string]$RuntimeRoot = '', [switch]$ExperimentalAsyncScrolling, [switch]$KeepRuntimeSelection)
+param([switch]$ConfigureOnly, [int]$Jobs = 8, [string]$RuntimeRoot = '', [switch]$KeepRuntimeSelection)
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RuntimeFiles.ps1')
@@ -86,8 +86,8 @@ $arguments = @('-S', $source, '-B', $build, '-G', 'Ninja', '-DPORT=Win', '-DCMAK
     ('-DPKG_CONFIG_EXECUTABLE=' + $selectedTools['pkgconf']),
     '-DENABLE_API_TESTS=OFF', '-DENABLE_WEBKIT_LEGACY=OFF', '-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF')
 $arguments += '-DDEVDUO_HOST_RUNTIME_OUTPUT_DIRECTORY=' + $runtime.Replace('\', '/')
-$arguments += '-DENABLE_ASYNC_SCROLLING=' + $(if ($ExperimentalAsyncScrolling) { 'ON' } else { 'OFF' })
-$arguments += '-DENABLE_TOUCH_EVENTS=' + $(if ($ExperimentalAsyncScrolling) { 'ON' } else { 'OFF' })
+$arguments += '-DENABLE_ASYNC_SCROLLING=ON'
+$arguments += '-DENABLE_TOUCH_EVENTS=ON'
 if ($runtimeRoot -ne $build -and -not (Test-Path -LiteralPath $runtime)) {
     [IO.Directory]::CreateDirectory($runtimeRoot) | Out-Null
     Copy-Item -LiteralPath (Join-Path $build 'bin') -Destination $runtime -Recurse
@@ -186,8 +186,8 @@ $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
     hostFramePresentationApiVersion = 1
     hostFrameSurfaceApiVersion = 1
     hostScrollFrameApiVersion = 1
-    hostTouchApiVersion = $(if ($ExperimentalAsyncScrolling) { 1 } else { 0 })
-    experimentalAsyncScrolling = [bool]$ExperimentalAsyncScrolling
+    hostTouchApiVersion = 1
+    asyncScrollingEnabled = $true
     inputFiles = @($inputRecords)
     hostDesktopApiVersion = 1; hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 2; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
     runtimeAcceptancePassed = $false
@@ -201,7 +201,7 @@ if ($runtimeRoot -ne $build) {
 }
 # Select only a fully built runtime with its manifest and frozen inputs in place.
 # Packaged apps and explicit DEVDUO_WEBKIT_RUNTIME overrides have precedence.
-if ($KeepRuntimeSelection -or $ExperimentalAsyncScrolling) { exit 0 }
+if ($KeepRuntimeSelection) { exit 0 }
 $selectionPath = Join-Path $repository 'temp/build/windows-webkit-runtime.json'
 $selectionTemporary = $selectionPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
 try {

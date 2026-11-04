@@ -25,7 +25,7 @@ New profiles default to **Touch · single finger** under **Preview → Interacti
 
 Touch mode presents one contact to the page. It supports nested scrolling and follows `touch-action`, event cancellation and scroll containment. Gesture direction drives Safari shell expansion and compaction. Mouse mode restores the desktop touch-point count. The selected mode applies to existing and future frames.
 
-The experimental Windows runtime with host touch API v1 dispatches trusted WebKit touch and pointer events. WebKit handles pan and inertia. Other runtimes use DOM emulation with `isTrusted = false` and batch drag updates per animation frame. CSS pointer and hover media queries reflect the desktop engine in both paths. Set the mode with `PATCH /api/settings` and `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`. The `/api/state` telemetry identifies the active path.
+Windows releases from 0.1.4 enable host touch API v1 by default, dispatching trusted WebKit touch and pointer events. WebKit handles pan and inertia. Other platforms and older runtimes can use DOM emulation with `isTrusted = false` and batch drag updates per animation frame. CSS pointer and hover media queries reflect the desktop engine. Set the mode with `PATCH /api/settings` and `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`. The `/api/state` telemetry identifies the active path.
 
 Windows Safari widgets ease between their measured expanded and compact sizes according to the system animation preference. The page viewport changes to the target size once per transition.
 

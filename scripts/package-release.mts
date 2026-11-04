@@ -21,6 +21,7 @@ import {
   targets,
 } from "./lib/release-policy.mts";
 import { run } from "./lib/release-process.mts";
+import { validateRuntimeRelease } from "./lib/webkit-release.mts";
 
 try {
   const command = process.argv[2],
@@ -155,6 +156,7 @@ try {
     run("xcrun", ["stapler", "staple", app]);
     rmSync(submission);
   } else if (command === "archive") {
+    if (target === "win-x64") validateRuntimeRelease(join(app, "webkit"));
     mkdirSync(output, { recursive: true });
     rmSync(archive, { force: true });
     if (target === "osx-arm64") {
