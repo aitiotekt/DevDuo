@@ -46,6 +46,9 @@ internal sealed partial class WindowsWebKitView
         return Color.FromArgb((int)(rgb >> 16) & 255, (int)(rgb >> 8) & 255, (int)rgb & 255);
     }
 
+    internal uint? PaintedSideContinuationColor => geometry is { } current && (current.Left > 0 || current.Right > 0) &&
+        FixedColor(current.Left > 0 ? 3 : 1) is { } color ? (uint)color.ToArgb() & 0xffffff : null;
+
     private object FixedContainerColorDiagnostics()
     {
         int[]? Rgb(int side) => FixedColor(side) is { } color ? [color.R, color.G, color.B] : null;

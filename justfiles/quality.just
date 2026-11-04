@@ -195,6 +195,10 @@ test-windows-chrome-motion: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/motion-tests -p:RestoreLockedMode=true -- --chrome-motion
 
 [windows]
+test-windows-render-stability: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/render-stability-tests -p:RestoreLockedMode=true -- --render-stability
+
+[windows]
 test-windows-touch-performance: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/motion-tests -p:RestoreLockedMode=true -- --touch-performance
 

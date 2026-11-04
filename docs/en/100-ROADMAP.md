@@ -15,6 +15,7 @@ Current platform capabilities and acceptance are recorded in [Platform capabilit
 ## Remaining work
 
 - Reuse the accepted Windows baseline and verify changed native behavior or uncovered boundaries under [Windows handoff](009-WINDOWS-HANDOFF.md).
+- Resolve Windows touch direction locking after native scroll-target selection. The contact bridge has `touch-action` and pointer deltas before it knows which axes the selected nested/root scroll chain can consume. Apply direction intent to that chain, including one-axis availability, deliberate diagonal gestures and handoff to an ancestor, and carry the same decision through release velocity. Verify cancellation and mode switches and preserve the legacy DOM emulation path until it has equivalent checks.
 - Deliver and accept the rebuilt desktop API v1 engine/application pair after the scoped popup, Microsoft Pinyin and WebCore UIA repairs. Extend accessibility text navigation, surrounding-text/reconversion and broader assistive-technology compatibility separately; current Value/Invoke and Narrator label/value checks do not implement TextPattern or IAccessible2.
 - Further host control and visual polish, with keyboard/accessibility and presented-window checks at each affected platform.
 - Real tab management is separate future work; the current two-tab strip remains an illustration of measured shell variants.

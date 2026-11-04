@@ -38,7 +38,7 @@ mise 管理便携 CMake／Ninja／Ruby／Perl／gperf／pkgconf／vcpkg 和常�
 | `0016-windows-direct-pan-work.patch` | 直接使用 Windows 滚动节拍，每次原生拖动只清理一次键盘滚动 |
 | `0017-windows-precise-touch-coordinates.patch` | 在原生触点和按住拖动的滚动处理中保留小数 CSS 坐标 |
 
-工作区宿主要求 viewport v2、painting v2、content color v1、appearance v1、developer v1、fixed-container color v2、scroll-indicator v1、desktop v1、异步 accessibility v2、frame timing v2、frame presentation v1 和 frame surface v1。应用自带的合成器另要求 composition v5、page frame v2、presentation v1。启动检查版本及必需导出；清单哈希是来源输出，不是运行时通过门槛。缺失能力须重建匹配运行时，应用交付须使用 metadata 选择的匹配引擎发行版。
+工作区宿主要求 viewport v2、painting v2、content color v1、appearance v1、developer v1、fixed-container color v2、scroll-indicator v1、desktop v1、异步 accessibility v2、frame timing v2、frame presentation v1 和 frame surface v1。应用自带的合成器另要求 composition v6、page frame v2、presentation v1。启动检查版本及必需导出；清单哈希是来源输出，不是运行时通过门槛。缺失能力须重建匹配运行时，应用交付须使用 metadata 选择的匹配引擎发行版。
 
 ## Avalonia 后端
 
@@ -88,7 +88,7 @@ Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHT
 
 ## 实时表面合成
 
-`HostCompositor.cpp` 以 D3D11、Direct2D／DirectWrite 和 DirectComposition 实现 composition v5。Page frame v2 将租借的 WebKit 帧及其延伸绘入一个保留式 GPU 帧缓冲，再统一提交合成。首个导航前启用 WebKit offscreen 模式；HWND 保留原生输入／弹窗职责，不再提供页面像素。被测页面无 WebView2 回退，仅独立开发工具前端使用系统 WebView2。
+`HostCompositor.cpp` 以 D3D11、Direct2D／DirectWrite 和 DirectComposition 实现 composition v6。Page frame v2 将租借的 WebKit 帧及其延伸绘入一个保留式 GPU 帧缓冲，再统一提交合成。首个导航前启用 WebKit offscreen 模式；HWND 保留原生输入／弹窗职责，不再提供页面像素。被测页面无 WebView2 回退，仅独立开发工具前端使用系统 WebView2。
 
 旋转场景将完整大小的隐藏 layered 源宿主保留在较小物理裁剪之外；presentation v1 旋转／平移完整树，`WindowsScreenPresenter` 反向映射输入和焦点。机身、机身内正文及场景到画布坐标遵守[场景约束](005-SAFARI-SCENES.md#机身与内容坐标系)。
 
@@ -114,10 +114,10 @@ WC 瓦片绘制、TextureMapper 与 CSS 背景像素吸附共用设备缩放和�
 
 `config/safari-shell.json` 管理 Windows 可调光学参数及实测场景参考。材质角色分离顶部背景、浮动表面、紧凑地址栏和标签轨道；饱和度／亮度／对比度采用 ColorMatrix，字形按外壳外观独立于背景取色处理，明暗背景配方平滑插值。这是桌面艺术近似，不是物理折射或 Apple Liquid Glass 内核。
 
-当前原生渲染边缘决定背景色，`theme-color` 只作诊断。Content color API v1 使用普通快照 IPC，仅返回请求／状态／RGB：Closed 取无遮挡视口底边，Open 取顶边；最多 18 个逻辑像素行按原尺寸绘制，再缩到宽 64，按非预乘 sRGB 求平均并忽略低 alpha 像素。快照图像不进入页面呈现。取色按 180ms 节流并有限补采，每视图最多一个请求在途并拒绝旧代次；失败时保留当前文档上次原生色，首次成功前使用标记清楚的 DOM 回退，导航重置归属。
+当前原生渲染边缘决定背景色，`theme-color` 只作诊断。Content color API v1 使用普通快照 IPC，仅返回请求／状态／RGB。Closed 地址区取无遮挡视口底边，Open 外壳取顶边。Closed 侧栏控件单独在所在的左侧或右侧 inset 内取样，优先使用该侧随帧提交的 fixed 延伸色，首次取样前回退到当前文档的不透明根背景。每条最多 18 个逻辑像素行，按原尺寸绘制后缩至宽 64，再按非预乘 sRGB 求平均并忽略低 alpha 像素。取色使用一个按 180ms 节流的周期，每区域最多一个在途请求，补采次数有界并拒绝旧代次。取样不可用时保留当前文档上次结果，导航重置归属。快照图像不进入页面呈现。
 
 
-材质采样使用独立时间滤波：每通道不超过 3 的变化作为噪声，两次相差不超过 6 的采样确定目标，确认窗口最长 400ms；随后以 120ms 插值调整着色及派生参数，不过滤实时背景或字形，稳定后停止动画。Composition v5 还将展开／紧凑角色的完整材质配方与控件几何一起插值，并从中断位置衔接反向过渡。合成器保留玻璃节点，材质／前景表面分别更新。这不认证最终 DWM 帧节奏；更新计数只描述工作量。
+各取样区域独立做时间滤波。每通道不超过 3 的变化视为噪声，两次相差不超过 6 的采样确定目标，确认窗口最长 400ms。随后以 120ms 插值调整着色及派生参数，实时背景和前景字形各自呈现，稳定后停止动画。Composition v6 将展开／紧凑材质配方与几何一起插值，地址栏或控件变化时按角色保留仍在使用的玻璃节点。页面、玻璃、装饰和前景使用独立视觉节点，同尺寸表面通过 `EndDraw` 提交损伤并保留内容绑定。`just test-windows-render-stability` 持续采集合成窗口帧，并与原生边缘及材质观察对照。更新计数描述合成工作，捕获时间戳描述 WGC 实际采样。
 
 Appearance API v1 通知 WebKit 和页面媒体查询，不导航。原生输入意图与同向正文移动相关联：累计向下超过 24 CSS px 收起，向上超过 8 展开，意图 350ms 过期；零／反向运动、视口 clamp 和纯脚本滚动不切状态，并发脚本／原生移动仍有限定。
 
@@ -137,11 +137,21 @@ Scroll-indicator API v1 提供文档 epoch、根范围／位置、CSS 抑制及�
 
 视口内 alpha 与视口外延伸分别处理，fixed 元素仍止于真实布局视口。Fixed-container color API v2 分别返回当前文档覆盖和颜色有效性。宿主检查五个边缘位置与定位包含块，再复用上游背景色及 `PageColorSampler::predominantColor` 规则，跳过前一容器颜色缓存。优先采用原生背景色；回退绘制两像素 fixed/sticky 专用条带，排除文字及 iframe 之外的替换内容，选择主色而非平均无关颜色。透明度／遮罩沿用上游与页面延伸背景混合的规则。普通文档图片不会污染透明 fixed 包装内普通子节点的背景色。多色或部分覆盖保持不确定。Windows 合并图层快照跨原有合成层边界保留祖先透明度，像素只用于计算颜色标量。
 
-macOS 通过私有偏好 `_setContentInsetBackgroundFillEnabled:` 启用系统 WKWebView 的原生 inset 填充，并检测 `_updateFixedColorExtensionViews`。这些是 WebKit 实现接口，不证明算法属于 Safari 专有绘制。Windows 复用固定版本 WebCore 实现；系统 WebKit 版本及宿主覆盖／时效保护仍可能不同。`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素。可用 `just build-windows-webkit-runtime -RuntimeRoot <绝对临时构建目录>` 链接独立验证运行时，成功构建后该运行时供后续 checkout 启动使用，已运行实例继续保留加载的 DLL；`DEVDUO_WEBKIT_RUNTIME` 可显式覆盖选择。
+宿主预留 inset 时，Windows WC 将受视口约束的合成子树裁剪在真实布局视口内。若相对视口定位的 fixed 图层挂在定位堆叠上下文中，同一裁剪会映射到实际父合成层的坐标。该父层中的普通内容继续延伸，以祖先为包含块的 fixed 后代仍按原定位和绘制规则处理。WC 滚动直接存储图层左上角位置，TextureMapper 只将锚点用作变换原点，带尺寸的裁剪层因而不会在异步滚动时移动 fixed 或 sticky 图层。
+
+采样命中的 fixed 或 sticky 绘制路径上有正在运行的 transform 动画时，延伸色视为不确定，页面元素仍在视口内实时绘制。脚本直接设置 transform 时，几何检查也能识别越过裁剪边的平移。若平移后边缘仍穿过图层内部，该边延伸色继续视为不确定。绘制像素的主色须与同一采样带中平行于边缘的一条线上两端附近的采样吻合。透明全视口命中层也适用此检查，即使它覆盖所有命中点，采样带中部也可能由其他局部前景主导。边缘容器自身或原生 `::backdrop` 的均匀背景可直接提供延伸色。变换稳定且贴合边缘后适用同样的覆盖和取色规则，包括带 forwards fill 的已完成动画。
+
+卡片随后覆盖部分遮罩时，Windows 宿主可保留已稳定的遮罩色。每侧须先在同一透明 fixed 容器内五个常规边缘采样点直接命中同一纯色半透明遮罩。后续须属于同一文档、容器与遮罩，至少保留一个露出的采样点，并确认被前景挡住的位置仍由该遮罩连续覆盖。取色继续跟随该遮罩的实时颜色及透明度。替换遮罩、覆盖缺失或不一致、滤镜或完全遮住该侧的卡片会释放确认。首次绘制即带卡片时，只要同一连续遮罩在前景后方可验证，就沿用上游主色规则。遮罩覆盖不完整或相互冲突，且采样带无法提供连续颜色时，经过已有的有限等待区间便回到文档延伸。此例外沿用实测 Safari 打开顺序，并继续采样其他同容器颜色变化。
+
+页面也可以在布局视口外单独放置与遮罩同色的 fixed 背景块。当前景命中使内侧边缘颜色无法确定时，Windows 宿主在当前非零 inset 内检查属于同一容器的 fixed 背景块。如果横跨视口的 `pointer-events: none` 图层及其子元素均未在内侧采样带绘制，宿主可按 CSS 命中规则查找下方容器。外侧背景块的颜色须与同级唯一一块覆盖整个视口的纯色半透明遮罩相符，也须覆盖整个 inset，在代表性的深度和位置保持最上层命中，绘制路径须避开页面裁剪和效果。模态普通流祖先有统一且覆盖整个 inset 的不透明背景时，宿主将外侧块与该背景混合，否则使用页面延伸背景。这样可在普通流底板盖住文档根背景时使用实际底板。直接合并视口外绘制可能把 WC 已在视口处裁掉的内侧 fixed 遮罩重新计入。宿主仅绘制验证后的颜色标量，保持原有布局和滚动范围。
+
+macOS 桥接在选用系统 WKWebView 的 inset 填充前检查私有偏好 `_setContentInsetBackgroundFillEnabled:` 和 `_updateFixedColorExtensionViews`，可用性随系统 WebKit 版本变化。实测 macOS 27.0.1 提供 `_updateFixedColorExtensionViews` 及视图级的 `_setUsesAutomaticContentInsetBackgroundFill:`，但缺少偏好设置接口。独立探针用视图级接口观察图层，应用桥接兼容性还需独立验证。
+
+`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素，并检查卡片出现及遮罩变色、替换和关闭时的连续遮罩。可用 `just build-windows-webkit-runtime -RuntimeRoot <绝对临时构建目录>` 链接独立验证运行时，成功构建的非实验版本供后续 checkout 启动使用，已运行实例继续保留加载的 DLL。`DEVDUO_WEBKIT_RUNTIME` 可显式覆盖选择。
 
 Frame presentation API v1 将边缘状态绑定到产出的页面帧及其提交几何。渲染帧内确认无覆盖时立即撤除对应边缘；可靠颜色替换旧值，不确定颜色最多保留 600ms，重复失败不续期。一次性原生失效使用保留页面过期静态不确定颜色，不循环强制 WebCore 重绘。导航／文档及 backing-store 代次拒绝旧结果，侧边拥有角部交点；fixed 取色快照仍只产出标量。
 
-Frame timing API v2 将原生输入序号贯穿渲染／提交、GPU 工作、UI 接收及宿主帧传输／提交。宿主分别记录 `WM_PAINT` 验证及 DirectComposition 提交前后时间，所有时序阶段使用跨进程一致的 Windows QPC 秒，包含合并后保留的原始输入时刻；明确的锚点检查与宿主 Stopwatch 的一致性。时间戳及帧号均不代表屏幕扫描输出。参见 [Microsoft QPC 说明](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps)。诊断历史有界，`DEVDUO_FRAME_TIMING_HISTORY=1` 将可读取历史从默认 8 项扩为最多 128 项。帧表面诊断区分实际 GPU／CPU 传输、GDI 上传及显式捕获。CPU 调用栈属于离散采样，不等于统计 CPU profile。正确的异步滚动仍在实施。
+Frame timing API v2 将原生输入序号贯穿渲染／提交、GPU 工作、UI 接收及宿主帧传输／提交。宿主分别记录 `WM_PAINT` 验证及 DirectComposition 提交前后时间，所有时序阶段使用跨进程一致的 Windows QPC 秒，包含合并后保留的原始输入时刻；明确的锚点检查与宿主 Stopwatch 的一致性。时间戳及帧号均不代表屏幕扫描输出。参见 [Microsoft QPC 说明](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps)。诊断历史有界。`DEVDUO_FRAME_TIMING_HISTORY=1` 将可读取历史从默认 8 项扩为最多 128 项，并记录每次成功页面帧提交的物理填充矩形和 RGB。帧表面诊断区分实际 GPU／CPU 传输、GDI 上传及显式捕获。CPU 调用栈属于离散采样，不等于统计 CPU profile。正确的异步滚动仍在实施。
 
 ## 桌面输入、对话框与无障碍
 

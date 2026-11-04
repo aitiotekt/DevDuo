@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safari side chrome backdrop</title>
+<style>
+  html, body { margin: 0; background: white; }
+  main {
+    width: calc(100% - 54px);
+    height: 4000px;
+    background: #e9f3f9;
+    transform: translateZ(0);
+  }
+  main.dark { background: #111820; }
+</style>
+<main></main>
+<script>
+  const main = document.querySelector('main');
+  addEventListener('scroll', () => main.classList.toggle('dark', scrollY > 420));
+</script>

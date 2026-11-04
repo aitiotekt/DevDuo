@@ -9,7 +9,6 @@
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 #include <cstring>
 #include <memory>
-#include <mutex>
 #include <string>
 
 using namespace winrt;
@@ -24,9 +23,7 @@ struct Apartment {
     ~Apartment() { RoUninitialize(); }
 };
 struct FrameState {
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    std::mutex mutex;
-    Direct3D11CaptureFrame frame { nullptr };
+    HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     ~FrameState() { if (ready) CloseHandle(ready); }
 };
 struct CaptureScope {
@@ -40,7 +37,9 @@ struct CaptureScope {
 
 // Capture only our own HWND. WGC reads final DWM composition, including native
 // child windows and glass. The requested crop uses physical desktop pixels.
-void captureWindow(HWND window, int x, int y, int width, int height, unsigned char** pixels)
+using CaptureFrame = void(__cdecl*)(const unsigned char*, long long);
+void captureWindow(HWND window, int x, int y, int width, int height, unsigned char** pixels,
+    unsigned duration = 0, CaptureFrame observe = nullptr)
 {
     DWORD process = 0;
     GetWindowThreadProcessId(window, &process);
@@ -73,58 +72,67 @@ void captureWindow(HWND window, int x, int y, int width, int height, unsigned ch
     if (!state->ready) throw hresult_error(HRESULT_FROM_WIN32(GetLastError()));
     CaptureScope resources;
     auto pool = resources.pool = Direct3D11CaptureFramePool::CreateFreeThreaded(directDevice, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, size);
-    auto arrival = pool.FrameArrived(auto_revoke, [state](const auto& sender, const auto&) {
-        try {
-            auto frame = sender.TryGetNextFrame();
-            if (!frame) return;
-            std::lock_guard lock(state->mutex);
-            if (!state->frame) { state->frame = frame; SetEvent(state->ready); }
-        } catch (...) { SetEvent(state->ready); }
-    });
+    auto arrival = pool.FrameArrived(auto_revoke, [state](const auto&, const auto&) { SetEvent(state->ready); });
     auto session = resources.session = pool.CreateCaptureSession(item);
     session.IsCursorCaptureEnabled(false);
     session.StartCapture();
-    auto wait = WaitForSingleObject(state->ready, 5000);
-    arrival.revoke();
-    Direct3D11CaptureFrame frame { nullptr };
-    { std::lock_guard lock(state->mutex); frame = state->frame; }
-    if (wait != WAIT_OBJECT_0 || !frame) throw hresult_error(E_FAIL, L"No composed window frame arrived within five seconds.");
-    if (frame.ContentSize().Width != size.Width || frame.ContentSize().Height != size.Height)
-        throw hresult_error(E_FAIL, L"The window resized during capture; retry after layout settles.");
-    auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-    com_ptr<ID3D11Texture2D> texture;
-    check_hresult(access->GetInterface(guid_of<ID3D11Texture2D>(), texture.put_void()));
-    D3D11_TEXTURE2D_DESC description;
-    texture->GetDesc(&description);
+    D3D11_TEXTURE2D_DESC description { };
+    description.Width = width;
+    description.Height = height;
+    description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     description.Usage = D3D11_USAGE_STAGING;
-    description.BindFlags = 0;
     description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    description.MiscFlags = 0;
     com_ptr<ID3D11Texture2D> staging;
     check_hresult(device->CreateTexture2D(&description, nullptr, staging.put()));
-    context->CopyResource(staging.get(), texture.get());
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    check_hresult(context->Map(staging.get(), 0, D3D11_MAP_READ, 0, &mapped));
     auto data = static_cast<unsigned char*>(CoTaskMemAlloc(static_cast<size_t>(width) * height * 4));
-    if (!data) { context->Unmap(staging.get(), 0); throw std::bad_alloc(); }
+    if (!data) throw std::bad_alloc();
     std::unique_ptr<unsigned char, decltype(&CoTaskMemFree)> allocation(data, CoTaskMemFree);
-    for (int row = 0; row < height; ++row)
-        std::memcpy(data + static_cast<size_t>(row) * width * 4,
-            static_cast<unsigned char*>(mapped.pData) + static_cast<size_t>(top + row) * mapped.RowPitch + static_cast<size_t>(left) * 4,
-            static_cast<size_t>(width) * 4);
-    context->Unmap(staging.get(), 0);
-    frame.Close();
-    *pixels = allocation.release();
+    const D3D11_BOX crop { static_cast<UINT>(left), static_cast<UINT>(top), 0,
+        static_cast<UINT>(left + width), static_cast<UINT>(top + height), 1 };
+    auto deadline = GetTickCount64() + 5000;
+    bool captured = false;
+    while (GetTickCount64() < deadline) {
+        auto frame = pool.TryGetNextFrame();
+        if (!frame) {
+            const auto now = GetTickCount64();
+            if (now >= deadline || WaitForSingleObject(state->ready, static_cast<DWORD>(deadline - now)) != WAIT_OBJECT_0)
+                break;
+            continue;
+        }
+        if (frame.ContentSize().Width != size.Width || frame.ContentSize().Height != size.Height)
+            throw hresult_error(E_FAIL, L"The window resized during capture; retry after layout settles.");
+        auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+        com_ptr<ID3D11Texture2D> texture;
+        check_hresult(access->GetInterface(guid_of<ID3D11Texture2D>(), texture.put_void()));
+        context->CopySubresourceRegion(staging.get(), 0, 0, 0, 0, texture.get(), 0, &crop);
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        check_hresult(context->Map(staging.get(), 0, D3D11_MAP_READ, 0, &mapped));
+        for (int row = 0; row < height; ++row)
+            std::memcpy(data + static_cast<size_t>(row) * width * 4,
+                static_cast<unsigned char*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch,
+                static_cast<size_t>(width) * 4);
+        context->Unmap(staging.get(), 0);
+        const auto timestamp = frame.SystemRelativeTime().count();
+        frame.Close();
+        if (!observe) {
+            *pixels = allocation.release();
+            return;
+        }
+        if (!captured) deadline = GetTickCount64() + duration;
+        captured = true;
+        observe(data, timestamp);
+    }
+    if (!captured) throw hresult_error(E_FAIL, L"No composed window frame arrived within five seconds.");
 }
 }
 
-extern "C" __declspec(dllexport) HRESULT DDWindowCapture(HWND window, int x, int y, int width, int height, unsigned char** pixels)
+static HRESULT runCapture(HWND window, int x, int y, int width, int height, unsigned char** pixels,
+    unsigned duration, CaptureFrame observe)
 {
-    if (!pixels) return E_POINTER;
-    *pixels = nullptr;
     try {
         Apartment apartment;
-        captureWindow(window, x, y, width, height, pixels);
+        captureWindow(window, x, y, width, height, pixels, duration, observe);
         captureError.clear();
         return S_OK;
     } catch (const hresult_error& error) {
@@ -132,5 +140,17 @@ extern "C" __declspec(dllexport) HRESULT DDWindowCapture(HWND window, int x, int
         return error.code();
     } catch (const std::bad_alloc&) { captureError = L"Screenshot allocation failed."; return E_OUTOFMEMORY; }
     catch (...) { captureError = L"Windows Graphics Capture failed."; return E_FAIL; }
+}
+extern "C" __declspec(dllexport) HRESULT DDWindowCapture(HWND window, int x, int y, int width, int height, unsigned char** pixels)
+{
+    if (!pixels) return E_POINTER;
+    *pixels = nullptr;
+    return runCapture(window, x, y, width, height, pixels, 0, nullptr);
+}
+extern "C" __declspec(dllexport) HRESULT DDWindowCaptureFrames(HWND window, int x, int y, int width, int height,
+    unsigned duration, CaptureFrame observe)
+{
+    if (!observe || !duration || duration > 15000) return E_INVALIDARG;
+    return runCapture(window, x, y, width, height, nullptr, duration, observe);
 }
 extern "C" __declspec(dllexport) const wchar_t* DDWindowCaptureError() { return captureError.c_str(); }

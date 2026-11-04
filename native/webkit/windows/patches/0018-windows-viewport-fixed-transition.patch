@@ -1,0 +1,173 @@
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -33,6 +33,7 @@
+ #include "BackForwardCache.h"
+ #include "BackForwardController.h"
+ #include "BorderValue.h"
++#include "CSSPropertyNames.h"
+ #include "CachedImage.h"
+ #include "Chrome.h"
+ #include "ChromeClient.h"
+@@ -79,6 +80,8 @@
+ #include "ImageDocument.h"
+ #include "InspectorBackendClient.h"
+ #include "InspectorInstrumentation.h"
++#include "KeyframeEffect.h"
++#include "KeyframeEffectStack.h"
+ #include "LegacyRenderSVGRoot.h"
+ #include "LocalDOMWindow.h"
+ #include "LocalFrame.h"
+@@ -137,6 +140,7 @@
+ #include "StylePrimitiveNumericTypes+EvaluationMinimum.h"
+ #include "StyleDocumentScope.h"
+ #include "StyleResolver.h"
++#include "Styleable.h"
+ #include "TextIndicator.h"
+ #include "TextIterator.h"
+ #include "TextResourceDecoder.h"
+@@ -145,6 +149,7 @@
+ #include "VelocityData.h"
+ #include "Viewport.h"
+ #include "VisualViewport.h"
++#include "WebAnimation.h"
+ #include "WheelEventTestMonitor.h"
+ #include <span>
+ #include <wtf/HexNumber.h>
+@@ -2386,10 +2391,12 @@
+         bool isDimmingLayer : 1 { false };
+         bool isSidebar : 1 { false };
+         Color backgroundColor;
++        bool hasUnsettledTransform { false };
+     };
+ 
+     auto sizeForViewportUnits = LayoutSize { sizeForCSSDefaultViewportUnits() };
+-    auto unclampedFixedRect = rectForFixedPositionLayout();
++    auto fixedLayoutRect = rectForFixedPositionLayout();
++    auto unclampedFixedRect = fixedLayoutRect;
+     auto fixedRect = unclampedFixedRect;
+     if (CheckedPtr view = renderView())
+         fixedRect.intersect(view->unscaledDocumentRect());
+@@ -2574,6 +2581,51 @@
+         return IsCandidate;
+     };
+ 
++    auto paintPathMakesColorUncertain = [&](BoxSide side, const RenderElement& renderer) {
++        if (!hostSampling)
++            return false;
++
++        // A translated edge can be a cut through the interior of the layer.
++        // Check geometry as well as animation state: script can update the
++        // transform on every frame without creating a Web Animation.
++        if (CheckedPtr layerRenderer = dynamicDowncast<RenderLayerModelObject>(renderer)) {
++            if (CheckedPtr layer = layerRenderer->layer()) {
++                if (auto* transform = layer->transform(); transform && transform->isIdentityOrTranslation()) {
++                    constexpr auto tolerance = 1;
++                    switch (side) {
++                    case BoxSide::Top:
++                        if (transform->m42() < -tolerance && renderer.absoluteBoundingBoxRect().y() < fixedLayoutRect.y() - tolerance)
++                            return true;
++                        break;
++                    case BoxSide::Right:
++                        if (transform->m41() > tolerance && renderer.absoluteBoundingBoxRect().maxX() > fixedLayoutRect.maxX() + tolerance)
++                            return true;
++                        break;
++                    case BoxSide::Bottom:
++                        if (transform->m42() > tolerance && renderer.absoluteBoundingBoxRect().maxY() > fixedLayoutRect.maxY() + tolerance)
++                            return true;
++                        break;
++                    case BoxSide::Left:
++                        if (transform->m41() < -tolerance && renderer.absoluteBoundingBoxRect().x() < fixedLayoutRect.x() - tolerance)
++                            return true;
++                        break;
++                    }
++                }
++            }
++        }
++
++        auto styleable = Styleable::fromRenderer(renderer);
++        auto* effects = styleable ? styleable->keyframeEffectStack() : nullptr;
++        return effects && effects->hasMatchingEffect([](const KeyframeEffect& effect) {
++            RefPtr animation = effect.animation();
++            return animation && animation->playState() == WebAnimation::PlayState::Running && animation->playbackRate()
++                && (effect.isCurrentlyAffectingProperty(CSSPropertyID::Transform)
++                    || effect.isCurrentlyAffectingProperty(CSSPropertyID::Translate)
++                    || effect.isCurrentlyAffectingProperty(CSSPropertyID::Scale)
++                    || effect.isCurrentlyAffectingProperty(CSSPropertyID::Rotate));
++        });
++    };
++
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+     auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents, float fraction = 0.5f) -> FixedContainerResult {
+         using enum HitTestRequest::Type;
+@@ -2633,6 +2685,7 @@
+                 .isDimmingLayer = true,
+                 .isSidebar = false,
+                 .backgroundColor = WTF::move(backgroundColor),
++                .hasUnsettledTransform = paintPathMakesColorUncertain(side, *backdropRenderer),
+             } };
+         }();
+ 
+@@ -2643,7 +2696,9 @@
+         Color primaryBackgroundColor;
+         bool foundBackdropFilter = false;
+         bool hitInvisiblePointerEventsNoneContainer = false;
++        bool unsettledTransform = false;
+         for (CheckedRef ancestor : lineageOfType<RenderElement>(*renderer)) {
++            unsettledTransform = unsettledTransform || paintPathMakesColorUncertain(side, ancestor);
+             auto candidateType = containerEdgeCandidateResult(side, ancestor);
+             if (candidateType != IsHiddenOrTransparent) {
+                 if (ancestor->hasBackdropFilter())
+@@ -2679,6 +2734,7 @@
+                     .isDimmingLayer = candidateType == IsDimmingLayer,
+                     .isSidebar = candidateType == IsSidebar,
+                     .backgroundColor = hasMultipleBackgroundColors ? Color { } : WTF::move(primaryBackgroundColor),
++                    .hasUnsettledTransform = unsettledTransform,
+                 };
+             }
+             }
+@@ -2762,12 +2818,14 @@
+             result = findFixedContainer(side, IgnoreCSSPointerEvents::No);
+ 
+         bool consistentCoverage = true;
++        bool unsettledTransform = result.hasUnsettledTransform;
+         if (hostSampling) {
+             RefPtr<Element> candidate = result.container;
+             for (float fraction : { 0.05f, 0.25f, 0.5f, 0.75f, 0.95f }) {
+                 auto pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::Yes, fraction);
+                 if (pointResult.retryHonoringPointerEvents)
+                     pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
++                unsettledTransform |= pointResult.hasUnsettledTransform;
+                 if (pointResult.container != result.container)
+                     consistentCoverage = false;
+                 if (!candidate && pointResult.container)
+@@ -2780,7 +2838,9 @@
+             continue;
+ 
+         containers.setAt(side, *result.container);
+-        if (hostSampling && !consistentCoverage) {
++        // A moving layer can paint a descendant where it crosses the clip.
++        // Keep that paint live inside the viewport without extending its color.
++        if (hostSampling && (!consistentCoverage || unsettledTransform)) {
+             edges.colors.setAt(side, PredominantColorType::Multiple);
+             continue;
+         }
+diff --git a/Source/WebCore/rendering/RenderLayerCompositor.cpp b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+--- a/Source/WebCore/rendering/RenderLayerCompositor.cpp
++++ b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+@@ -4296,7 +4296,14 @@
+     using enum ViewportConstrainedSublayers;
+ 
+     auto sublayersForViewportConstrainedLayer = [&] {
+-        if (!m_renderView.settings().contentInsetBackgroundFillEnabled())
++        bool clipsToViewport = m_renderView.settings().contentInsetBackgroundFillEnabled();
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++        // The host draws the fixed-layer continuation from frame metadata.
++        // Keep the WC fixed subtree inside the real viewport, independently of
++        // document content that is allowed to paint under the obscured insets.
++        clipsToViewport |= !m_renderView.frameView().obscuredContentInsets().isZero();
++#endif
++        if (!clipsToViewport)
+             return Anchor;
+ 
+         if (!isMainFrameCompositor())

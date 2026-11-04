@@ -16,6 +16,7 @@ internal sealed class WindowsComposition : IDisposable
     private string? textMeasurementLanguage;
     private ulong nativeTextMeasurementCount, textMeasurementCacheHits;
     private readonly Queue<object> commitTimings = new();
+    private readonly bool detailedTiming = Environment.GetEnvironmentVariable("DEVDUO_FRAME_TIMING_HISTORY") == "1";
     private (int Width, int Height)? pageSceneSize;
     internal bool NeedsPageFrame { get; private set; } = true;
     internal bool PageResourcesLost { get; private set; }
@@ -37,7 +38,7 @@ internal sealed class WindowsComposition : IDisposable
             return new { apiVersion = state.ApiVersion, softwareDevice = state.SoftwareDevice != 0, resourceGeneration = state.ResourceGeneration,
                 sceneGeneration = state.SceneGeneration, width = state.Width, height = state.Height,
                 page = PageFrameDiagnostics(),
-                commitTimings = commitTimings.TakeLast(Environment.GetEnvironmentVariable("DEVDUO_FRAME_TIMING_HISTORY") == "1" ? 128 : 8).ToArray(),
+                commitTimings = commitTimings.TakeLast(detailedTiming ? 128 : 8).ToArray(),
                 hostTextMeasurement = new { nativeCalls = nativeTextMeasurementCount, cacheHits = textMeasurementCacheHits },
                 presentationApiVersion = 1, sceneInCanvasDegrees = presentation?.Degrees ?? 0, offsetX = presentation?.X ?? 0, offsetY = presentation?.Y ?? 0 };
         }
@@ -70,13 +71,13 @@ internal sealed class WindowsComposition : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     internal struct Material
     {
-        public uint Tint;
+        public uint Tint, SideTint;
         public float Alpha, Strength, Shadow, Scale;
         public float Blur, Saturation, Brightness, Contrast, TopHighlight, EdgeHighlight, Sheen, ShadowBlur, ShadowOffset;
     }
     internal WindowsComposition(nint parent, nint browser)
     {
-        if (DDCompositionVersion() != 5) throw new InvalidOperationException("Windows composition API v5 is required.");
+        if (DDCompositionVersion() != 6) throw new InvalidOperationException("Windows composition API v6 is required.");
         if (DDCompositionPageFrameVersion() != 2) throw new InvalidOperationException("Windows page frame API v2 is required.");
         if (DDCompositionPresentationVersion() != 1) throw new InvalidOperationException("Windows composition presentation API v1 is required.");
         if (DDCompositionScrollIndicatorVersion() != 1) throw new InvalidOperationException("Windows composition scroll indicator API v1 is required.");
@@ -110,7 +111,8 @@ internal sealed class WindowsComposition : IDisposable
         NeedsPageFrame = PageResourcesLost = false;
         if (DDCompositionGetUpdateTiming(native, out var started, out var commit, out var finished) < 0)
             throw new InvalidOperationException(Error);
-        commitTimings.Enqueue(new { kind = "page-frame", frameId = frame.FrameId, documentEpoch = frame.DocumentEpoch, started, commit, finished });
+        var submittedFills = detailedTiming ? fill.Select(value => new { value.X, value.Y, value.Width, value.Height, value.Color }).ToArray() : null;
+        commitTimings.Enqueue(new { kind = "page-frame", frameId = frame.FrameId, documentEpoch = frame.DocumentEpoch, started, commit, finished, submittedFills });
         if (commitTimings.Count > 128) commitTimings.Dequeue();
         return PageFrameResult.Presented;
     }

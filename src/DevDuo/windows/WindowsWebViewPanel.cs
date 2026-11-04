@@ -38,6 +38,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
     private const string NativeColorSource = "WebKit native edge average";
     private readonly System.Windows.Forms.Timer colorTimer = new() { Interval = 180 };
     private readonly MaterialColorState materialColor = new();
+    private readonly MaterialColorState sideMaterialColor = new();
     private readonly System.Windows.Forms.Timer materialTimer = new() { Interval = 16 };
     private int colorAttempts;
     private readonly System.Windows.Forms.Timer clockTimer = new() { Interval = 1000 };
@@ -52,6 +53,8 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
     private Color? themeColorHint;
     private readonly SafariChromeState chromeScroll = new();
     private WindowsWebKitView.ContentEdgeColor? sampledColor;
+    private WindowsWebKitView.ContentEdgeColor? sampledSideColor;
+    private uint? fixedSideColor;
     private ChromeAction lastChromeAction;
     internal WindowsWebKitView Browser => webkit;
     internal PointerMessageHandler? PointerMessage;
@@ -82,7 +85,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
         BackColor = tintColor;
         webkit.Observation += ObserveJson;
         webkit.DocumentNavigationStarted += OnDocumentNavigationStarted;
-        webkit.FixedContainerColorsChanged += PublishState;
+        webkit.FixedContainerColorsChanged += OnFixedContainerColorsChanged;
         webkit.CompositionFailed += detail =>
         {
             initializationState = "failed";
@@ -111,15 +114,18 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
             }
         };
         materialColor.Reset((uint)tintColor.ToArgb() & 0xffffff);
+        sideMaterialColor.Reset((uint)webkit.UnderPageColor.ToArgb() & 0xffffff);
         materialTimer.Tick += (_, _) =>
         {
-            materialColor.AcceptPending(Environment.TickCount64);
-            if (materialColor.Advance(Environment.TickCount64))
-            {
+            var now = Environment.TickCount64;
+            materialColor.AcceptPending(now);
+            sideMaterialColor.AcceptPending(now);
+            var changed = materialColor.Advance(now);
+            if (changed)
                 tintColor = Color.FromArgb(unchecked((int)(0xff000000 | materialColor.Display)));
-                ApplyLayout();
-            }
-            if (!materialColor.Animating && !materialColor.Pending) materialTimer.Stop();
+            if (sideMaterialColor.Advance(now) || changed) ApplyLayout();
+            if (!materialColor.Animating && !materialColor.Pending && !sideMaterialColor.Animating && !sideMaterialColor.Pending)
+                materialTimer.Stop();
         };
         colorTimer.Tick += async (_, _) => await SampleContentColor();
         // The DOM can finish reporting before a delayed image/mask reaches a
@@ -331,6 +337,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
             compact = chromeScroll.Observe(compact, scrollY, delta, previousHeight != actualHeight, Environment.TickCount64, options.CollapseThresholdCssPx);
             var theme = r.GetProperty("themeColor");
             computedColor = ReadColor(r.GetProperty("domBackgroundColor"));
+            if (options.ChromeLayout == "side" && fixedSideColor is null && sampledSideColor is null) ObserveSideMaterial();
             themeColorHint = theme.ValueKind == JsonValueKind.Array ? ReadColor(theme) : null;
             // The controlled Safari cohort follows the rendered page, even with
             // opposing meta hints. Appearance is an independent host input.
@@ -374,10 +381,29 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
         colorKey = null;
         colorTimer.Stop();
         sampledColor = null;
+        sampledSideColor = null;
+        fixedSideColor = null;
         colorAttempts = 0;
         materialTimer.Stop();
         materialColor.Reset((uint)computedColor.ToArgb() & 0xffffff);
+        sideMaterialColor.Reset((uint)webkit.UnderPageColor.ToArgb() & 0xffffff);
         colorStatus = "invalidated";
+    }
+    private void ObserveSideMaterial()
+    {
+        var color = fixedSideColor ?? sampledSideColor?.Rgb ?? ((uint)webkit.UnderPageColor.ToArgb() & 0xffffff);
+        sideMaterialColor.Observe(color, Environment.TickCount64);
+        if (sideMaterialColor.Animating || sideMaterialColor.Pending) materialTimer.Start();
+    }
+    private void OnFixedContainerColorsChanged()
+    {
+        var color = webkit.PaintedSideContinuationColor;
+        if (fixedSideColor != color)
+        {
+            fixedSideColor = color;
+            if (options.ChromeLayout == "side") ObserveSideMaterial();
+        }
+        PublishState();
     }
     private async Task SampleContentColor()
     {
@@ -389,10 +415,19 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
         colorStatus = "pending";
         try
         {
-            var result = await webkit.RequestContentEdgeColorAsync(options.ChromeLayout == "side");
+            var side = options.ChromeLayout == "side";
+            var contentSample = webkit.RequestContentEdgeColorAsync(side ? WindowsWebKitView.ContentSampleEdge.Bottom : WindowsWebKitView.ContentSampleEdge.Top);
+            var sideSample = side ? webkit.RequestContentEdgeColorAsync(WindowsWebKitView.ContentSampleEdge.Side) : null;
+            var result = await contentSample;
+            var sideResult = sideSample is null ? null : await sideSample;
             if (disposed || revision != colorRevision) return;
+            if (side)
+            {
+                if (sideResult is { Status: 0 } && webkit.IsCurrentContentColor(sideResult)) sampledSideColor = sideResult;
+                ObserveSideMaterial();
+            }
             sampledColor = result;
-            if (result is { Status: 0 })
+            if (result is { Status: 0 } && webkit.IsCurrentContentColor(result))
             {
                 materialColor.Observe(result.Rgb, Environment.TickCount64);
                 if (materialColor.Animating || materialColor.Pending)
@@ -402,7 +437,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
             }
             else
             {
-                colorStatus = result is null ? "stale-or-unavailable" : "native-status-" + result.Status;
+                colorStatus = result is null || !webkit.IsCurrentContentColor(result) ? "stale-or-unavailable" : "native-status-" + result.Status;
                 // A transient readback failure is not a new page color. Keep a
                 // successful sample until navigation resets its source instead
                 // of flashing between rendered pixels and the DOM approximation.
@@ -420,7 +455,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
         {
             colorBusy = false;
             if (!disposed && colorKey is not null &&
-                (revision != colorRevision || colorAttempts == 0 || materialColor.Pending && colorAttempts < 3)) colorTimer.Start();
+                (revision != colorRevision || colorAttempts == 0 || (materialColor.Pending || sideMaterialColor.Pending) && colorAttempts < 3)) colorTimer.Start();
         }
     }
     private void ApplyLayout()
@@ -436,6 +471,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
         var side = o.ChromeLayout == "side";
         var optics = o.WindowsMaterial;
         webkit.Material = new WindowsComposition.Material { Tint = (uint)tintColor.ToArgb() & 0xffffff,
+            SideTint = side ? sideMaterialColor.Display : uint.MaxValue,
             Alpha = (float)o.TintAlpha, Strength = (float)o.GlassStrength, Shadow = (float)o.ShadowOpacity, Scale = (float)Math.Min(sx, sy),
             Blur = (float)optics.Blur, Saturation = (float)optics.Saturation, Brightness = (float)optics.Brightness, Contrast = (float)optics.Contrast,
             TopHighlight = (float)optics.TopHighlight, EdgeHighlight = (float)optics.EdgeHighlight, Sheen = (float)optics.Sheen,
@@ -724,6 +760,10 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
                 sampleRectSceneCssPx = sampledColor is { } sample ? new { x = sample.SampleRect.X, y = sample.SampleRect.Y,
                     width = sample.SampleRect.Width, height = sample.SampleRect.Height } : null,
                 navigationGeneration = sampledColor?.NavigationGeneration, geometryGeneration = sampledColor?.GeometryGeneration },
+            sideChromeColor = options.ChromeLayout == "side" ? new { fixedRgb = fixedSideColor, sampledRgb = sampledSideColor?.Rgb,
+                displayedRgb = sideMaterialColor.Display,
+                sampleRectSceneCssPx = sampledSideColor is { } sideSample ? new { x = sideSample.SampleRect.X, y = sideSample.SampleRect.Y,
+                    width = sideSample.SampleRect.Width, height = sideSample.SampleRect.Height } : null } : null,
             tintRgb = new[] { (int)tintColor.R, (int)tintColor.G, (int)tintColor.B },
             shellAppearance = options.ShellAppearance,
             chromeScrollInput = new { source = chromeScroll.InputSource, sequence = chromeScroll.InputSequence,
@@ -837,7 +877,7 @@ internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
             clockTimer.Stop(); clockTimer.Dispose();
             webkit.Observation -= ObserveJson;
             webkit.DocumentNavigationStarted -= OnDocumentNavigationStarted;
-            webkit.FixedContainerColorsChanged -= PublishState;
+            webkit.FixedContainerColorsChanged -= OnFixedContainerColorsChanged;
             var mask = Region;
             Region = null;
             mask?.Dispose();

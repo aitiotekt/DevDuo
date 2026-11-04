@@ -82,6 +82,11 @@ internal sealed partial class WindowsChecks
             await CheckAtomicContinuation();
             return;
         }
+        if (Environment.GetCommandLineArgs().Contains("--render-stability"))
+        {
+            await CheckRenderStability();
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--fixed-color-transitions"))
         {
             await CheckFixedColorTransitions();

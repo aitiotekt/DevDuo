@@ -29,7 +29,7 @@ Avalonia 管理宿主窗口和设备/场景选择。`NativeWebView` 在 macOS �
 
 Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。两种容器使用已记录的移动 Safari 请求身份；真实引擎、platform、DPR、方向、safe area 和键盘仍保持原生行为。Safari 外观不代表引擎变成 iPhone Safari。
 
-机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v5 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
+机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v6 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
 
 ## 宿主控件与导航
 

@@ -1,0 +1,275 @@
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -158,6 +158,8 @@
+ #include <wtf/SetForScope.h>
+ #include <wtf/SystemTracing.h>
+ #include <wtf/TZoneMallocInlines.h>
++#include <wtf/UniqueRef.h>
++#include <wtf/WeakHashMap.h>
+ #include <wtf/text/MakeString.h>
+ #include <wtf/text/TextStream.h>
+ 
+@@ -2370,12 +2372,29 @@
+     if (!page)
+         return { WTF::move(edges), WTF::move(containers) };
+ 
+-    if (!hasViewportConstrainedObjects())
+-        return { WTF::move(edges), WTF::move(containers) };
+-
+     RefPtr document = m_frame->document();
+     if (!document)
+         return { WTF::move(edges), WTF::move(containers) };
++
++    struct ConfirmedDimmingSheet {
++        WeakPtr<Element, WeakPtrImplWithEventTargetData> container;
++        WeakPtr<Element, WeakPtrImplWithEventTargetData> sheet;
++        Color sheetColor;
++        Color continuationColor;
++        bool alwaysBlend { false };
++    };
++    using DimmingSheetEdges = RectEdges<ConfirmedDimmingSheet>;
++    static NeverDestroyed<WeakHashMap<Document, UniqueRef<DimmingSheetEdges>, WeakPtrImplWithEventTargetData>> confirmedSheets;
++    if (!hasViewportConstrainedObjects()) {
++        if (hostSampling)
++            confirmedSheets.get().remove(*document);
++        return { WTF::move(edges), WTF::move(containers) };
++    }
++    DimmingSheetEdges* hostHistory = nullptr;
++    if (hostSampling) {
++        auto entry = confirmedSheets.get().ensure(*document, [] { return makeUniqueRefWithoutFastMallocCheck<DimmingSheetEdges>(); });
++        hostHistory = &entry.iterator->value.get();
++    }
+ 
+     TraceScope tracingScope { FixedContainerEdgeSamplingStart, FixedContainerEdgeSamplingEnd };
+ 
+@@ -2392,6 +2411,7 @@
+         bool isSidebar : 1 { false };
+         Color backgroundColor;
+         bool hasUnsettledTransform { false };
++        RefPtr<Element> exposedDimmingSheet { };
+     };
+ 
+     auto sizeForViewportUnits = LayoutSize { sizeForCSSDefaultViewportUnits() };
+@@ -2626,6 +2646,34 @@
+         });
+     };
+ 
++    constexpr std::array edgeFractions { 0.05f, 0.25f, 0.5f, 0.75f, 0.95f };
++    auto samplingPoint = [&](BoxSide side, float fraction) {
++        auto point = midpointOnSide(side, fixedRect);
++        if (side == BoxSide::Top || side == BoxSide::Bottom)
++            point.setX(fixedRect.x() + fixedRect.width() * fraction);
++        else
++            point.setY(fixedRect.y() + fixedRect.height() * fraction);
++        return point;
++    };
++
++    auto isDimmingSheet = [&](BoxSide side, const RenderElement& renderer) {
++        if (!hostSampling || !renderer.isOutOfFlowPositioned() || !renderer.element()
++            || renderer.hasBackdropFilter() || renderer.hasFilter() || renderer.hasMask()
++            || Style::hasImageInAnyLayer(renderer.style().backgroundLayers())
++            || compareWithViewportSize(adjacentSideInClockwiseOrder(side), renderer) == ViewportComparison::Smaller)
++            return false;
++        auto color = primaryBackgroundColorForRenderer(side, renderer);
++        return color.isVisible() && !color.isOpaque();
++    };
++
++    auto hitsDimmingSheetBehindContent = [&](BoxSide side, float fraction, const Element& sheet) {
++        using enum HitTestRequest::Type;
++        HitTestResult hit { samplingPoint(side, fraction) };
++        document->hitTest({ HitTestSource::User, { ReadOnly, DisallowUserAgentShadowContent,
++            ForFixedContainerSampling, IgnoreCSSPointerEventsProperty, CollectMultipleElements, IncludeAllElementsUnderPoint } }, hit);
++        return std::ranges::any_of(hit.listBasedTestResult(), [&](const auto& node) { return &node.get() == &sheet; });
++    };
++
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+     auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents, float fraction = 0.5f) -> FixedContainerResult {
+         using enum HitTestRequest::Type;
+@@ -2636,14 +2684,7 @@
+             ForFixedContainerSampling,
+         };
+ 
+-        auto point = midpointOnSide(side, fixedRect);
+-        if (hostSampling) {
+-            if (side == BoxSide::Top || side == BoxSide::Bottom)
+-                point.setX(fixedRect.x() + fixedRect.width() * fraction);
+-            else
+-                point.setY(fixedRect.y() + fixedRect.height() * fraction);
+-        }
+-        HitTestResult result { point };
++        HitTestResult result { hostSampling ? samplingPoint(side, fraction) : midpointOnSide(side, fixedRect) };
+         auto hitTestOptions = commonHitTestOptions;
+         if (hostSampling)
+             hitTestOptions.remove(IgnoreClipping);
+@@ -2686,6 +2727,7 @@
+                 .isSidebar = false,
+                 .backgroundColor = WTF::move(backgroundColor),
+                 .hasUnsettledTransform = paintPathMakesColorUncertain(side, *backdropRenderer),
++                .exposedDimmingSheet = { },
+             } };
+         }();
+ 
+@@ -2697,8 +2739,11 @@
+         bool foundBackdropFilter = false;
+         bool hitInvisiblePointerEventsNoneContainer = false;
+         bool unsettledTransform = false;
++        RefPtr<Element> exposedDimmingSheet;
+         for (CheckedRef ancestor : lineageOfType<RenderElement>(*renderer)) {
+             unsettledTransform = unsettledTransform || paintPathMakesColorUncertain(side, ancestor);
++            if (!exposedDimmingSheet && isDimmingSheet(side, ancestor))
++                exposedDimmingSheet = ancestor->element();
+             auto candidateType = containerEdgeCandidateResult(side, ancestor);
+             if (candidateType != IsHiddenOrTransparent) {
+                 if (ancestor->hasBackdropFilter())
+@@ -2735,6 +2780,7 @@
+                     .isSidebar = candidateType == IsSidebar,
+                     .backgroundColor = hasMultipleBackgroundColors ? Color { } : WTF::move(primaryBackgroundColor),
+                     .hasUnsettledTransform = unsettledTransform,
++                    .exposedDimmingSheet = WTF::move(exposedDimmingSheet),
+                 };
+             }
+             }
+@@ -2812,16 +2858,27 @@
+         return blendSourceOver(pageBackgroundColor, color);
+     };
+ 
++    auto resolveContinuation = [&](const Color& color, bool isDimmingLayer) {
++        if (isDimmingLayer || color.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor)
++            return blendAgainstPageBackground(color);
++        return color.colorWithAlpha(1);
++    };
++
+     for (auto side : sides) {
++        auto* confirmed = hostHistory ? &hostHistory->at(side) : nullptr;
+         auto result = findFixedContainer(side, IgnoreCSSPointerEvents::Yes);
+         if (result.retryHonoringPointerEvents)
+             result = findFixedContainer(side, IgnoreCSSPointerEvents::No);
+ 
+         bool consistentCoverage = true;
+         bool unsettledTransform = result.hasUnsettledTransform;
++        std::array<RefPtr<Element>, edgeFractions.size()> exposedSheets;
++        RefPtr<Element> dimmingSheet;
++        bool conflictingSheets = false;
+         if (hostSampling) {
+             RefPtr<Element> candidate = result.container;
+-            for (float fraction : { 0.05f, 0.25f, 0.5f, 0.75f, 0.95f }) {
++            for (size_t index = 0; index < edgeFractions.size(); ++index) {
++                auto fraction = edgeFractions[index];
+                 auto pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::Yes, fraction);
+                 if (pointResult.retryHonoringPointerEvents)
+                     pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
+@@ -2830,10 +2887,18 @@
+                     consistentCoverage = false;
+                 if (!candidate && pointResult.container)
+                     candidate = pointResult.container;
++                if (pointResult.exposedDimmingSheet) {
++                    if (dimmingSheet && dimmingSheet != pointResult.exposedDimmingSheet)
++                        conflictingSheets = true;
++                    dimmingSheet = pointResult.exposedDimmingSheet;
++                    exposedSheets[index] = WTF::move(pointResult.exposedDimmingSheet);
++                }
+             }
+             if (!result.container)
+                 result.container = WTF::move(candidate);
+         }
++        if (confirmed && confirmed->container.get() != result.container.get())
++            *confirmed = { };
+         if (!result.container)
+             continue;
+ 
+@@ -2841,14 +2906,59 @@
+         // A moving layer can paint a descendant where it crosses the clip.
+         // Keep that paint live inside the viewport without extending its color.
+         if (hostSampling && (!consistentCoverage || unsettledTransform)) {
++            if (!consistentCoverage && confirmed)
++                *confirmed = { };
+             edges.colors.setAt(side, PredominantColorType::Multiple);
+             continue;
+         }
+ 
+         if (result.foundBackdropFilter) {
++            if (confirmed)
++                *confirmed = { };
+             edges.colors.setAt(side, PredominantColorType::Multiple);
+             continue;
+         }
++
++        // Keep a previously confirmed sheet when a card covers part of it.
++        // First-paint foregrounds keep the regular color sampling path. Both
++        // identities must match and the sheet must still cover every hit.
++        Color sheetColor;
++        bool confirmDirectSheet = false;
++        if (confirmed && dimmingSheet && !conflictingSheets && result.isViewportSized) {
++            CheckedPtr containerRenderer = result.container->renderer();
++            CheckedPtr sheetRenderer = dimmingSheet->renderer();
++            if (containerRenderer && sheetRenderer && !primaryBackgroundColorForRenderer(side, *containerRenderer).isVisible()) {
++                sheetColor = primaryBackgroundColorForRenderer(side, *sheetRenderer);
++                confirmDirectSheet = std::ranges::all_of(exposedSheets, [&](const auto& exposed) { return exposed == dimmingSheet; });
++                if (!confirmDirectSheet && confirmed->sheet.get() == dimmingSheet.get()) {
++                    bool stillContinuous = true;
++                    for (size_t index = 0; index < edgeFractions.size() && stillContinuous; ++index)
++                        stillContinuous = exposedSheets[index] || hitsDimmingSheetBehindContent(side, edgeFractions[index], *dimmingSheet);
++                    if (stillContinuous) {
++                        if (confirmed->sheetColor != sheetColor || confirmed->alwaysBlend
++                            || sheetColor.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor) {
++                            confirmed->sheetColor = sheetColor;
++                            confirmed->continuationColor = resolveContinuation(sheetColor, confirmed->alwaysBlend);
++                        }
++                        edges.colors.setAt(side, confirmed->continuationColor);
++                        continue;
++                    }
++                }
++            }
++        }
++        if (confirmed)
++            *confirmed = { };
++
++        auto publishColor = [&](FixedContainerEdge sampled) {
++            if (confirmDirectSheet) {
++                if (const auto* color = std::get_if<Color>(&sampled); color && color->isValid()) {
++                    bool alwaysBlend = result.isDimmingLayer || (sheetColor.alphaAsFloat() >= minimumOpacityThresholdToClampToSolidColor
++                        && *color == blendAgainstPageBackground(sheetColor) && *color != sheetColor.colorWithAlpha(1));
++                    *confirmed = { *result.container, *dimmingSheet, sheetColor, *color, alwaysBlend };
++                }
++            }
++            edges.colors.setAt(side, WTF::move(sampled));
++        };
+ 
+         bool preferExistingColor = result.isDimmingLayer || result.isViewportSized || result.isSidebar;
+         if (!hostSampling && preferExistingColor && page->fixedContainerEdges().hasFixedEdge(side)) {
+@@ -2857,11 +2967,7 @@
+         }
+ 
+         if (result.backgroundColor.isVisible()) {
+-            edges.colors.setAt(side, [&] {
+-                if (result.isDimmingLayer || result.backgroundColor.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor)
+-                    return blendAgainstPageBackground(result.backgroundColor);
+-                return result.backgroundColor.colorWithAlpha(1);
+-            }());
++            publishColor(resolveContinuation(result.backgroundColor, result.isDimmingLayer));
+             continue;
+         }
+ 
+@@ -2870,17 +2976,10 @@
+             continue;
+         }
+ 
+-        edges.colors.setAt(side, [&] -> FixedContainerEdge {
+-            auto samplingResult = PageColorSampler::predominantColor(*page, computeSamplingRect(protect(protect(result.container)->renderStyle()), side));
+-            if (!std::holds_alternative<Color>(samplingResult))
+-                return samplingResult;
+-
+-            auto color = std::get<Color>(samplingResult);
+-            if (result.isDimmingLayer || color.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor)
+-                return blendAgainstPageBackground(color);
+-
+-            return color.colorWithAlpha(1);
+-        }());
++        auto sampled = PageColorSampler::predominantColor(*page, computeSamplingRect(protect(protect(result.container)->renderStyle()), side));
++        if (auto* color = std::get_if<Color>(&sampled))
++            sampled = resolveContinuation(*color, result.isDimmingLayer);
++        publishColor(WTF::move(sampled));
+     }
+ 
+     return { WTF::move(edges), WTF::move(containers) };

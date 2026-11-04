@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outset translated footer</title>
+<style>
+  html, body { height: 100%; margin: 0; background: white; }
+  main { position: relative; height: 4100px; background: repeating-linear-gradient(#e9f3f9 0 53px, #fff 53px 104px); }
+  aside { position: fixed; inset: 0 0 auto; height: 200vw; pointer-events: none;
+    background: linear-gradient(transparent, #e9f3f925, transparent); }
+  .portal { position: absolute; inset: 0 0 auto; height: 0; z-index: 3; }
+  .portal-flow { position: absolute; top: 1010px; left: 9px; width: 17px; height: 110px;
+    background: #1654d0; }
+  .fixed-marker { position: fixed; width: 24px; height: 24px; transform: translateZ(0); pointer-events: none; }
+  .portal-marker { left: 58px; top: 268px; background: #11786c; transform-origin: 20% 80%; }
+  .direct-marker { left: 308px; top: 353px; background: #3e236e; transform-origin: 75% 30%; }
+  footer { position: fixed; inset: auto 0 -10px; height: 100px;
+    pointer-events: none; background: linear-gradient(to bottom, transparent, white 58%);
+    transform: translateY(110%); transition: transform 300ms ease; }
+  footer.revealed { transform: translateY(0); }
+  .action { position: absolute; bottom: 27.5px; left: 50%; width: 80%; height: 44px;
+    transform: translateX(-50%); display: flex; }
+  .action-button { position: relative; border: 0; width: 100%; border-radius: 5px;
+    background: #eb2a2c; color: white; pointer-events: auto; }
+  .action-label { position: absolute; left: 50%; top: 50%; width: 70%;
+    transform: translate(-50%, -50%); text-align: center; }
+  .straddling footer { transform: none; transition: none; }
+  .straddling .action { bottom: 0; }
+  .viewport-cover { display: none; position: fixed; inset: 0; z-index: 8; }
+  .viewport-cover > span { display: block; width: 1px; height: 1px; }
+  .with-viewport-cover .viewport-cover { display: block; }
+  .modal { position: fixed; inset: 0; z-index: 10; }
+  .modal:not([hidden]) { display: flex; }
+  .modal-sheet, .modal-before, .modal-after { inset-inline: 0; background: rgba(0,0,0,.9); }
+  .modal-sheet { position: absolute; inset-block: -35%; }
+  .modal-before, .modal-after { position: fixed; height: 70vh; }
+  .modal-before { bottom: 100%; }
+  .modal-after { top: 100%; }
+  .modal-hit-target { position: absolute; inset: 0; pointer-events: none; }
+  .modal-card { position: absolute; inset: 0; height: 117.095%; background: white;
+    transform: scale(.854); transform-origin: top center; }
+  .modal-obstruction { position: fixed; top: 100%; height: 70vh; inset-inline: 20% 65%; background: #174e8d; }
+  .modal-host.clipped { position: fixed; inset: 0; clip-path: inset(0); }
+  .modal-pass-through { display: none; position: fixed; inset: 0; z-index: 11;
+    pointer-events: none; transform: translate(0); }
+  .modal-host:has(.modal:not([hidden])) + .modal-pass-through { display: block; }
+  .modal-pass-through-widget { position: absolute; bottom: 12px; right: 12px;
+    width: 40px; height: 40px; background: #174e8d33; }
+  .modal-pass-through-decoration { position: absolute; bottom: 0; left: 10%;
+    width: 20px; height: 12px; background: linear-gradient(#b9181b, #eb2a2c); }
+</style>
+<aside></aside>
+<div class="modal-host">
+  <div class="modal" hidden>
+    <div class="modal-sheet"></div><div class="modal-before"></div><div class="modal-after"></div>
+    <div class="modal-hit-target"></div><div class="modal-card"></div><div class="modal-obstruction" hidden></div>
+  </div>
+</div>
+<div class="modal-pass-through" aria-hidden="true"><div class="modal-pass-through-widget"></div>
+  <div class="modal-pass-through-decoration" hidden></div></div>
+<main></main>
+<div class="fixed-marker direct-marker"></div>
+<div class="portal"><div class="portal-flow"></div><div class="fixed-marker portal-marker"></div>
+  <footer><div class="action"><div class="action-button" role="button" tabindex="0">
+    <span class="action-label">Continue</span>
+  </div></div></footer></div>
+<!-- Keep a rendered child so the paint-free fixed box qualifies for native edge hits. -->
+<div class="viewport-cover" aria-hidden="true"><span></span></div>
+<script>
+  const footer = document.querySelector('footer');
+  let previousScroll = scrollY;
+  addEventListener('scroll', () => {
+    const movement = scrollY - previousScroll;
+    if (!window.footerTestUseDirection)
+      footer.classList.toggle('revealed', scrollY > 420);
+    else if (Math.abs(movement) >= 8)
+      footer.classList.toggle('revealed', movement > 0);
+    previousScroll = scrollY;
+  });
+  window.footerTestState = () => {
+    const rect = footer.getBoundingClientRect();
+    const button = footer.firstElementChild.getBoundingClientRect();
+    return { y: scrollY, height: innerHeight, width: innerWidth, top: rect.top,
+      bottom: rect.bottom, buttonTop: button.top, buttonBottom: button.bottom,
+      revealed: footer.classList.contains('revealed') };
+  };
+</script>

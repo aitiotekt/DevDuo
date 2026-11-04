@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixed dimming sheet with a card</title>
+<style>
+  html, body { margin: 0; background: white; }
+  main { height: 3000px; background: repeating-linear-gradient(90deg, #e9f3f9 0 41px, #fff 41px 83px); }
+  #overlay { position: fixed; inset: 0; z-index: 100; }
+  #veil { position: absolute; inset: 0; background: rgba(0, 0, 0, .9); }
+  #card { position: absolute; top: 0; left: 50%; width: 100%; height: 117.095%;
+    background: white; transform: translateX(-50%) scale(.854); transform-origin: top center; }
+  #overlay.veil-only #card { visibility: hidden; }
+  #overlay.full-card #card { inset: 0; height: 100%; transform: none; }
+  #overlay.partial-veil #veil { clip-path: polygon(0 0, 20% 0, 20% 100%, 0 100%, 0 0,
+    80% 0, 100% 0, 100% 100%, 80% 100%, 80% 0); }
+  #second-veil { display: none; position: absolute; inset: 0; background: rgba(80, 24, 24, .9); }
+  #overlay.two-veils #veil { clip-path: inset(0 20% 0 0); }
+  #overlay.two-veils #second-veil { display: block; clip-path: inset(0 0 0 20%); }
+  dialog::backdrop { background: rgba(0, 0, 0, .5); }
+</style>
+<main></main>
+<div id="overlay" class="__MODE__"><div id="veil"></div><div id="second-veil"></div><div id="card"></div></div>
+<dialog id="native-modal">Example dialog</dialog>
+<script>
+  window.dimmingFixture = () => {
+    const card = document.querySelector('#card').getBoundingClientRect();
+    return { viewport: [innerWidth, innerHeight], scroll: [scrollX, scrollY], card: [card.left, card.right, card.top, card.bottom] };
+  };
+</script>

@@ -16,7 +16,7 @@ struct DDFill {
     unsigned color;
 };
 struct DDMaterial {
-    unsigned tint;
+    unsigned tint, sideTint;
     float alpha, strength, shadow, scale;
     float blur, saturation, brightness, contrast, topHighlight, edgeHighlight, sheen, shadowBlur, shadowOffset;
 };

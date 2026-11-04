@@ -53,7 +53,10 @@ $rasterCoveragePatch = Join-Path $PSScriptRoot 'patches/0014-windows-wc-raster-c
 $asyncViewportPatch = Join-Path $PSScriptRoot 'patches/0015-windows-async-viewport-publication.patch'
 $directPanPatch = Join-Path $PSScriptRoot 'patches/0016-windows-direct-pan-work.patch'
 $preciseTouchPatch = Join-Path $PSScriptRoot 'patches/0017-windows-precise-touch-coordinates.patch'
-Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch, $edgeColorPatch, $framePipelinePatch, $atomicContinuationPatch, $frameSurfacePatch, $frameClockPatch, $scrollingLayersPatch, $directFrameRelayPatch, $asyncPresentationPatch, $nativeTouchPatch, $rasterCoveragePatch, $asyncViewportPatch, $directPanPatch, $preciseTouchPatch)
+$viewportFixedPatch = Join-Path $PSScriptRoot 'patches/0018-windows-viewport-fixed-transition.patch'
+$dimmingSheetPatch = Join-Path $PSScriptRoot 'patches/0019-windows-fixed-dimming-sheet.patch'
+$fixedPortalPatch = Join-Path $PSScriptRoot 'patches/0020-windows-fixed-portal-clip.patch'
+Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch, $edgeColorPatch, $framePipelinePatch, $atomicContinuationPatch, $frameSurfacePatch, $frameClockPatch, $scrollingLayersPatch, $directFrameRelayPatch, $asyncPresentationPatch, $nativeTouchPatch, $rasterCoveragePatch, $asyncViewportPatch, $directPanPatch, $preciseTouchPatch, $viewportFixedPatch, $dimmingSheetPatch, $fixedPortalPatch)
 $registry = Get-Content -LiteralPath (Join-Path $source 'vcpkg-configuration.json') -Raw | ConvertFrom-Json
 $vcpkgRoot = Join-Path $cache ('vcpkg-' + $registry.'default-registry'.baseline.Substring(0, 8))
 Initialize-PinnedSource $vcpkgRoot 'https://github.com/microsoft/vcpkg.git' $registry.'default-registry'.baseline @('scripts', 'triplets')
@@ -112,6 +115,9 @@ $inputFiles = @('mise.toml', 'mise.lock', 'mise.windows-webkit.toml', 'mise.wind
     'native/webkit/windows/patches/0015-windows-async-viewport-publication.patch',
     'native/webkit/windows/patches/0016-windows-direct-pan-work.patch',
     'native/webkit/windows/patches/0017-windows-precise-touch-coordinates.patch',
+    'native/webkit/windows/patches/0018-windows-viewport-fixed-transition.patch',
+    'native/webkit/windows/patches/0019-windows-fixed-dimming-sheet.patch',
+    'native/webkit/windows/patches/0020-windows-fixed-portal-clip.patch',
     'native/webkit/windows/runtime.lock.json')
 $inputRecords = foreach ($relative in $inputFiles) {
     $path = Join-Path $repository $relative

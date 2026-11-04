@@ -57,8 +57,8 @@ internal sealed partial class WindowsChecks
         }
         Check(elements.Any(element => element.Kind == WindowsComposition.Kind.Menu) == !compact &&
             elements.Any(element => element.Kind == WindowsComposition.Kind.Reload) == !compact, "Compact address hides menu/reload glyphs.");
-        Check(state.GetProperty("webKit").GetProperty("composition").GetProperty("apiVersion").GetInt32() == 5,
-            "Native shell uses composition API v5.");
+        Check(state.GetProperty("webKit").GetProperty("composition").GetProperty("apiVersion").GetInt32() == 6,
+            "Native shell uses composition API v6.");
         Check(state.GetProperty("webKit").GetProperty("contentColorApiVersion").GetInt32() == 1, "Native edge color capability is versioned separately.");
     }
 
@@ -146,7 +146,7 @@ internal sealed partial class WindowsChecks
         Web.Evaluate("document.documentElement.style.background='transparent';scrollTo(0,2500);window.__devduoReportContainerObservation()");
         await WaitColor(255, 255, 255, "transparent-canvas");
 
-        var previous = Web.WindowsPanel!.Browser.RequestContentEdgeColorAsync(true);
+        var previous = Web.WindowsPanel!.Browser.RequestContentEdgeColorAsync(WindowsWebKitView.ContentSampleEdge.Bottom);
         Web.WindowsPanel.ShowHtml("<!doctype html><meta name='theme-color' content='#11bb77'><title>New color generation</title><body style='margin:0;height:2400px;background:#df2040'>New document");
         await Wait(state => Text(state, "tintSource", "WebKit native edge average") && state.GetProperty("tintRgb")[0].GetInt32() == 223,
             "New document backdrop wins over an outstanding old sample");

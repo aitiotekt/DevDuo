@@ -1,5 +1,6 @@
 #include "HostCompositor.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <d2d1_1.h>
 #include <d3d11.h>
@@ -88,6 +89,7 @@ enum Kind { Top,
     CompactAddress };
 
 bool hasGlass(int kind) { return kind <= TabGroup || kind == CompactAddress; }
+int glassRole(int kind) { return kind == CompactAddress ? Address : kind; }
 
 // Role-dependent artistic optics; the page and foreground are separate inputs.
 DDMaterial materialForRole(int kind, bool dark, DDMaterial material)
@@ -132,6 +134,8 @@ DDMaterial materialForRole(int kind, bool dark, DDMaterial material)
 DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
 {
     const bool dark = frame.foreground == 0xffffff;
+    if (material.sideTint <= 0xffffff && (frame.kind == Back || frame.kind == Bookmarks || frame.kind == TabGroup))
+        material.tint = material.sideTint;
     if (frame.kind != Address && frame.kind != CompactAddress)
         return materialForRole(frame.kind, dark, material);
     auto expanded = materialForRole(Address, dark, material);
@@ -174,7 +178,6 @@ public:
     ComPtr<IUnknown> page;
     ComPtr<IDCompositionSurface> pageSurface;
     int pageSurfaceWidth = 0, pageSurfaceHeight = 0;
-    std::vector<ComPtr<IDCompositionVisual2>> pageVisuals;
     ComPtr<ID3D11Texture2D> sharedPageTexture;
     ComPtr<ID3D11Texture2D> rawPageTexture, finalPageTexture;
     ComPtr<ID3D11Texture2D> presentedPageTexture;
@@ -196,16 +199,20 @@ public:
     float pointerDiameter = 0;
     D2D1_RECT_F indicatorRect { };
     float indicatorOpacity = 0;
+    struct BaseVisuals {
+        ComPtr<IDCompositionVisual2> page, boundary;
+    };
     struct GlassNode {
-        size_t index;
+        BaseVisuals backdrop;
+        ComPtr<IDCompositionVisual2> visual;
         ComPtr<IDCompositionGaussianBlurEffect> blur;
         ComPtr<IDCompositionColorMatrixEffect> correction;
         ComPtr<IDCompositionVisual3> opacity;
         ComPtr<IDCompositionRectangleClip> clip;
     };
-    std::vector<GlassNode> glassNodes;
-    std::vector<ComPtr<IDCompositionVisual2>> boundaryVisuals;
-    ComPtr<IDCompositionVisual2> shadowVisual, decorationVisual, foregroundVisual;
+    BaseVisuals base;
+    std::array<GlassNode, TabGroup + 1> glassNodes;
+    ComPtr<IDCompositionVisual2> glassGroup, shadowVisual, decorationVisual, foregroundVisual;
     ComPtr<IDCompositionGaussianBlurEffect> shadowEffect;
     ComPtr<IDCompositionSurface> foregroundSurface, shadowSurface;
     std::vector<DDFill> previousFills;
@@ -372,8 +379,9 @@ public:
             composition->Commit();
         sceneReady = false;
         sceneUpdateIncomplete = false;
-        glassNodes.clear();
-        boundaryVisuals.clear();
+        glassNodes = { };
+        base = { };
+        glassGroup.Reset();
         shadowVisual.Reset(); decorationVisual.Reset(); foregroundVisual.Reset();
         shadowEffect.Reset(); foregroundSurface.Reset(); shadowSurface.Reset();
         decorations.Reset();
@@ -390,7 +398,6 @@ public:
         page.Reset();
         pageSurface.Reset();
         pageSurfaceWidth = pageSurfaceHeight = 0;
-        pageVisuals.clear();
         sharedPageTexture.Reset();
         rawPageTexture.Reset(); finalPageTexture.Reset();
         presentedPageTexture.Reset();
@@ -438,14 +445,12 @@ public:
         context->PopAxisAlignedClip();
         check(surface->EndDraw());
     }
-    void addBase(IDCompositionVisual2* group)
+    BaseVisuals addBase(IDCompositionVisual2* group)
     {
-        auto source = visual(page.Get());
-        pageVisuals.push_back(source);
-        check(group->AddVisual(source.Get(), FALSE, nullptr));
-        auto fill = visual(boundary.Get());
-        boundaryVisuals.push_back(fill);
-        check(group->AddVisual(fill.Get(), FALSE, nullptr));
+        BaseVisuals result { visual(page.Get()), visual(boundary.Get()) };
+        check(group->AddVisual(result.page.Get(), FALSE, nullptr));
+        check(group->AddVisual(result.boundary.Get(), FALSE, nullptr));
+        return result;
     }
     void createPageBuffers(int w, int h)
     {
@@ -545,7 +550,11 @@ public:
             context->DrawBitmap(finalPageBitmap.Get(), D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)),
                 1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
         });
-        for (auto& visual : pageVisuals) check(visual->SetContent(next.Get()));
+        if (pageSurface.Get() != next.Get()) {
+            if (base.page) check(base.page->SetContent(next.Get()));
+            for (auto& node : glassNodes)
+                if (node.visual) check(node.backdrop.page->SetContent(next.Get()));
+        }
         check(next.As(&page));
         const auto commit = monotonicSeconds();
         check(composition->Commit());
@@ -615,18 +624,27 @@ public:
             return std::tuple { f.kind, f.x, f.y, f.width, f.height, f.visualX, f.visualY, f.visualWidth, f.visualHeight, f.radius };
         };
         auto materialKey = [](const DDMaterial& m) {
-            return std::tuple { m.tint, m.alpha, m.strength, m.shadow, m.scale, m.blur, m.saturation, m.brightness,
+            return std::tuple { m.tint, m.sideTint, m.alpha, m.strength, m.shadow, m.scale, m.blur, m.saturation, m.brightness,
                 m.contrast, m.topHighlight, m.edgeHighlight, m.sheen, m.shadowBlur, m.shadowOffset };
         };
         auto fillKey = [](const DDFill& f) { return std::tuple { f.x, f.y, f.width, f.height, f.color }; };
         const bool surfaceSizeChanged = !sceneReady || w != width || h != height;
-        bool structureChanged = surfaceSizeChanged || items.size() != static_cast<size_t>(count);
-        bool geometryChanged = structureChanged;
+        std::array<int, TabGroup + 1> glassIndices;
+        glassIndices.fill(-1);
+        for (int i = 0; i < count; ++i) {
+            if (!hasGlass(frames[i].kind)) continue;
+            auto& index = glassIndices[glassRole(frames[i].kind)];
+            if (index >= 0) check(E_INVALIDARG);
+            index = i;
+        }
+        bool structureChanged = !sceneReady;
+        for (size_t role = 0; role < glassNodes.size(); ++role)
+            structureChanged |= (glassIndices[role] >= 0) != static_cast<bool>(glassNodes[role].visual);
+        bool geometryChanged = surfaceSizeChanged || items.size() != static_cast<size_t>(count);
         bool textChanged = geometryChanged;
         bool materialChanged = !sceneReady || materialKey(material) != materialKey(previousMaterial);
         if (!geometryChanged) {
             for (int i = 0; i < count; ++i) {
-                structureChanged |= frames[i].kind != items[i].frame.kind;
                 geometryChanged |= geometryKey(frames[i]) != geometryKey(items[i].frame);
                 textChanged |= items[i].text != (frames[i].text ? frames[i].text : L"")
                     || frames[i].foreground != items[i].frame.foreground || frames[i].fontSize != items[i].frame.fontSize
@@ -684,43 +702,24 @@ public:
         if (textChanged) paintSurface(nextForeground, [&](ID2D1DeviceContext* context) {
             for (const auto& item : nextItems) paintItem(context, item, material, false);
         });
+        const bool boundaryReplaced = nextBoundary && nextBoundary.Get() != boundary.Get();
+        const bool shadowReplaced = nextShadow && nextShadow.Get() != shadowSurface.Get();
+        const bool decorationReplaced = nextDecoration && nextDecoration.Get() != decorations.Get();
+        const bool foregroundReplaced = nextForeground && nextForeground.Get() != foregroundSurface.Get();
         if (nextBoundary) boundary = nextBoundary;
         if (nextShadow) shadowSurface = nextShadow;
         if (nextDecoration) decorations = nextDecoration;
         if (nextForeground) foregroundSurface = nextForeground;
         items = std::move(nextItems);
-        if (structureChanged) {
-            applyPresentation();
-            check(root->RemoveAllVisuals());
-            boundaryVisuals.clear(); glassNodes.clear();
-            pageVisuals.clear();
-            addBase(root.Get());
-            shadowVisual = visual(nextShadow.Get());
+        if (surfaceSizeChanged) applyPresentation();
+        if (!sceneReady) {
+            base = addBase(root.Get());
+            shadowVisual = visual(shadowSurface.Get());
             check(composition->CreateGaussianBlurEffect(&shadowEffect));
             check(shadowVisual->SetEffect(shadowEffect.Get()));
             check(root->AddVisual(shadowVisual.Get(), FALSE, nullptr));
-            for (size_t i = 0; i < items.size(); ++i) {
-                const auto& f = items[i].frame;
-                if (!hasGlass(f.kind)) continue;
-                ComPtr<IDCompositionVisual2> clipped, blur;
-                check(composition->CreateVisual(&clipped));
-                check(composition->CreateVisual(&blur));
-                addBase(blur.Get());
-                GlassNode node { i };
-                check(composition->CreateGaussianBlurEffect(&node.blur));
-                check(node.blur->SetBorderMode(D2D1_BORDER_MODE_HARD));
-                check(composition->CreateColorMatrixEffect(&node.correction));
-                check(node.correction->SetAlphaMode(D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED));
-                check(node.correction->SetClampOutput(TRUE));
-                check(node.correction->SetInput(0, node.blur.Get(), 0));
-                check(blur->SetEffect(node.correction.Get()));
-                check(blur.As(&node.opacity));
-                check(clipped->AddVisual(blur.Get(), FALSE, nullptr));
-                check(composition->CreateRectangleClip(&node.clip));
-                check(clipped->SetClip(node.clip.Get()));
-                check(root->AddVisual(clipped.Get(), FALSE, nullptr));
-                glassNodes.push_back(std::move(node));
-            }
+            check(composition->CreateVisual(&glassGroup));
+            check(root->AddVisual(glassGroup.Get(), FALSE, nullptr));
             decorationVisual = visual(decorations.Get());
             foregroundVisual = visual(foregroundSurface.Get());
             check(root->AddVisual(decorationVisual.Get(), FALSE, nullptr));
@@ -728,16 +727,42 @@ public:
             if (indicatorVisual) check(root->AddVisual(indicatorVisual.Get(), FALSE, nullptr));
             if (pointerGroup) check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
         } else {
-            if (fillsChanged)
-                for (auto& visual : boundaryVisuals) check(visual->SetContent(boundary.Get()));
-            if (nextShadow) check(shadowVisual->SetContent(nextShadow.Get()));
-            if (nextDecoration) check(decorationVisual->SetContent(decorations.Get()));
-            if (nextForeground) check(foregroundVisual->SetContent(foregroundSurface.Get()));
+            if (boundaryReplaced) {
+                check(base.boundary->SetContent(boundary.Get()));
+                for (auto& node : glassNodes)
+                    if (node.visual) check(node.backdrop.boundary->SetContent(boundary.Get()));
+            }
+            if (shadowReplaced) check(shadowVisual->SetContent(shadowSurface.Get()));
+            if (decorationReplaced) check(decorationVisual->SetContent(decorations.Get()));
+            if (foregroundReplaced) check(foregroundVisual->SetContent(foregroundSurface.Get()));
+        }
+        if (structureChanged) {
+            // Menu glyphs and the compact address role change independently
+            // of backdrop resources. Keep all surviving glass roles attached.
+            for (size_t role = 0; role < glassNodes.size(); ++role) {
+                auto& node = glassNodes[role];
+                if (glassIndices[role] < 0 && node.visual) {
+                    check(glassGroup->RemoveVisual(node.visual.Get()));
+                    node = { };
+                }
+            }
+            IDCompositionVisual2* above = nullptr;
+            for (int role = TabGroup; role >= Top; --role) {
+                if (glassIndices[role] < 0) continue;
+                auto& node = glassNodes[role];
+                if (!node.visual) {
+                    node = createGlassNode();
+                    check(glassGroup->AddVisual(node.visual.Get(), FALSE, above));
+                }
+                above = node.visual.Get();
+            }
         }
         if (geometryChanged || materialChanged) {
             check(shadowEffect->SetStandardDeviation(material.shadowBlur * material.scale));
-            for (auto& node : glassNodes) {
-                const auto& frame = items[node.index].frame;
+            for (size_t role = 0; role < glassNodes.size(); ++role) {
+                if (glassIndices[role] < 0) continue;
+                auto& node = glassNodes[role];
+                const auto& frame = items[glassIndices[role]].frame;
                 if (geometryChanged) {
                     const auto left = frame.x + frame.visualX, top = frame.y + frame.visualY;
                     check(node.clip->SetLeft(left)); check(node.clip->SetTop(top));
@@ -774,6 +799,26 @@ public:
         foregroundUpdates += textChanged;
         ++sceneGeneration;
         lastError.clear();
+    }
+    GlassNode createGlassNode()
+    {
+        GlassNode node;
+        ComPtr<IDCompositionVisual2> blur;
+        check(composition->CreateVisual(&node.visual));
+        check(composition->CreateVisual(&blur));
+        node.backdrop = addBase(blur.Get());
+        check(composition->CreateGaussianBlurEffect(&node.blur));
+        check(node.blur->SetBorderMode(D2D1_BORDER_MODE_HARD));
+        check(composition->CreateColorMatrixEffect(&node.correction));
+        check(node.correction->SetAlphaMode(D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED));
+        check(node.correction->SetClampOutput(TRUE));
+        check(node.correction->SetInput(0, node.blur.Get(), 0));
+        check(blur->SetEffect(node.correction.Get()));
+        check(blur.As(&node.opacity));
+        check(node.visual->AddVisual(blur.Get(), FALSE, nullptr));
+        check(composition->CreateRectangleClip(&node.clip));
+        check(node.visual->SetClip(node.clip.Get()));
+        return node;
     }
     void setTouchPointer(float x, float y, float diameter, float left, float top, float right, float bottom)
     {
@@ -1077,7 +1122,7 @@ public:
     }
 };
 }
-unsigned DDCompositionVersion() { return 5; }
+unsigned DDCompositionVersion() { return 6; }
 void* DDCompositionCreate(HWND parent, HWND browser)
 {
     try {
@@ -1184,7 +1229,7 @@ DDCompositionState DDCompositionGetState(void* handle)
     if (!handle)
         return { };
     const auto& compositor = *static_cast<Compositor*>(handle);
-    return { 5, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
+    return { 6, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
         compositor.height };
 }
 unsigned DDCompositionHit(void* handle, int x, int y)

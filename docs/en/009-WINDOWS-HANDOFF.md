@@ -2,9 +2,27 @@
 
 Windows uses the pinned WebKit Windows Port through Avalonia; macOS retains system WKWebView. Both Safari shell and immersive App WebView preserve the [measured scene contract](005-SAFARI-SCENES.md). This page owns current Windows acceptance and regression scope. [WebKit implementation](014-WINDOWS-WEBKIT.md), [release delivery](013-RELEASE.md) and [platform differences](015-PLATFORM-PARITY.md) have separate owners.
 
-The 0.1.2 source build includes native GPU/CPU frame leases, frame-bound continuation, retained material composition, asynchronous accessibility and remembered developer services. Local fixtures and a short live-page input sample have native evidence. Sustained live-page responsiveness, full popup coverage, shared macOS service restoration and packaged delivery remain open.
+The 0.1.3 source build adds fixed-layer clipping and region-specific Safari material colors to the frame-bound continuation and retained composition in 0.1.2. The original-page bottom tint and fixed visibility have a scoped live retest. Sustained live-page responsiveness, full popup coverage, shared macOS service restoration and packaged delivery remain open.
 
-## 0.1.2 affected checks
+## 0.1.3 affected checks
+
+At **120 DPI and Fit**, the experimental Windows runtime and compositor v6 pass **47 render-stability checks** (`20261105T091316271Z`). The Closed portrait footer enters and exits through CSS transitions driven by native touch and wheel, and through a script that changes `transform` in `requestAnimationFrame`. Across **54 touch, 67 wheel and 69 scripted-transform WGC frames**, the red button is visible in the real viewport with no red pixels at the checked bottom extension point. The real footer geometry and viewport width are preserved. A finished transform with forwards fill yields its settled blue edge color.
+
+With dark shell appearance, changing the bottom page paint while holding the local side backdrop constant keeps Back, Bookmarks and tab-group button pixels stable in **74 right-side portrait and 77 left-side landscape WGC frames**. The retained bookmarks buttons respond to native clicks after repeated compaction and expansion. These frame observations cover the generic fixtures. The original site and scanout cadence have separate acceptance.
+
+The same patched runtime passes **336 frame-bound continuation checks** (`20261105T091427386Z`), **30 chrome transition checks** (`20261105T091511137Z`) and **42 upstream fixed-color comparisons** (`20261105T091524392Z`) at 120 DPI. These cover Closed and Open 90°/270° geometry, source and window pixels, both transport paths and patterned-underlay fixtures.
+
+The fixed-layer investigation separated two failures. WC applied the anchor offset twice while committing a scroll position. The edge sampler also let a viewport-wide transparent hit target bypass continuity in the actual painted strip. Full-window capture and per-submission fills exposed both faults when polled edge state alone still showed white. The regression fixtures retain differently anchored fixed markers, a full-width gradient, and ordinary content that continues outside its positioned parent. The upstream fixed-color checks preserve the distinction between a card present at first paint and a card appearing over a previously confirmed sheet.
+
+The broad `test-windows-fixed-overlay` run stops at its first absolute-edge load on both the preceding and final engine builds. The raw native material sample is RGB 254, 254, 254 and the displayed tint is RGB 251, 252, 253. The red channel differs from white by four against the fixture's tolerance of three. The separate upstream fixed-color suite directly verifies the native dialog backdrop and both dimming-sheet opening orders.
+
+The authored exterior-sheet follow-up passes **41 checks** in one document at 120 DPI and Fit (`20261105T141508970Z`). A paint-free viewport overlay does not hide the modal's color source. A colored opaque backing produces RGB 15, 20, 25, and removing it preserves the two translucent contributions over the root. A painted foreground overlap, hidden or partial pieces, an obstruction, author clipping, and mismatched colors or owners do not authorize the gray fill. Both sampled fixed markers stay visible through 58 reversal frames, with no red inset fills or pixels. The earlier 114 upstream fixed-color and 336 frame-bound continuation checks are inherited.
+
+On the original page at 120 DPI and Fit, all **371 settled WGC frames** show the white modal card and gray bottom band together. All **425 corresponding page submissions** fill the bottom inset with RGB 25, 25, 25. Closing the modal in that same document and performing 24 native pans yields 21 observed direction reversals across 382 × 580 and 382 × 598 viewports. The active interval has **895 WGC frames and 1,028 page submissions** with no red bottom pixels or fills, no retained modal gray, and no sampled fixed-widget absences. Private evidence is under `captures/desktop-validation/windows-live-edge/`.
+
+An iPhone Duo simulator running iOS 27.1 Safari showed the same first-paint white and staged black distinction at 382 × 580, with the card bottom at 579.986 CSS px. The macOS 27.0.1 system WKWebView probe observed a white bottom extension layer on fresh direct load and a black layer in the staged run with view-level automatic fill enabled. ScreenCaptureKit access was denied, so the macOS result records layer state. The Safari observations use actual simulator display pixels. See `captures/desktop-validation/macos-dimming/20261105T094102Z` for evidence.
+
+## Inherited 0.1.2 checks
 
 The latest continuation, touch lifecycle, popup and live-page checks use **120 DPI**. Routine scope remains one available DPI. The broader milestone below is inherited.
 

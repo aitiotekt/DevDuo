@@ -1,0 +1,518 @@
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+index 2003d1a..3867375 100644
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -2409,9 +2409,11 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         bool isViewportSized : 1 { false };
+         bool isDimmingLayer : 1 { false };
+         bool isSidebar : 1 { false };
++        bool usesBackdrop : 1 { false };
+         Color backgroundColor;
+         bool hasUnsettledTransform { false };
+         RefPtr<Element> exposedDimmingSheet { };
++        RefPtr<Element> foregroundPaint { };
+     };
+ 
+     auto sizeForViewportUnits = LayoutSize { sizeForCSSDefaultViewportUnits() };
+@@ -2639,7 +2641,8 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         return effects && effects->hasMatchingEffect([](const KeyframeEffect& effect) {
+             RefPtr animation = effect.animation();
+             return animation && animation->playState() == WebAnimation::PlayState::Running && animation->playbackRate()
+-                && (effect.isCurrentlyAffectingProperty(CSSPropertyID::Transform)
++                && (effect.isRunningOrAboutToRunAcceleratedTransformRelatedAnimation()
++                    || effect.isCurrentlyAffectingProperty(CSSPropertyID::Transform)
+                     || effect.isCurrentlyAffectingProperty(CSSPropertyID::Translate)
+                     || effect.isCurrentlyAffectingProperty(CSSPropertyID::Scale)
+                     || effect.isCurrentlyAffectingProperty(CSSPropertyID::Rotate));
+@@ -2674,6 +2677,125 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         return std::ranges::any_of(hit.listBasedTestResult(), [&](const auto& node) { return &node.get() == &sheet; });
+     };
+ 
++    auto authoredDimmingExtension = [&](BoxSide side, const RenderElement& container, const Element* exposedSheet) -> Color {
++        const auto depth = LayoutUnit::fromFloatRound(page->obscuredContentInsets().at(side));
++        if (depth <= 0)
++            return { };
++        auto hasPlainPaint = [&](const RenderElement& renderer) {
++            return renderer.opacity() == 1 && !renderer.hasClip() && !renderer.hasClipPath() && !renderer.hasMask()
++                && !renderer.hasNonVisibleOverflow() && !renderer.hasFilter() && !renderer.hasBackdropFilter() && !renderer.hasBlendMode()
++                && !renderer.isTransformed() && !renderer.style().border().hasBorderRadius()
++                && !paintPathMakesColorUncertain(side, renderer);
++        };
++        auto hasSolidBackground = [&](const RenderElement& renderer) {
++            const auto& layers = renderer.style().backgroundLayers();
++            return hasPlainPaint(renderer) && !renderer.style().border().hasBorder()
++                && !Style::hasImageInAnyLayer(layers) && layers.usedLength() == 1
++                && layers.usedFirst().clip() == FillBox::BorderBox;
++        };
++        for (CheckedRef ancestor : lineageOfType<RenderElement>(container)) {
++            if (!ancestor->isRenderView() && !hasPlainPaint(ancestor))
++                return { };
++        }
++
++        // Some modal sheets supply separate fixed strips beyond the viewport.
++        // Check the author-painted target across the real inset before using
++        // its color in place of the foreground visible in the inner strip.
++        auto outside = fixedLayoutRect;
++        const auto horizontal = side == BoxSide::Top || side == BoxSide::Bottom;
++        if (horizontal) {
++            outside.setY(side == BoxSide::Top ? fixedLayoutRect.y() - depth : fixedLayoutRect.maxY());
++            outside.setHeight(depth);
++        } else {
++            outside.setX(side == BoxSide::Left ? fixedLayoutRect.x() - depth : fixedLayoutRect.maxX());
++            outside.setWidth(depth);
++        }
++        auto hitAt = [&](float along, float across) -> RefPtr<Element> {
++            using enum HitTestRequest::Type;
++            HitTestResult hit { LayoutPoint { outside.x() + outside.width() * (horizontal ? along : across),
++                outside.y() + outside.height() * (horizontal ? across : along) } };
++            document->hitTest({ HitTestSource::User, { ReadOnly, DisallowUserAgentShadowContent,
++                ForFixedContainerSampling, IgnoreCSSPointerEventsProperty, IgnoreClipping } }, hit);
++            return dynamicDowncast<Element>(hit.innerNonSharedNode());
++        };
++        RefPtr exterior = hitAt(.5f, .5f);
++        CheckedPtr box = exterior ? dynamicDowncast<RenderBox>(exterior->renderer()) : nullptr;
++        if (!box || box->parent() != &container || !box->isFixedPositioned() || box->firstChild()
++            || !box->containingBlock() || !box->containingBlock()->isRenderView()
++            || !hasSolidBackground(*box))
++            return { };
++
++        auto bounds = LayoutRect { box->absoluteBoundingBoxRect() };
++        if (!bounds.contains(outside))
++            return { };
++        switch (side) {
++        case BoxSide::Top:
++            if (bounds.maxY() > fixedLayoutRect.y() + 1)
++                return { };
++            break;
++        case BoxSide::Right:
++            if (bounds.x() < fixedLayoutRect.maxX() - 1)
++                return { };
++            break;
++        case BoxSide::Bottom:
++            if (bounds.y() < fixedLayoutRect.maxY() - 1)
++                return { };
++            break;
++        case BoxSide::Left:
++            if (bounds.maxX() > fixedLayoutRect.x() + 1)
++                return { };
++            break;
++        }
++        auto color = primaryBackgroundColorForRenderer(side, *box);
++        if (!color.isVisible() || color.isOpaque())
++            return { };
++
++        // A transparent hit target can cover the inside sampling points
++        // without covering the sheet's paint. Confirm the same owner's solid
++        // full-viewport sheet independently of the foreground hit target.
++        CheckedPtr<RenderElement> sheet;
++        for (CheckedPtr child = container.firstChild(); child; child = child->nextSibling()) {
++            CheckedPtr candidate = dynamicDowncast<RenderElement>(*child);
++            if (!candidate || candidate == box.get() || !isDimmingSheet(side, *candidate)
++                || !LayoutRect { candidate->absoluteBoundingBoxRect() }.contains(fixedLayoutRect))
++                continue;
++            if (sheet || !hasSolidBackground(*candidate) || candidate->firstChild()
++                || (exposedSheet && candidate->element() != exposedSheet)
++                || primaryBackgroundColorForRenderer(side, *candidate) != color)
++                return { };
++            sheet = candidate;
++        }
++        if (!sheet)
++            return { };
++        if (!std::ranges::all_of(std::array { .1f, .5f, .9f }, [&](auto across) {
++            return std::ranges::all_of(edgeFractions, [&](auto along) { return hitAt(along, across) == exterior; });
++        }))
++            return { };
++        // Blend once over an opaque ordinary-flow backing owned by this
++        // modal. A narrower ancestor can cover part of the inset if a
++        // broader ancestor provides the same backing for the entire strip.
++        Color partialBacking;
++        auto body = document->bodyOrFrameset();
++        auto root = document->documentElement();
++        for (CheckedRef ancestor : ancestorsOfType<RenderElement>(container)) {
++            if (ancestor->isRenderView() || ancestor->element() == body || ancestor->element() == root)
++                break;
++            if (!ancestor->hasBackground())
++                continue;
++            auto backgroundBounds = LayoutRect { ancestor->absoluteBoundingBoxRect() };
++            if (!backgroundBounds.intersects(outside))
++                continue;
++            auto background = primaryBackgroundColorForRenderer(side, ancestor);
++            if (ancestor->isOutOfFlowPositioned() || !background.isOpaque() || !hasSolidBackground(ancestor)
++                || (partialBacking.isVisible() && partialBacking != background))
++                break;
++            if (backgroundBounds.contains(outside))
++                return blendSourceOver(background, color);
++            partialBacking = WTF::move(background);
++        }
++        return blendSourceOver(page->pageExtendedBackgroundColor(), color);
++    };
++
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+     auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents, float fraction = 0.5f) -> FixedContainerResult {
+         using enum HitTestRequest::Type;
+@@ -2725,6 +2847,7 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+                 .isViewportSized = true,
+                 .isDimmingLayer = true,
+                 .isSidebar = false,
++                .usesBackdrop = true,
+                 .backgroundColor = WTF::move(backgroundColor),
+                 .hasUnsettledTransform = paintPathMakesColorUncertain(side, *backdropRenderer),
+                 .exposedDimmingSheet = { },
+@@ -2740,7 +2863,11 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         bool hitInvisiblePointerEventsNoneContainer = false;
+         bool unsettledTransform = false;
+         RefPtr<Element> exposedDimmingSheet;
++        RefPtr<Element> foregroundPaint;
+         for (CheckedRef ancestor : lineageOfType<RenderElement>(*renderer)) {
++            if (hostSampling && !foregroundPaint && ancestor->opacity()
++                && ancestor->style().visitedDependentUsedBackgroundColorApplyingColorFilter().isVisible())
++                foregroundPaint = ancestor->element();
+             unsettledTransform = unsettledTransform || paintPathMakesColorUncertain(side, ancestor);
+             if (!exposedDimmingSheet && isDimmingSheet(side, ancestor))
+                 exposedDimmingSheet = ancestor->element();
+@@ -2781,6 +2908,7 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+                     .backgroundColor = hasMultipleBackgroundColors ? Color { } : WTF::move(primaryBackgroundColor),
+                     .hasUnsettledTransform = unsettledTransform,
+                     .exposedDimmingSheet = WTF::move(exposedDimmingSheet),
++                    .foregroundPaint = foregroundPaint.get() == ancestor->element() ? nullptr : WTF::move(foregroundPaint),
+                 };
+             }
+             }
+@@ -2875,6 +3003,7 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+         std::array<RefPtr<Element>, edgeFractions.size()> exposedSheets;
+         RefPtr<Element> dimmingSheet;
+         bool conflictingSheets = false;
++        bool consistentForeground = true;
+         if (hostSampling) {
+             RefPtr<Element> candidate = result.container;
+             for (size_t index = 0; index < edgeFractions.size(); ++index) {
+@@ -2883,6 +3012,7 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+                 if (pointResult.retryHonoringPointerEvents)
+                     pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
+                 unsettledTransform |= pointResult.hasUnsettledTransform;
++                consistentForeground &= pointResult.foregroundPaint == result.foregroundPaint;
+                 if (pointResult.container != result.container)
+                     consistentCoverage = false;
+                 if (!candidate && pointResult.container)
+@@ -2912,37 +3042,79 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+             continue;
+         }
+ 
+-        if (result.foundBackdropFilter) {
++        // A local solid foreground crossing a painted background is not a
++        // uniform extension, even when it dominates a narrow strip.
++        CheckedPtr containerRenderer = result.container->renderer();
++        bool mixedPaintedBackground = hostSampling && !consistentForeground && containerRenderer
++            && Style::hasImageInAnyLayer(containerRenderer->style().backgroundLayers());
++        if (result.foundBackdropFilter || mixedPaintedBackground) {
+             if (confirmed)
+                 *confirmed = { };
+             edges.colors.setAt(side, PredominantColorType::Multiple);
+             continue;
+         }
+ 
++        if (confirmed && result.isViewportSized && containerRenderer && containerRenderer->isFixedPositioned()
++            && !conflictingSheets && (!dimmingSheet || !consistentForeground)
++            && !primaryBackgroundColorForRenderer(side, *containerRenderer).isVisible()) {
++            auto color = authoredDimmingExtension(side, *containerRenderer, dimmingSheet.get());
++            if (!color.isVisible() && !dimmingSheet && !result.foregroundPaint && consistentForeground
++                && containerRenderer->usedPointerEvents() == PointerEvents::None && !containerRenderer->hasBackground()
++                && !containerRenderer->hasFilter() && !containerRenderer->hasMask() && !containerRenderer->hasBlendMode()
++                && !containerRenderer->hasVisibleBoxDecorations() && !containerRenderer->hasOutline()) {
++                // A paint-free pointer pass-through can win every sampling hit.
++                // Recover the lower owner only for its verified authored inset.
++                CheckedPtr model = dynamicDowncast<RenderLayerModelObject>(*containerRenderer);
++                CheckedPtr layer = model ? model->layer() : nullptr;
++                auto innerStrip = computeSampleRectIgnoringBorderWidth(fixedRect, side);
++                auto hasPaintInStrip = [&] {
++                    for (CheckedPtr child = containerRenderer->firstChild(); child; child = child->nextSibling()) {
++                        if (child->absoluteClippedOverflowRectForRepaint().intersects(innerStrip))
++                            return true;
++                    }
++                    return false;
++                };
++                if (layer && layer->currentTransform().isIdentity() && !hasPaintInStrip()) {
++                    auto lower = findFixedContainer(side, IgnoreCSSPointerEvents::No);
++                    CheckedPtr lowerRenderer = lower.container && lower.container != result.container ? lower.container->renderer() : nullptr;
++                    if (lowerRenderer && lowerRenderer->isFixedPositioned() && lower.isViewportSized
++                        && !lower.foundBackdropFilter && !lower.hasUnsettledTransform
++                        && !primaryBackgroundColorForRenderer(side, *lowerRenderer).isVisible()
++                        && std::ranges::all_of(edgeFractions, [&](auto fraction) {
++                            auto point = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
++                            return point.container == lower.container && !point.foundBackdropFilter && !point.hasUnsettledTransform;
++                        }))
++                        color = authoredDimmingExtension(side, *lowerRenderer, lower.exposedDimmingSheet.get());
++                }
++            }
++            if (color.isVisible()) {
++                edges.colors.setAt(side, color);
++                continue;
++            }
++        }
++
+         // Keep a previously confirmed sheet when a card covers part of it.
+         // First-paint foregrounds keep the regular color sampling path. Both
+         // identities must match and the sheet must still cover every hit.
+         Color sheetColor;
+         bool confirmDirectSheet = false;
++        bool hasContinuousDimmingSheet = false;
+         if (confirmed && dimmingSheet && !conflictingSheets && result.isViewportSized) {
+-            CheckedPtr containerRenderer = result.container->renderer();
+             CheckedPtr sheetRenderer = dimmingSheet->renderer();
+             if (containerRenderer && sheetRenderer && !primaryBackgroundColorForRenderer(side, *containerRenderer).isVisible()) {
+                 sheetColor = primaryBackgroundColorForRenderer(side, *sheetRenderer);
+                 confirmDirectSheet = std::ranges::all_of(exposedSheets, [&](const auto& exposed) { return exposed == dimmingSheet; });
+-                if (!confirmDirectSheet && confirmed->sheet.get() == dimmingSheet.get()) {
+-                    bool stillContinuous = true;
+-                    for (size_t index = 0; index < edgeFractions.size() && stillContinuous; ++index)
+-                        stillContinuous = exposedSheets[index] || hitsDimmingSheetBehindContent(side, edgeFractions[index], *dimmingSheet);
+-                    if (stillContinuous) {
+-                        if (confirmed->sheetColor != sheetColor || confirmed->alwaysBlend
+-                            || sheetColor.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor) {
+-                            confirmed->sheetColor = sheetColor;
+-                            confirmed->continuationColor = resolveContinuation(sheetColor, confirmed->alwaysBlend);
+-                        }
+-                        edges.colors.setAt(side, confirmed->continuationColor);
+-                        continue;
++                hasContinuousDimmingSheet = true;
++                for (size_t index = 0; index < edgeFractions.size() && hasContinuousDimmingSheet; ++index)
++                    hasContinuousDimmingSheet = exposedSheets[index] || hitsDimmingSheetBehindContent(side, edgeFractions[index], *dimmingSheet);
++                if (!confirmDirectSheet && hasContinuousDimmingSheet && confirmed->sheet.get() == dimmingSheet.get()) {
++                    if (confirmed->sheetColor != sheetColor || confirmed->alwaysBlend
++                        || sheetColor.alphaAsFloat() < minimumOpacityThresholdToClampToSolidColor) {
++                        confirmed->sheetColor = sheetColor;
++                        confirmed->continuationColor = resolveContinuation(sheetColor, confirmed->alwaysBlend);
+                     }
++                    edges.colors.setAt(side, confirmed->continuationColor);
++                    continue;
+                 }
+             }
+         }
+@@ -2966,7 +3138,11 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+             continue;
+         }
+ 
+-        if (result.backgroundColor.isVisible()) {
++        // A transparent viewport-sized hit target can sit over unrelated paint.
++        // Only the verified modal sheet keeps the upstream first-paint policy.
++        const auto continuousEdge = hostSampling && !hasContinuousDimmingSheet ? std::optional { side } : std::nullopt;
++        if (result.backgroundColor.isVisible() && (!continuousEdge || result.usesBackdrop
++            || (containerRenderer && primaryBackgroundColorForRenderer(side, *containerRenderer) == result.backgroundColor))) {
+             publishColor(resolveContinuation(result.backgroundColor, result.isDimmingLayer));
+             continue;
+         }
+@@ -2976,7 +3152,7 @@ std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerE
+             continue;
+         }
+ 
+-        auto sampled = PageColorSampler::predominantColor(*page, computeSamplingRect(protect(protect(result.container)->renderStyle()), side));
++        auto sampled = PageColorSampler::predominantColor(*page, computeSamplingRect(protect(protect(result.container)->renderStyle()), side), continuousEdge);
+         if (auto* color = std::get_if<Color>(&sampled))
+             sampled = resolveContinuation(*color, result.isDimmingLayer);
+         publishColor(WTF::move(sampled));
+diff --git a/Source/WebCore/page/PageColorSampler.cpp b/Source/WebCore/page/PageColorSampler.cpp
+index 3f247a7..63a0ee0 100644
+--- a/Source/WebCore/page/PageColorSampler.cpp
++++ b/Source/WebCore/page/PageColorSampler.cpp
+@@ -26,6 +26,7 @@
+ #include "config.h"
+ #include "PageColorSampler.h"
+ 
++#include "BoxSides.h"
+ #include "ColorHash.h"
+ #include "ColorSerialization.h"
+ #include "ContentfulPaintChecker.h"
+@@ -296,7 +297,7 @@ bool PageColorSampler::colorsAreSimilar(const Color& a, const Color& b)
+     return distance <= maxDistanceSquaredForSimilarColors;
+ }
+ 
+-Variant<PredominantColorType, Color> PageColorSampler::predominantColor(Page& page, const LayoutRect& absoluteRect)
++Variant<PredominantColorType, Color> PageColorSampler::predominantColor(Page& page, const LayoutRect& absoluteRect, std::optional<BoxSide> continuousEdge)
+ {
+     RefPtr frame = page.localMainFrame();
+     if (!frame)
+@@ -342,9 +343,40 @@ Variant<PredominantColorType, Color> PageColorSampler::predominantColor(Page& pa
+ 
+     auto byteSamplingInterval = bytesPerPixel * (numberOfPixels / (sampleCount - 1));
+     auto pixels = pixelBuffer->bytes();
++    auto pixelColor = [&](size_t offset) {
++        return Color { SRGBA<uint8_t> { pixels[offset + 2], pixels[offset + 1], pixels[offset], pixels[offset + 3] } };
++    };
++    auto validateColor = [&](const Color& color) -> Variant<PredominantColorType, Color> {
++        if (isNearlyTransparent(color))
++            return PredominantColorType::None;
++        if (!continuousEdge)
++            return color;
++
++        // A dominant foreground can cover the middle of this strip without
++        // reaching its ends. Validate the actual painted pixels from the same
++        // snapshot, including when a separate edge hit test misses that paint.
++        const auto horizontal = *continuousEdge == BoxSide::Top || *continuousEdge == BoxSide::Bottom;
++        const auto width = pixelBuffer->size().width();
++        const auto height = pixelBuffer->size().height();
++        const auto length = horizontal ? width : height;
++        const auto thickness = horizontal ? height : width;
++        const auto margin = length / 20;
++        auto matches = [&](int alongEdge, int depth) {
++            const auto x = horizontal ? alongEdge : depth;
++            const auto y = horizontal ? depth : alongEdge;
++            auto edgeColor = pixelColor(static_cast<size_t>(y * width + x) * bytesPerPixel);
++            return edgeColor.isVisible() && std::abs(edgeColor.alphaAsFloat() - color.alphaAsFloat()) <= 0.05
++                && colorsAreSimilar(edgeColor, color);
++        };
++        for (int depth = 0; depth < thickness; ++depth) {
++            if (matches(margin, depth) && matches(length - 1 - margin, depth))
++                return color;
++        }
++        return PredominantColorType::Multiple;
++    };
+     HashCountedSet<Color> colorDistribution;
+     for (uint64_t i = 0; i < numberOfBytes; i += byteSamplingInterval) {
+-        auto color = Color { SRGBA<uint8_t> { pixels[i + 2], pixels[i + 1], pixels[i], pixels[i + 3] } };
++        auto color = pixelColor(i);
+         if (!color.isVisible())
+             continue;
+ 
+@@ -355,12 +387,8 @@ Variant<PredominantColorType, Color> PageColorSampler::predominantColor(Page& pa
+         return PredominantColorType::None;
+ 
+     for (auto& [color, count] : colorDistribution) {
+-        if (count > minimumSampleCountForPredominantColor) {
+-            if (isNearlyTransparent(color))
+-                return PredominantColorType::None;
+-
+-            return { WTF::move(color) };
+-        }
++        if (count > minimumSampleCountForPredominantColor)
++            return validateColor(color);
+     }
+ 
+     using PairType = std::pair<Color, unsigned>;
+@@ -387,12 +415,8 @@ Variant<PredominantColorType, Color> PageColorSampler::predominantColor(Page& pa
+ 
+         mostFrequentColorCount += count;
+ 
+-        if (mostFrequentColorCount > minimumSampleCountForPredominantColor) {
+-            if (isNearlyTransparent(*mostFrequentColor))
+-                return PredominantColorType::None;
+-
+-            return { WTF::move(*mostFrequentColor) };
+-        }
++        if (mostFrequentColorCount > minimumSampleCountForPredominantColor)
++            return validateColor(*mostFrequentColor);
+     }
+ 
+     return PredominantColorType::Multiple;
+diff --git a/Source/WebCore/page/PageColorSampler.h b/Source/WebCore/page/PageColorSampler.h
+index c2e2a67..16877f8 100644
+--- a/Source/WebCore/page/PageColorSampler.h
++++ b/Source/WebCore/page/PageColorSampler.h
+@@ -33,6 +33,7 @@ namespace WebCore {
+ class LayoutRect;
+ class Page;
+ 
++enum class BoxSide : uint8_t;
+ enum class PredominantColorType : uint8_t;
+ 
+ class PageColorSampler {
+@@ -41,7 +42,7 @@ public:
+     WEBCORE_EXPORT static bool colorsAreSimilar(const Color&, const Color&);
+ 
+     static constexpr auto nearlyTransparentAlphaThreshold = 0.1;
+-    static Variant<PredominantColorType, Color> predominantColor(Page&, const LayoutRect&);
++    static Variant<PredominantColorType, Color> predominantColor(Page&, const LayoutRect&, std::optional<BoxSide> continuousEdge = std::nullopt);
+ };
+ 
+ } // namespace WebCore
+diff --git a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
+index 55f0f6c..79f6e7b 100644
+--- a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
+@@ -81,13 +81,14 @@ void ScrollingLayerWC::setBoundsOriginForScrolling(const FloatPoint& origin)
+ }
+ void ScrollingLayerWC::setTopLeftPositionForScrolling(const FloatPoint& position)
+ {
+-    Locker locker { m_lock };
+-    m_scrollingPosition = { position.x() + m_anchorPoint.x() * m_size.width(), position.y() + m_anchorPoint.y() * m_size.height() };
++    // TextureMapper positions already describe the top-left of the layer.
++    // Its transform applies the anchor point only as the transform origin.
++    setPositionForScrolling(position);
+ }
+ FloatPoint ScrollingLayerWC::topLeftPositionForScrolling()
+ {
+     Locker locker { m_lock };
+-    return m_position - toFloatSize(m_anchorPoint.xy()) * m_size;
++    return m_position;
+ }
+ std::optional<WCScrollLayerPosition> ScrollingLayerWC::takePositionUpdate(uint64_t revision, bool useLayoutSnapshot)
+ {
+diff --git a/Source/WebCore/rendering/RenderLayerBacking.cpp b/Source/WebCore/rendering/RenderLayerBacking.cpp
+index 911019f..2c35fda 100644
+--- a/Source/WebCore/rendering/RenderLayerBacking.cpp
++++ b/Source/WebCore/rendering/RenderLayerBacking.cpp
+@@ -1823,20 +1823,32 @@ void RenderLayerBacking::updateGeometry(const RenderLayer* compositedAncestor)
+ 
+     if (m_viewportAnchorLayer) {
+         if (m_viewportClippingLayer) {
+-            ASSERT(compositedAncestor == renderer().view().layer());
+             auto fixedPositionRect = renderer().view().frameView().rectForFixedPositionLayout();
+-            if (m_ancestorClippingStack) {
+-                for (auto& entry : m_ancestorClippingStack->stack()) {
+-                    if (entry.clippingLayer)
+-                        fixedPositionRect.moveBy(-LayoutPoint { entry.clippingLayer->position() });
++            CheckedPtr renderViewLayer = renderer().view().layer();
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++            if (compositedAncestor && compositedAncestor != renderViewLayer.get()) {
++                // Convert through the actual graphics parent, including any
++                // intermediary clipping layers, before anchoring the child.
++                auto ancestorOrigin = compositedAncestor->convertToLayerCoords(renderViewLayer.get(), { }, RenderLayer::AdjustForColumns);
++                auto viewportOrigin = fixedPositionRect.location() - toLayoutSize(ancestorOrigin);
++                fixedPositionRect.setLocation(toLayoutPoint(computeOffsetFromAncestorGraphicsLayer(compositedAncestor, viewportOrigin, pixelSnappingScaleFactor)
++                    - toLayoutSize(parentGraphicsLayerRect.location())));
++            } else
++#endif
++            {
++                ASSERT(compositedAncestor == renderViewLayer.get());
++                if (m_ancestorClippingStack) {
++                    for (auto& entry : m_ancestorClippingStack->stack()) {
++                        if (entry.clippingLayer)
++                            fixedPositionRect.moveBy(-LayoutPoint { entry.clippingLayer->position() });
++                    }
+                 }
+-            }
+ 
+-            // RenderView's layer has a non-zero offsetFromGraphicsLayer in RTL content; we have to account
+-            // for that to map rectForFixedPositionLayout from content to GraphicsLayer coordinates.
+-            CheckedPtr renderViewLayer = renderer().view().layer();
+-            ASSERT(renderViewLayer->isComposited());
+-            fixedPositionRect.move(renderViewLayer->backing()->contentOffsetInCompositingLayer());
++                // RenderView's layer has a non-zero offsetFromGraphicsLayer in RTL content; we have to account
++                // for that to map rectForFixedPositionLayout from content to GraphicsLayer coordinates.
++                ASSERT(renderViewLayer->isComposited());
++                fixedPositionRect.move(renderViewLayer->backing()->contentOffsetInCompositingLayer());
++            }
+ 
+             m_viewportClippingLayer->setPosition(fixedPositionRect.location());
+             m_viewportClippingLayer->setSize(fixedPositionRect.size());
+diff --git a/Source/WebCore/rendering/RenderLayerCompositor.cpp b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+index edd913b..4b856f6 100644
+--- a/Source/WebCore/rendering/RenderLayerCompositor.cpp
++++ b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+@@ -4309,8 +4309,16 @@ ViewportConstrainedSublayers RenderLayerCompositor::viewportConstrainedSublayers
+         if (!isMainFrameCompositor())
+             return Anchor;
+ 
+-        if (compositingAncestor != m_renderView.layer())
++        if (compositingAncestor != m_renderView.layer()) {
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++            // A positioned stacking context can own the graphics layer even
++            // when the viewport is still the fixed element's containing block.
++            if (!compositingAncestor || !layer.renderer().isFixedPositioned() || layer.hasFixedContainingBlockAncestor())
++                return Anchor;
++#else
+             return Anchor;
++#endif
++        }
+ 
+ #if ENABLE(FULLSCREEN_API)
+         if (RefPtr fullscreen = m_renderView.document().fullscreenIfExists(); fullscreen && fullscreen->isFullscreen())

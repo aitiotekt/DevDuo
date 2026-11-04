@@ -2,6 +2,17 @@
 
 <!-- Unreleased -->
 
+## 0.1.3
+
+DevDuo and its bundled Windows WebKit both use `0.1.3`. The pinned upstream WebKit revision is unchanged.
+
+- Clip composited fixed content at the real viewport, including fixed layers hosted by positioned stacking contexts, and keep translating buttons from tinting the obscured edge. Ordinary document continuation and viewport dimensions are preserved.
+- Keep WC fixed and sticky layers at their authored positions during asynchronous scrolling. Verify coverage in the same painted strip before using a fixed-edge foreground color for the whole inset.
+- Preserve the confirmed edge color of a continuous modal dimming sheet when a later card covers part of it. Track changes to that sheet's color and opacity and release its color when the sheet is replaced or dismissed.
+- Use a modal's matching fixed background outside the viewport when a card covers the inner sheet and the outer piece covers the inset.
+- Use each Closed side inset's rendered backdrop for its glass controls. Retain the native glass nodes across address transitions and keep the foreground separate from live material updates.
+- Check continuous composed-window pixels during touch, wheel and scripted fixed-footer movement, including the Closed side controls in dark appearance.
+
 ## 0.1.2
 
 DevDuo and bundled Windows WebKit both use `0.1.2`; the upstream WebKit revision is unchanged. This release requires the rebuilt runtime's fixed-container color v2, asynchronous accessibility v2 and frame timing v2 and frame presentation/surface v1 capabilities. Native acceptance scope is recorded separately in the Windows handoff.

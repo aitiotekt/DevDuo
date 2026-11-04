@@ -2,6 +2,17 @@
 
 <!-- Unreleased -->
 
+## 0.1.3
+
+DevDuo 和随附的 Windows WebKit 均使用 `0.1.3`。固定的 WebKit 上游 revision 保持不变。
+
+- 将合成的 fixed 内容裁剪在真实视口内，包括挂在定位堆叠上下文中的 fixed 图层，防止平移按钮给遮挡区域染色。保留普通正文延伸和视口尺寸。
+- 异步滚动期间保持 WC fixed 和 sticky 图层的位置。使用固定边缘的前景色填充整条 inset 前，在同一绘制采样带中验证覆盖范围。
+- 卡片随后覆盖部分连续遮罩时，保留该遮罩已确认的边缘色。继续跟踪同一遮罩的颜色和透明度变化，替换或关闭遮罩时释放其颜色。
+- 模态在视口外绘制同色 fixed 背景时，验证其覆盖并可见后使用该背景为 inset 着色。
+- Closed 侧栏玻璃控件使用所在 inset 的实际背景。地址栏切换时保留原生玻璃节点，前景独立于实时材质更新。
+- 连续检查触摸、滚轮和脚本驱动的固定页脚移动时的合成窗口像素，并覆盖深色外观的 Closed 侧栏控件。
+
 ## 0.1.2
 
 DevDuo 与 bundled Windows WebKit 均使用 `0.1.2`，WebKit 上游 revision 不变；本版要求重建运行时，包含 fixed-container color v2、异步 accessibility v2 及 frame timing v2 及 frame presentation／surface v1。原生验收范围单独记录于 Windows 交接文档。

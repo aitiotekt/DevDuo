@@ -434,18 +434,27 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     internal float MeasureText(string text, float pixels) => composition?.MeasureText(text, pixels) ?? 0;
     internal WindowsComposition.Action HitChrome(int x, int y) => composition?.Hit(x, y) ?? WindowsComposition.Action.None;
     internal void InvokeChrome(WindowsComposition.Action action) => ChromeInvoked?.Invoke(action);
-    internal Task<ContentEdgeColor?> RequestContentEdgeColorAsync(bool bottom)
+    internal enum ContentSampleEdge { Top, Bottom, Side }
+
+    internal Task<ContentEdgeColor?> RequestContentEdgeColorAsync(ContentSampleEdge edge)
     {
         if (!IsReady || !committed || acceptedDocumentId is null || geometry is not { } g)
             return Task.FromResult<ContentEdgeColor?>(null);
         var height = Math.Min(18, g.Height - g.Top - g.Bottom);
-        var rect = new Rectangle(g.Left, bottom ? g.Height - g.Bottom - height : g.Top, g.Width - g.Left - g.Right, height);
+        var rect = edge == ContentSampleEdge.Side
+            ? new Rectangle(g.Left > 0 ? 0 : g.Width - g.Right,
+                g.Top + (g.Height - g.Top - g.Bottom - height) / 2, g.Left > 0 ? g.Left : g.Right, height)
+            : new Rectangle(g.Left, edge == ContentSampleEdge.Bottom ? g.Height - g.Bottom - height : g.Top,
+                g.Width - g.Left - g.Right, height);
+        if (rect.Width <= 0 || rect.Height <= 0) return Task.FromResult<ContentEdgeColor?>(null);
         var id = (nint)Interlocked.Increment(ref nextToken);
         var completion = new TaskCompletionSource<ContentEdgeColor?>(TaskCreationOptions.RunContinuationsAsynchronously);
         colors.Add(id, (this, navigationGeneration, geometryGeneration, acceptedDocumentId, completion, rect));
         WKViewRequestContentEdgeColor(view, rect.X, rect.Y, rect.Width, rect.Height, (ulong)id, id, colorCallback);
         return completion.Task;
     }
+    internal bool IsCurrentContentColor(ContentEdgeColor sample) => committed &&
+        sample.NavigationGeneration == navigationGeneration && sample.GeometryGeneration == geometryGeneration;
     private static void ColorFinished(ulong request, uint status, uint rgb, nint context)
     {
         if (!colors.Remove(context, out var pending)) return;
@@ -755,11 +764,11 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         owner.verifyingObservation = owner.observationVerificationDirty = owner.committed = false;
         owner.observation = null;
         owner.activeNavigation = navigation; owner.loading = true; owner.error = null;
-        owner.DocumentNavigationStarted?.Invoke();
         // Unverified inset pixels use a canvas fallback. The layout viewport
         // remains live while WebKit loads/parses the new document.
         owner.rootColor = Color.White;
         WKViewSetHostUnderPageBackgroundColor(owner.view, 0xffffff);
+        owner.DocumentNavigationStarted?.Invoke();
         owner.ShowUnobscuredContent(); owner.Present(); owner.ReportNavigation();
     }
     private static void Committed(nint page, nint navigation, nint data, nint context)
