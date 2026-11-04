@@ -29,6 +29,9 @@ public sealed class HostSettings
     public bool MaterialExpanded { get; set; }
     public bool DiagnosticsExpanded { get; set; }
     public bool DeveloperAllowLan { get; set; }
+    public bool NativeRemoteEnabled { get; set; }
+    public bool CdpEnabled { get; set; }
+    public bool ControlApiEnabled { get; set; }
     public int NativeRemotePort { get; set; } = 9223;
     public int CdpPort { get; set; } = 9222;
     [System.Text.Json.Serialization.JsonIgnore]
@@ -62,14 +65,19 @@ public sealed class PreferenceStore
     public static string DefaultPath => Environment.GetEnvironmentVariable("DEVDUO_PREFERENCES_PATH") is { Length: > 0 } path
         ? System.IO.Path.GetFullPath(path)
         : System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevDuo", "preferences.json");
-    public static PreferenceStore Default { get; } = new(DefaultPath);
 
     public string Path { get; }
     public string Language { get; private set; } = AppLocalization.SystemLanguage;
     public HostSettings Host { get; private set; } = new();
     public string? ReadError { get; }
     public string? ReadErrorResourceKey { get; }
-    public IReadOnlyList<string> InvalidHostFields { get; } = [];
+    public IReadOnlyList<string> InvalidHostFields { get; private set; } = [];
+    internal static readonly string[] NativeListenerFields = ["nativeRemotePort", "developerAllowLan"];
+    internal static readonly string[] CdpListenerFields = ["cdpPort", "cdpBearerToken", "developerAllowLan"];
+    internal static readonly string[] ControlListenerFields = ["controlApiPort", "controlApiBearerToken"];
+    public static PreferenceStore Default { get; } = new(DefaultPath);
+    private readonly Dictionary<string, JsonElement> invalidListenerValues = new();
+    internal IEnumerable<string> InvalidListenerFields => invalidListenerValues.Keys;
     public string? WriteError { get; private set; }
 
     public PreferenceStore(string path)
@@ -95,6 +103,14 @@ public sealed class PreferenceStore
             if (root.TryGetProperty("host", out var host))
                 Host = ReadHost(host, invalid);
             InvalidHostFields = invalid;
+            // Normal display defaults must not silently become listener settings
+            // on this or a later launch. Keep invalid enabled-service inputs until
+            // the user explicitly applies configuration or resets preferences.
+            var listenerFields = (Host.NativeRemoteEnabled ? NativeListenerFields : [])
+                .Concat(Host.CdpEnabled ? CdpListenerFields : [])
+                .Concat(Host.ControlApiEnabled ? ControlListenerFields : []);
+            foreach (var field in listenerFields.Distinct().Where(invalid.Contains))
+                invalidListenerValues[field] = host.GetProperty(field).Clone();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -106,6 +122,12 @@ public sealed class PreferenceStore
     {
         Language = language;
         return Write();
+    }
+
+    internal void AcceptListenerSettings(params string[] fields)
+    {
+        foreach (var field in fields) invalidListenerValues.Remove(field);
+        InvalidHostFields = InvalidHostFields.Except(fields).ToArray();
     }
 
     public bool SaveHost(HostSettings host)
@@ -168,6 +190,9 @@ public sealed class PreferenceStore
         settings.MaterialExpanded = Flag("materialExpanded", settings.MaterialExpanded);
         settings.DiagnosticsExpanded = Flag("diagnosticsExpanded", settings.DiagnosticsExpanded);
         settings.DeveloperAllowLan = Flag("developerAllowLan", settings.DeveloperAllowLan);
+        settings.NativeRemoteEnabled = Flag("nativeRemoteEnabled", false);
+        settings.CdpEnabled = Flag("cdpEnabled", false);
+        settings.ControlApiEnabled = Flag("controlApiEnabled", false);
         int Port(string name, int fallback)
         {
             if (!host.TryGetProperty(name, out var value))
@@ -246,6 +271,9 @@ public sealed class PreferenceStore
                 ["materialExpanded"] = Host.MaterialExpanded,
                 ["diagnosticsExpanded"] = Host.DiagnosticsExpanded,
                 ["developerAllowLan"] = Host.DeveloperAllowLan,
+                ["nativeRemoteEnabled"] = Host.NativeRemoteEnabled,
+                ["cdpEnabled"] = Host.CdpEnabled,
+                ["controlApiEnabled"] = Host.ControlApiEnabled,
                 ["nativeRemotePort"] = Host.NativeRemotePort,
                 ["cdpPort"] = Host.CdpPort,
                 ["cdpBearerToken"] = Host.CdpBearerToken,
@@ -256,6 +284,8 @@ public sealed class PreferenceStore
                 ["lastUrl"] = Host.LastUrl
             };
             var root = new JsonObject { ["schemaVersion"] = 1, ["language"] = Language, ["host"] = host };
+            foreach (var (field, value) in invalidListenerValues)
+                host[field] = JsonNode.Parse(value.GetRawText());
             File.WriteAllText(temporary, root.ToJsonString(WriteOptions));
             File.Move(temporary, Path, true);
             return true;

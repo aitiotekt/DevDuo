@@ -1,0 +1,1421 @@
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/wc/ScrollingSceneWC.h
+@@ -0,0 +1,73 @@
++/*
++ * Copyright (C) 2024 Igalia S.L.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if ENABLE(ASYNC_SCROLLING) && USE(GRAPHICS_LAYER_WC)
++#include "FloatPoint.h"
++#include "PlatformLayerIdentifier.h"
++#include <functional>
++#include <wtf/HashMap.h>
++#include <wtf/Lock.h>
++#include <wtf/ThreadSafeRefCounted.h>
++#include <wtf/TZoneMalloc.h>
++#include <wtf/ThreadSafeWeakPtr.h>
++#include <wtf/Vector.h>
++
++namespace WebCore {
++class ScrollingLayerWC;
++
++struct WCScrollLayerPosition {
++    PlatformLayerIdentifier identifier;
++    FloatPoint position;
++    FloatPoint boundsOrigin;
++    uint32_t changed { 0 };
++};
++
++// This scene contains geometry only. WebKit binds its publication callback to
++// the GPU connection; scrolling never calls back into a main-thread layer.
++class WEBCORE_EXPORT ScrollingSceneWC final : public ThreadSafeRefCounted<ScrollingSceneWC> {
++    WTF_MAKE_TZONE_ALLOCATED_EXPORT(ScrollingSceneWC, WEBCORE_EXPORT);
++public:
++    using Publisher = std::function<void(uint64_t, Vector<WCScrollLayerPosition>&&)>;
++    static Ref<ScrollingSceneWC> create() { return adoptRef(*new ScrollingSceneWC); }
++    void addLayer(ScrollingLayerWC&);
++    void removeLayer(PlatformLayerIdentifier);
++    void setPublisher(Publisher&&);
++    void requestComposition();
++    uint64_t revision() const;
++    bool isCompositionRequiredOrOngoing() const;
++    void didCompleteComposition(uint64_t);
++private:
++    ScrollingSceneWC() = default;
++    Lock m_publicationLock;
++    mutable Lock m_lock;
++    HashMap<PlatformLayerIdentifier, ThreadSafeWeakPtr<ScrollingLayerWC>> m_layers WTF_GUARDED_BY_LOCK(m_lock);
++    Publisher m_publisher WTF_GUARDED_BY_LOCK(m_lock);
++    uint64_t m_revision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
++    uint64_t m_publishedRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 }, m_completedRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
++};
++}
++#endif
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
+@@ -0,0 +1,94 @@
++/*
++ * Copyright (C) 2024 Igalia S.L.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if ENABLE(ASYNC_SCROLLING) && USE(GRAPHICS_LAYER_WC)
++#include <WebCore/CoordinatedCompositionReason.h>
++#include "EventRegion.h"
++#include "FloatPoint3D.h"
++#include "FloatRect.h"
++#include "ScrollingSceneWC.h"
++#include "ScrollingNodeID.h"
++#include "TransformationMatrix.h"
++#include <wtf/Locker.h>
++#include <wtf/ThreadSafeWeakPtr.h>
++
++namespace WebCore {
++class GraphicsLayer;
++
++class WEBCORE_EXPORT ScrollingLayerWC final : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<ScrollingLayerWC> {
++    WTF_MAKE_TZONE_ALLOCATED_EXPORT(ScrollingLayerWC, WEBCORE_EXPORT);
++public:
++    static Ref<ScrollingLayerWC> create(ScrollingSceneWC& scene, PlatformLayerIdentifier identifier)
++    {
++        auto layer = adoptRef(*new ScrollingLayerWC(scene, identifier));
++        scene.addLayer(layer);
++        return layer;
++    }
++    ~ScrollingLayerWC();
++    Lock& lock() const WTF_RETURNS_LOCK(m_lock) { return m_lock; }
++    PlatformLayerIdentifier identifier() const { return m_identifier; }
++    void synchronize(const GraphicsLayer&);
++    void setPositionForScrolling(const FloatPoint&);
++    void setBoundsOriginForScrolling(const FloatPoint&);
++    void setTopLeftPositionForScrolling(const FloatPoint&);
++    FloatPoint topLeftPositionForScrolling();
++    std::optional<WCScrollLayerPosition> takePositionUpdate();
++    void requestComposition(CompositionReason) { m_scene->requestComposition(); }
++    bool isCompositionRequiredOrOngoing() const { return m_scene->isCompositionRequiredOrOngoing(); }
++
++    const FloatPoint& position() const WTF_REQUIRES_LOCK(m_lock) { return m_position; }
++    const FloatPoint& boundsOrigin() const WTF_REQUIRES_LOCK(m_lock) { return m_boundsOrigin; }
++    const FloatPoint3D& anchorPoint() const WTF_REQUIRES_LOCK(m_lock) { return m_anchorPoint; }
++    const FloatSize& size() const WTF_REQUIRES_LOCK(m_lock) { return m_size; }
++    FloatRect bounds() const WTF_REQUIRES_LOCK(m_lock) { return { m_boundsOrigin, m_size }; }
++    const TransformationMatrix& transform() const WTF_REQUIRES_LOCK(m_lock) { return m_transform; }
++    bool masksToBounds() const WTF_REQUIRES_LOCK(m_lock) { return m_masksToBounds; }
++    const EventRegion& eventRegion() const WTF_REQUIRES_LOCK(m_lock) { return m_eventRegion; }
++    std::optional<ScrollingNodeID> scrollingNodeID() const WTF_REQUIRES_LOCK(m_lock) { return m_scrollingNodeID; }
++    const Vector<Ref<ScrollingLayerWC>>& children() const WTF_REQUIRES_LOCK(m_lock) { return m_children; }
++    RefPtr<ScrollingLayerWC> parent() const WTF_REQUIRES_LOCK(m_lock) { return m_parent.get(); }
++    RefPtr<ScrollingLayerWC> mask() const WTF_REQUIRES_LOCK(m_lock) { return m_mask; }
++private:
++    ScrollingLayerWC(ScrollingSceneWC& scene, PlatformLayerIdentifier identifier) : m_scene(scene), m_identifier(identifier) { }
++    Ref<ScrollingSceneWC> m_scene;
++    PlatformLayerIdentifier m_identifier;
++    mutable Lock m_lock;
++    FloatPoint m_position WTF_GUARDED_BY_LOCK(m_lock), m_boundsOrigin WTF_GUARDED_BY_LOCK(m_lock);
++    FloatPoint3D m_anchorPoint WTF_GUARDED_BY_LOCK(m_lock);
++    FloatSize m_size WTF_GUARDED_BY_LOCK(m_lock);
++    TransformationMatrix m_transform WTF_GUARDED_BY_LOCK(m_lock);
++    EventRegion m_eventRegion WTF_GUARDED_BY_LOCK(m_lock);
++    std::optional<ScrollingNodeID> m_scrollingNodeID WTF_GUARDED_BY_LOCK(m_lock);
++    bool m_masksToBounds WTF_GUARDED_BY_LOCK(m_lock) { false };
++    Vector<Ref<ScrollingLayerWC>> m_children WTF_GUARDED_BY_LOCK(m_lock);
++    ThreadSafeWeakPtr<ScrollingLayerWC> m_parent WTF_GUARDED_BY_LOCK(m_lock);
++    RefPtr<ScrollingLayerWC> m_mask WTF_GUARDED_BY_LOCK(m_lock);
++    std::optional<FloatPoint> m_pendingPosition WTF_GUARDED_BY_LOCK(m_lock), m_pendingBoundsOrigin WTF_GUARDED_BY_LOCK(m_lock);
++    std::optional<FloatPoint> m_scrollingPosition WTF_GUARDED_BY_LOCK(m_lock), m_scrollingBoundsOrigin WTF_GUARDED_BY_LOCK(m_lock);
++};
++}
++#endif
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
+@@ -0,0 +1,168 @@
++/*
++ * Copyright (C) 2024 Igalia S.L.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "ScrollingLayerWC.h"
++
++#if ENABLE(ASYNC_SCROLLING) && USE(GRAPHICS_LAYER_WC)
++#include "GraphicsLayer.h"
++#include "ScrollingStateNode.h"
++#include <wtf/MainThread.h>
++#include <wtf/StdLibExtras.h>
++#include <wtf/TZoneMallocInlines.h>
++
++namespace WebCore {
++WTF_MAKE_TZONE_ALLOCATED_IMPL(ScrollingLayerWC);
++WTF_MAKE_TZONE_ALLOCATED_IMPL(ScrollingSceneWC);
++
++ScrollingLayerWC::~ScrollingLayerWC()
++{
++    m_scene->removeLayer(m_identifier);
++}
++void ScrollingLayerWC::synchronize(const GraphicsLayer& layer)
++{
++    ASSERT(isMainThread());
++    Vector<Ref<ScrollingLayerWC>> children;
++    for (auto& child : layer.children()) {
++        if (auto* scrolling = child->scrollingLayerWC()) children.append(*scrolling);
++    }
++    Vector<Ref<ScrollingLayerWC>> oldChildren;
++    {
++        Locker locker { m_lock };
++        oldChildren = std::exchange(m_children, WTF::move(children));
++        m_pendingPosition = layer.position();
++        m_pendingBoundsOrigin = layer.boundsOrigin();
++        m_anchorPoint = layer.anchorPoint(); m_size = layer.size();
++        m_transform = layer.transform(); m_masksToBounds = layer.masksToBounds();
++        m_eventRegion = layer.eventRegion(); m_scrollingNodeID = layer.scrollingNodeID();
++        m_mask = layer.maskLayer() ? layer.maskLayer()->scrollingLayerWC() : nullptr;
++        children = m_children;
++    }
++    for (auto& child : oldChildren) {
++        Locker locker { child->m_lock };
++        if (child->m_parent.get().get() == this) child->m_parent = nullptr;
++    }
++    for (auto& child : children) {
++        Locker locker { child->m_lock };
++        child->m_parent = *this;
++    }
++}
++void ScrollingLayerWC::setPositionForScrolling(const FloatPoint& position)
++{
++    Locker locker { m_lock }; m_scrollingPosition = position;
++}
++void ScrollingLayerWC::setBoundsOriginForScrolling(const FloatPoint& origin)
++{
++    Locker locker { m_lock }; m_scrollingBoundsOrigin = origin;
++}
++void ScrollingLayerWC::setTopLeftPositionForScrolling(const FloatPoint& position)
++{
++    Locker locker { m_lock };
++    m_scrollingPosition = { position.x() + m_anchorPoint.x() * m_size.width(), position.y() + m_anchorPoint.y() * m_size.height() };
++}
++FloatPoint ScrollingLayerWC::topLeftPositionForScrolling()
++{
++    Locker locker { m_lock };
++    return m_position - toFloatSize(m_anchorPoint.xy()) * m_size;
++}
++std::optional<WCScrollLayerPosition> ScrollingLayerWC::takePositionUpdate()
++{
++    Locker locker { m_lock };
++    WCScrollLayerPosition result { m_identifier };
++    // Match coordinated graphics: an asynchronous position takes priority over
++    // the main thread's older pending value. Do not add deltas twice.
++    auto position = m_scrollingPosition ? std::exchange(m_scrollingPosition, std::nullopt) : m_pendingPosition;
++    auto origin = m_scrollingBoundsOrigin ? std::exchange(m_scrollingBoundsOrigin, std::nullopt) : m_pendingBoundsOrigin;
++    m_pendingPosition = m_pendingBoundsOrigin = std::nullopt;
++    if (position && *position != m_position) { m_position = *position; result.changed |= 1; }
++    if (origin && *origin != m_boundsOrigin) { m_boundsOrigin = *origin; result.changed |= 2; }
++    result.position = m_position; result.boundsOrigin = m_boundsOrigin;
++    return result.changed ? std::optional { result } : std::nullopt;
++}
++void ScrollingSceneWC::addLayer(ScrollingLayerWC& layer)
++{
++    Locker locker { m_lock }; m_layers.set(layer.identifier(), ThreadSafeWeakPtr<ScrollingLayerWC> { layer });
++}
++void ScrollingSceneWC::removeLayer(PlatformLayerIdentifier identifier)
++{
++    Locker locker { m_lock };
++    m_layers.remove(identifier);
++}
++void ScrollingSceneWC::setPublisher(Publisher&& publisher)
++{
++    Locker locker { m_lock }; m_publisher = WTF::move(publisher);
++}
++uint64_t ScrollingSceneWC::revision() const
++{
++    Locker locker { m_lock }; return m_revision;
++}
++bool ScrollingSceneWC::isCompositionRequiredOrOngoing() const
++{
++    Locker locker { m_lock };
++    return m_publishedRevision > m_completedRevision;
++}
++void ScrollingSceneWC::didCompleteComposition(uint64_t revision)
++{
++    Locker locker { m_lock };
++    m_completedRevision = std::max(m_completedRevision, std::min(revision, m_publishedRevision));
++}
++void ScrollingSceneWC::requestComposition()
++{
++    Locker publicationLocker { m_publicationLock };
++    Vector<Ref<ScrollingLayerWC>> layers;
++    Publisher publish;
++    uint64_t revision;
++    {
++        Locker locker { m_lock };
++        // Retain resolved layers until after the registry lock is released.
++        // Dropping the last reference under that lock would reenter removeLayer.
++        Vector<PlatformLayerIdentifier> expired;
++        for (auto& entry : m_layers) {
++            if (RefPtr layer = entry.value.get()) layers.append(layer.releaseNonNull());
++            else expired.append(entry.key);
++        }
++        for (auto identifier : expired) m_layers.remove(identifier);
++        publish = m_publisher;
++        if (!publish) return;
++        revision = ++m_revision;
++    }
++    Vector<WCScrollLayerPosition> updates;
++    for (auto& layer : layers) {
++        if (auto update = layer->takePositionUpdate()) updates.append(WTF::move(*update));
++    }
++    if (publish && !updates.isEmpty()) {
++        {
++            Locker locker { m_lock };
++            m_publishedRevision = revision;
++        }
++        publish(revision, WTF::move(updates));
++    }
++}
++ScrollingPlatformLayer* LayerRepresentation::platformLayerFromGraphicsLayer(GraphicsLayer& layer)
++{
++    return layer.scrollingLayerWC();
++}
++}
++#endif
+--- /dev/null
++++ b/Source/WebCore/page/scrolling/ScrollingTreePlatformLayer.h
+@@ -0,0 +1,34 @@
++/*
++ * Copyright (C) 2024 Igalia S.L.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(COORDINATED_GRAPHICS)
++#include "CoordinatedPlatformLayer.h"
++namespace WebCore { using ScrollingTreePlatformLayer = CoordinatedPlatformLayer; }
++#elif USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING)
++#include "ScrollingLayerWC.h"
++namespace WebCore { using ScrollingTreePlatformLayer = ScrollingLayerWC; }
++#endif
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
+@@ -28,9 +28,9 @@
+ #include "config.h"
+ #include "ScrollingTreeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "AsyncScrollingCoordinator.h"
+-#include "CoordinatedPlatformLayer.h"
++
+ #include "PlatformTouchEvent.h"
+ #include "ScrollingThread.h"
+ #include "ScrollingTreeFixedNodeCoordinated.h"
+@@ -41,6 +41,8 @@
+ #include "ScrollingTreePositionedNodeCoordinated.h"
+ #include "ScrollingTreeStickyNodeCoordinated.h"
+ #include <ranges>
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -113,11 +115,11 @@
+     renderingUpdateComplete();
+ }
+ 
+-using LayerAndPoint = std::pair<Ref<CoordinatedPlatformLayer>, FloatPoint>;
+-
+-static void collectDescendantLayersAtPoint(Vector<LayerAndPoint, 16>& layersAtPoint, const Ref<CoordinatedPlatformLayer>& parent, const FloatPoint& point, NOESCAPE const std::function<bool(const Ref<CoordinatedPlatformLayer>&, const FloatPoint&)>& transformedPointFunction)
+-{
+-    Vector<Ref<CoordinatedPlatformLayer>> children;
++using LayerAndPoint = std::pair<Ref<ScrollingTreePlatformLayer>, FloatPoint>;
++
++static void collectDescendantLayersAtPoint(Vector<LayerAndPoint, 16>& layersAtPoint, const Ref<ScrollingTreePlatformLayer>& parent, const FloatPoint& point, NOESCAPE const std::function<bool(const Ref<ScrollingTreePlatformLayer>&, const FloatPoint&)>& transformedPointFunction)
++{
++    Vector<Ref<ScrollingTreePlatformLayer>> children;
+     FloatPoint parentBoundsOrigin;
+     {
+         Locker parentLocker { parent->lock() };
+@@ -179,7 +181,7 @@
+     }
+ }
+ 
+-static bool layerEventRegionContainsPoint(const Ref<CoordinatedPlatformLayer>& layer, const FloatPoint& localPoint)
++static bool layerEventRegionContainsPoint(const Ref<ScrollingTreePlatformLayer>& layer, const FloatPoint& localPoint)
+ {
+     assertIsHeld(layer->lock());
+     // Scrolling changes boundsOrigin on the scroll container layer, but we computed its event region ignoring scroll position, so factor out bounds origin.
+@@ -187,7 +189,7 @@
+     return layer->eventRegion().contains(roundedIntPoint(originRelativePoint));
+ }
+ 
+-static Vector<LayerAndPoint, 16> layersAtPointToCheckForScrolling(const Ref<CoordinatedPlatformLayer>& parent, const FloatPoint& point, bool& hasAnyNonInteractiveScrollingLayers)
++static Vector<LayerAndPoint, 16> layersAtPointToCheckForScrolling(const Ref<ScrollingTreePlatformLayer>& parent, const FloatPoint& point, bool& hasAnyNonInteractiveScrollingLayers)
+ {
+     Vector<LayerAndPoint, 16> layersAtPoint;
+     collectDescendantLayersAtPoint(layersAtPoint, parent, point, [&] (auto layer, auto transformedPoint) {
+@@ -205,7 +207,7 @@
+     return layersAtPoint;
+ }
+ 
+-static bool isScrolledBy(const ScrollingTree& tree, ScrollingNodeID scrollingNodeID, const RefPtr<CoordinatedPlatformLayer>& hitLayer)
++static bool isScrolledBy(const ScrollingTree& tree, ScrollingNodeID scrollingNodeID, const RefPtr<ScrollingTreePlatformLayer>& hitLayer)
+ {
+     for (auto layer = hitLayer; layer;) {
+         Locker layerLocker { layer->lock() };
+@@ -248,7 +250,7 @@
+     bool hasAnyNonInteractiveScrollingLayers = false;
+     auto layersAtPoint = layersAtPointToCheckForScrolling(*rootContentsLayer, pointInContentsLayer, hasAnyNonInteractiveScrollingLayers);
+ 
+-    RefPtr<CoordinatedPlatformLayer> frontmostInteractiveLayer;
++    RefPtr<ScrollingTreePlatformLayer> frontmostInteractiveLayer;
+     for (size_t i = 0; i < layersAtPoint.size(); ++i) {
+         auto [layer, transformedPoint] = layersAtPoint[i];
+ 
+@@ -451,4 +453,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
+@@ -27,13 +27,13 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ 
+ #include "ThreadedScrollingTree.h"
+ 
+ namespace WebCore {
+ 
+-class ScrollingTreeCoordinated final : public ThreadedScrollingTree {
++class WEBCORE_EXPORT ScrollingTreeCoordinated final : public ThreadedScrollingTree {
+ public:
+     static Ref<ScrollingTreeCoordinated> create(AsyncScrollingCoordinator&);
+ 
+@@ -91,4 +91,4 @@
+ 
+ SPECIALIZE_TYPE_TRAITS_SCROLLING_TREE(WebCore::ScrollingTreeCoordinated, isScrollingTreeCoordinated())
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.cpp
+@@ -29,12 +29,14 @@
+ #include "config.h"
+ #include "ScrollingTreeFixedNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "Logging.h"
+ #include "ScrollingStateFixedNode.h"
+ #include "ScrollingThread.h"
+ #include <wtf/text/TextStream.h>
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -57,7 +59,7 @@
+ 
+     auto& fixedStateNode = downcast<ScrollingStateFixedNode>(stateNode);
+     if (fixedStateNode.hasChangedProperty(ScrollingStateNode::Property::Layer))
+-        m_layer = static_cast<CoordinatedPlatformLayer*>(fixedStateNode.layer());
++        m_layer = static_cast<ScrollingTreePlatformLayer*>(fixedStateNode.layer());
+ 
+     return ScrollingTreeFixedNode::commitStateBeforeChildren(stateNode);
+ }
+@@ -83,4 +85,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.h
+@@ -28,12 +28,14 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingTreeFixedNode.h"
+ #include <wtf/RefPtr.h>
+ 
++#include "ScrollingTreePlatformLayer.h"
++
+ namespace WebCore {
+-class CoordinatedPlatformLayer;
++
+ 
+ class ScrollingTreeFixedNodeCoordinated final : public ScrollingTreeFixedNode {
+ public:
+@@ -43,18 +45,18 @@
+ private:
+     ScrollingTreeFixedNodeCoordinated(ScrollingTree&, ScrollingNodeID);
+ 
+-    CoordinatedPlatformLayer* layer() const override { return m_layer.get(); }
++    ScrollingTreePlatformLayer* layer() const override { return m_layer.get(); }
+ 
+     bool commitStateBeforeChildren(const ScrollingStateNode&) override;
+     void applyLayerPositions() override WTF_REQUIRES_LOCK(scrollingTree()->treeLock());
+ 
+     void dumpProperties(WTF::TextStream&, OptionSet<ScrollingStateTreeAsTextBehavior>) const override;
+ 
+-    RefPtr<CoordinatedPlatformLayer> m_layer;
++    RefPtr<ScrollingTreePlatformLayer> m_layer;
+ };
+ 
+ } // namespace WebCore
+ 
+ SPECIALIZE_TYPE_TRAITS_SCROLLING_NODE(ScrollingTreeFixedNodeCoordinated, isFixedNodeCoordinated())
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.cpp
+@@ -29,14 +29,16 @@
+ #include "config.h"
+ #include "ScrollingTreeFrameScrollingNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "LocalFrameView.h"
+ #include "Logging.h"
+ #include "ScrollingStateFrameScrollingNode.h"
+ #include "ScrollingThread.h"
+ #include "ScrollingTreeScrollingNodeDelegateCoordinated.h"
+ #include "ThreadedScrollingTree.h"
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -69,17 +71,17 @@
+     const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
+ 
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::RootContentsLayer))
+-        m_rootContentsLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.rootContentsLayer());
++        m_rootContentsLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.rootContentsLayer());
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::CounterScrollingLayer))
+-        m_counterScrollingLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.counterScrollingLayer());
++        m_counterScrollingLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.counterScrollingLayer());
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::InsetClipLayer))
+-        m_insetClipLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.insetClipLayer());
++        m_insetClipLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.insetClipLayer());
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::ContentShadowLayer))
+-        m_contentShadowLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.contentShadowLayer());
++        m_contentShadowLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.contentShadowLayer());
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::HeaderLayer))
+-        m_headerLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.headerLayer());
++        m_headerLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.headerLayer());
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::FooterLayer))
+-        m_footerLayer = static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.footerLayer());
++        m_footerLayer = static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.footerLayer());
+ 
+     m_delegate->updateFromStateNode(scrollingStateNode);
+     return true;
+@@ -104,7 +106,7 @@
+ 
+ void ScrollingTreeFrameScrollingNodeCoordinated::repositionScrollingLayers()
+ {
+-    auto* scrollLayer = static_cast<CoordinatedPlatformLayer*>(scrolledContentsLayer());
++    auto* scrollLayer = static_cast<ScrollingTreePlatformLayer*>(scrolledContentsLayer());
+     if (!scrollLayer)
+         return;
+ 
+@@ -150,4 +152,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.h
+@@ -28,12 +28,14 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingTreeFrameScrollingNode.h"
+ #include <wtf/RefPtr.h>
+ 
++#include "ScrollingTreePlatformLayer.h"
++
+ namespace WebCore {
+-class CoordinatedPlatformLayer;
++
+ class ScrollingTreeScrollingNodeDelegateCoordinated;
+ 
+ class ScrollingTreeFrameScrollingNodeCoordinated final : public ScrollingTreeFrameScrollingNode {
+@@ -41,7 +43,7 @@
+     static Ref<ScrollingTreeFrameScrollingNode> create(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
+     virtual ~ScrollingTreeFrameScrollingNodeCoordinated();
+ 
+-    RefPtr<CoordinatedPlatformLayer> rootContentsLayer() const { return m_rootContentsLayer; }
++    RefPtr<ScrollingTreePlatformLayer> rootContentsLayer() const { return m_rootContentsLayer; }
+ 
+ private:
+     ScrollingTreeFrameScrollingNodeCoordinated(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
+@@ -55,14 +57,14 @@
+     void repositionScrollingLayers() override;
+     void repositionRelatedLayers() override;
+ 
+-    RefPtr<CoordinatedPlatformLayer> m_rootContentsLayer;
+-    RefPtr<CoordinatedPlatformLayer> m_counterScrollingLayer;
+-    RefPtr<CoordinatedPlatformLayer> m_insetClipLayer;
+-    RefPtr<CoordinatedPlatformLayer> m_contentShadowLayer;
+-    RefPtr<CoordinatedPlatformLayer> m_headerLayer;
+-    RefPtr<CoordinatedPlatformLayer> m_footerLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_rootContentsLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_counterScrollingLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_insetClipLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_contentShadowLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_headerLayer;
++    RefPtr<ScrollingTreePlatformLayer> m_footerLayer;
+ };
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.cpp
+@@ -29,10 +29,12 @@
+ #include "config.h"
+ #include "ScrollingTreeOverflowScrollingNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "ScrollingTreeScrollingNodeDelegateCoordinated.h"
+ #include "ThreadedScrollingTree.h"
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -65,7 +67,7 @@
+ 
+ void ScrollingTreeOverflowScrollingNodeCoordinated::repositionScrollingLayers()
+ {
+-    auto* scrollLayer = static_cast<CoordinatedPlatformLayer*>(scrollContainerLayer());
++    auto* scrollLayer = static_cast<ScrollingTreePlatformLayer*>(scrollContainerLayer());
+     ASSERT(scrollLayer);
+ 
+     auto scrollOffset = currentScrollOffset();
+@@ -84,4 +86,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.h
+@@ -28,7 +28,7 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingTreeOverflowScrollingNode.h"
+ 
+ namespace WebCore {
+@@ -52,4 +52,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.cpp
+@@ -27,12 +27,14 @@
+ #include "config.h"
+ #include "ScrollingTreeOverflowScrollProxyNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "Logging.h"
+ #include "ScrollingStateOverflowScrollProxyNode.h"
+ #include "ScrollingStateTree.h"
+ #include "ScrollingTree.h"
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -51,7 +53,7 @@
+ bool ScrollingTreeOverflowScrollProxyNodeCoordinated::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
+ {
+     if (stateNode.hasChangedProperty(ScrollingStateNode::Property::Layer))
+-        m_layer = static_cast<CoordinatedPlatformLayer*>(stateNode.layer());
++        m_layer = static_cast<ScrollingTreePlatformLayer*>(stateNode.layer());
+ 
+     return ScrollingTreeOverflowScrollProxyNode::commitStateBeforeChildren(stateNode);
+ }
+@@ -67,4 +69,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.h
+@@ -26,11 +26,13 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingTreeOverflowScrollProxyNode.h"
+ 
++#include "ScrollingTreePlatformLayer.h"
++
+ namespace WebCore {
+-class CoordinatedPlatformLayer;
++
+ 
+ class ScrollingTreeOverflowScrollProxyNodeCoordinated final : public ScrollingTreeOverflowScrollProxyNode {
+ public:
+@@ -43,13 +45,13 @@
+     bool commitStateBeforeChildren(const ScrollingStateNode&) override;
+     void applyLayerPositions() override;
+ 
+-    CoordinatedPlatformLayer* layer() const override { return m_layer.get(); }
++    ScrollingTreePlatformLayer* layer() const override { return m_layer.get(); }
+ 
+-    RefPtr<CoordinatedPlatformLayer> m_layer;
++    RefPtr<ScrollingTreePlatformLayer> m_layer;
+ };
+ 
+ } // namespace WebCore
+ 
+ SPECIALIZE_TYPE_TRAITS_SCROLLING_NODE(ScrollingTreeOverflowScrollProxyNodeCoordinated, isOverflowScrollProxyNodeCoordinated())
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.cpp
+@@ -29,12 +29,14 @@
+ #include "config.h"
+ #include "ScrollingTreePositionedNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "Logging.h"
+ #include "ScrollingStatePositionedNode.h"
+ #include "ScrollingThread.h"
+ #include "ScrollingTree.h"
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -53,7 +55,7 @@
+ bool ScrollingTreePositionedNodeCoordinated::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
+ {
+     if (stateNode.hasChangedProperty(ScrollingStateNode::Property::Layer))
+-        m_layer = static_cast<CoordinatedPlatformLayer*>(stateNode.layer());
++        m_layer = static_cast<ScrollingTreePlatformLayer*>(stateNode.layer());
+ 
+     return ScrollingTreePositionedNode::commitStateBeforeChildren(stateNode);
+ }
+@@ -70,4 +72,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.h
+@@ -28,18 +28,20 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingTreePositionedNode.h"
+ 
++#include "ScrollingTreePlatformLayer.h"
++
+ namespace WebCore {
+-class CoordinatedPlatformLayer;
++
+ 
+ class ScrollingTreePositionedNodeCoordinated final : public ScrollingTreePositionedNode {
+ public:
+     static Ref<ScrollingTreePositionedNodeCoordinated> create(ScrollingTree&, ScrollingNodeID);
+     virtual ~ScrollingTreePositionedNodeCoordinated();
+ 
+-    CoordinatedPlatformLayer* layer() const override { return m_layer.get(); }
++    ScrollingTreePlatformLayer* layer() const override { return m_layer.get(); }
+ 
+ private:
+     ScrollingTreePositionedNodeCoordinated(ScrollingTree&, ScrollingNodeID);
+@@ -47,11 +49,11 @@
+     bool commitStateBeforeChildren(const ScrollingStateNode&) override;
+     void applyLayerPositions() override;
+ 
+-    RefPtr<CoordinatedPlatformLayer> m_layer;
++    RefPtr<ScrollingTreePlatformLayer> m_layer;
+ };
+ 
+ } // namespace WebCore
+ 
+ SPECIALIZE_TYPE_TRAITS_SCROLLING_NODE(ScrollingTreePositionedNodeCoordinated, isPositionedNodeCoordinated())
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
+@@ -27,10 +27,12 @@
+ #include "config.h"
+ #include "ScrollingTreeScrollingNodeDelegateCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollerCoordinated.h"
+ #include "ScrollingStateFrameScrollingNode.h"
+ #include "ScrollingTreeOverflowScrollingNode.h"
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -88,10 +90,10 @@
+     }
+ 
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::HorizontalScrollbarLayer))
+-        horizontalScroller->setHostLayer(static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.horizontalScrollbarLayer()));
++        horizontalScroller->setHostLayer(static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.horizontalScrollbarLayer()));
+ 
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::VerticalScrollbarLayer))
+-        verticalScroller->setHostLayer(static_cast<CoordinatedPlatformLayer*>(scrollingStateNode.verticalScrollbarLayer()));
++        verticalScroller->setHostLayer(static_cast<ScrollingTreePlatformLayer*>(scrollingStateNode.verticalScrollbarLayer()));
+ 
+     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::ScrollbarEnabledState)) {
+         auto scrollbarEnabledState = scrollingStateNode.scrollbarEnabledState();
+@@ -136,4 +138,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
+@@ -28,7 +28,7 @@
+ 
+ #include "ScrollingTreeScrollingNodeDelegate.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ThreadedScrollingTreeScrollingNodeDelegate.h"
+ 
+ namespace WebCore {
+@@ -60,4 +60,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.cpp
+@@ -29,8 +29,8 @@
+ #include "config.h"
+ #include "ScrollingTreeStickyNodeCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
+-#include "CoordinatedPlatformLayer.h"
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++
+ #include "Logging.h"
+ #include "ScrollingStateStickyNode.h"
+ #include "ScrollingThread.h"
+@@ -39,6 +39,8 @@
+ #include "ScrollingTreeFrameScrollingNode.h"
+ #include "ScrollingTreeOverflowScrollingNode.h"
+ #include <wtf/text/TextStream.h>
++
++#include "ScrollingTreePlatformLayer.h"
+ 
+ namespace WebCore {
+ 
+@@ -55,7 +57,7 @@
+ bool ScrollingTreeStickyNodeCoordinated::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
+ {
+     if (stateNode.hasChangedProperty(ScrollingStateNode::Property::Layer))
+-        m_layer = static_cast<CoordinatedPlatformLayer*>(stateNode.layer());
++        m_layer = static_cast<ScrollingTreePlatformLayer*>(stateNode.layer());
+ 
+     return ScrollingTreeStickyNode::commitStateBeforeChildren(stateNode);
+ }
+@@ -76,4 +78,4 @@
+ 
+ } // namespace WebCore
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.h
+@@ -28,13 +28,15 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "ScrollingConstraints.h"
+ #include "ScrollingTreeStickyNode.h"
+ #include <wtf/RefPtr.h>
+ 
++#include "ScrollingTreePlatformLayer.h"
++
+ namespace WebCore {
+-class CoordinatedPlatformLayer;
++
+ 
+ class ScrollingTreeStickyNodeCoordinated final : public ScrollingTreeStickyNode {
+ public:
+@@ -47,13 +49,13 @@
+     bool commitStateBeforeChildren(const ScrollingStateNode&) override;
+     void applyLayerPositions() override;
+     FloatPoint layerTopLeft() const override;
+-    CoordinatedPlatformLayer* layer() const override { return m_layer.get(); }
++    ScrollingTreePlatformLayer* layer() const override { return m_layer.get(); }
+ 
+-    RefPtr<CoordinatedPlatformLayer> m_layer;
++    RefPtr<ScrollingTreePlatformLayer> m_layer;
+ };
+ 
+ } // namespace WebCore
+ 
+ SPECIALIZE_TYPE_TRAITS_SCROLLING_NODE(ScrollingTreeStickyNodeCoordinated, isStickyNode())
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/platform/graphics/coordinated/CoordinatedCompositionReason.h
++++ b/Source/WebCore/platform/graphics/coordinated/CoordinatedCompositionReason.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(COORDINATED_GRAPHICS)
++#if (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include <wtf/EnumTraits.h>
+ 
+ namespace WebCore {
+@@ -53,4 +53,4 @@
+ 
+ } // namespace WTF
+ 
+-#endif // USE(COORDINATED_GRAPHICS)
++#endif // (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebCore/page/scrolling/ScrollingPlatformLayer.h
++++ b/Source/WebCore/page/scrolling/ScrollingPlatformLayer.h
+@@ -32,6 +32,9 @@
+ #if USE(COORDINATED_GRAPHICS)
+ class CoordinatedPlatformLayer;
+ using ScrollingPlatformLayer = CoordinatedPlatformLayer;
++#elif USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING)
++class ScrollingLayerWC;
++using ScrollingPlatformLayer = ScrollingLayerWC;
+ #else
+ using ScrollingPlatformLayer = PlatformLayer;
+ #endif
+--- a/Source/WebCore/page/scrolling/ScrollingStateNode.h
++++ b/Source/WebCore/page/scrolling/ScrollingStateNode.h
+@@ -30,6 +30,9 @@
+ #include <WebCore/GraphicsLayer.h>
+ #include <WebCore/ScrollingCoordinator.h>
+ #include <WebCore/ScrollingPlatformLayer.h>
++#if USE(GRAPHICS_LAYER_WC)
++#include <WebCore/ScrollingLayerWC.h>
++#endif
+ #if USE(COORDINATED_GRAPHICS)
+ #include <WebCore/CoordinatedPlatformLayer.h>
+ #endif
+@@ -56,6 +59,9 @@
+ //    can be passed to the Scrolling Thread
+ // c) Remote scrolling UI process, where LayerRepresentation wraps just a PlatformLayerID.
+ class LayerRepresentation {
++#if USE(GRAPHICS_LAYER_WC)
++    using PlatformLayerContainer = RefPtr<ScrollingLayerWC>;
++#endif
+ public:
+     enum Type {
+         GraphicsLayerRepresentation,
+--- a/Source/WebCore/platform/graphics/GraphicsLayer.h
++++ b/Source/WebCore/platform/graphics/GraphicsLayer.h
+@@ -70,6 +70,9 @@
+ }
+ 
+ namespace WebCore {
++#if ENABLE(ASYNC_SCROLLING) && USE(GRAPHICS_LAYER_WC)
++class ScrollingLayerWC;
++#endif
+ 
+ class GraphicsContext;
+ class GraphicsLayerAnimation;
+@@ -429,6 +432,9 @@
+ 
+     // For hosting this GraphicsLayer in a native layer hierarchy.
+     virtual PlatformLayer* platformLayer() const { return nullptr; }
++#if ENABLE(ASYNC_SCROLLING) && USE(GRAPHICS_LAYER_WC)
++    virtual ScrollingLayerWC* scrollingLayerWC() const { return nullptr; }
++#endif
+ 
+     // Flippedness of the contents of this layer. Does not affect sublayer geometry.
+     virtual void setContentsOrientation(CompositingCoordinatesOrientation orientation) { m_contentsOrientation = orientation; }
+--- a/Source/WebCore/page/scrolling/ThreadedScrollingCoordinator.h
++++ b/Source/WebCore/page/scrolling/ThreadedScrollingCoordinator.h
+@@ -35,10 +35,10 @@
+ class ThreadedScrollingCoordinator : public AsyncScrollingCoordinator {
+     WTF_MAKE_TZONE_ALLOCATED_EXPORT(ThreadedScrollingCoordinator, WEBCORE_EXPORT);
+ protected:
+-    explicit ThreadedScrollingCoordinator(Page*);
+-    virtual ~ThreadedScrollingCoordinator();
++    WEBCORE_EXPORT explicit ThreadedScrollingCoordinator(Page*);
++    WEBCORE_EXPORT virtual ~ThreadedScrollingCoordinator();
+ 
+-    void commitTreeStateIfNeeded() override;
++    WEBCORE_EXPORT void commitTreeStateIfNeeded() override;
+     WEBCORE_EXPORT void hasNodeWithAnimatedScrollChanged(bool) override;
+     WEBCORE_EXPORT void pageDestroyed() override;
+ 
+--- a/Source/WebCore/PlatformWin.cmake
++++ b/Source/WebCore/PlatformWin.cmake
+@@ -246,3 +246,34 @@
+ if (USE_SKIA)
+     list(APPEND WebCore_PRIVATE_LIBRARIES ${SHARPYUV_LIBS})
+ endif ()
++
++if (ENABLE_ASYNC_SCROLLING)
++    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
++        "${WEBCORE_DIR}/page/scrolling/coordinated"
++    )
++    list(APPEND WebCore_SOURCES
++        platform/graphics/wc/ScrollingLayerWC.cpp
++        page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
++        page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.cpp
++    )
++    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
++        platform/graphics/coordinated/CoordinatedCompositionReason.h
++        platform/graphics/wc/ScrollingLayerWC.h
++        platform/graphics/wc/ScrollingSceneWC.h
++        page/scrolling/ScrollingTreePlatformLayer.h
++        page/scrolling/coordinated/ScrollingTreeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeFixedNodeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeFrameScrollingNodeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeOverflowScrollingNodeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeOverflowScrollProxyNodeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreePositionedNodeCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
++        page/scrolling/coordinated/ScrollingTreeStickyNodeCoordinated.h
++    )
++endif ()
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ScrollingCoordinatorCoordinated.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ScrollingCoordinatorCoordinated.cpp
+@@ -28,7 +28,7 @@
+ #include "config.h"
+ #include "ScrollingCoordinatorCoordinated.h"
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include "WebPage.h"
+ #include "WebPageProxyMessages.h"
+ #include "WebProcess.h"
+@@ -74,4 +74,4 @@
+ 
+ } // namespace WebKit
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ScrollingCoordinatorCoordinated.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ScrollingCoordinatorCoordinated.h
+@@ -27,7 +27,7 @@
+ 
+ #pragma once
+ 
+-#if ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ #include <WebCore/ThreadedScrollingCoordinator.h>
+ 
+ #if HAVE(DISPLAY_LINK)
+@@ -61,4 +61,4 @@
+ 
+ } // namespace WebKit
+ 
+-#endif // ENABLE(ASYNC_SCROLLING) && USE(COORDINATED_GRAPHICS)
++#endif // ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+--- a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp
++++ b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp
+@@ -187,7 +187,7 @@
+ #include "TiledCoreAnimationScrollingCoordinator.h"
+ #endif
+ 
+-#if USE(COORDINATED_GRAPHICS)
++#if USE(COORDINATED_GRAPHICS) || (USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING))
+ #include "ScrollingCoordinatorCoordinated.h"
+ #endif
+ 
+@@ -1601,7 +1601,7 @@
+     }
+ #elif PLATFORM(COCOA)
+     return RemoteScrollingCoordinator::create(page.get());
+-#elif USE(COORDINATED_GRAPHICS)
++#elif USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC)
+     return ScrollingCoordinatorCoordinated::create(page.get());
+ #else
+     return nullptr;
+--- a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h
+@@ -29,6 +29,9 @@
+ 
+ #include "WCUpdateInfo.h"
+ #include <WebCore/GraphicsLayerContentsDisplayDelegate.h>
++#if ENABLE(ASYNC_SCROLLING)
++#include <WebCore/ScrollingLayerWC.h>
++#endif
+ #include <wtf/DoublyLinkedList.h>
+ 
+ namespace WebCore {
+@@ -41,6 +44,9 @@
+ class GraphicsLayerWC final : public WebCore::GraphicsLayer, public DoublyLinkedListNode<GraphicsLayerWC> {
+ public:
+     struct Observer {
++#if ENABLE(ASYNC_SCROLLING)
++        virtual WebCore::ScrollingSceneWC& scrollingSceneWC() = 0;
++#endif
+         virtual void graphicsLayerAdded(GraphicsLayerWC&) = 0;
+         virtual void graphicsLayerRemoved(GraphicsLayerWC&) = 0;
+         virtual void commitLayerUpdateInfo(WCLayerUpdateInfo&&) = 0;
+@@ -53,6 +59,14 @@
+     void clearObserver() { m_observer = nullptr; }
+ 
+     // GraphicsLayer
++#if ENABLE(ASYNC_SCROLLING)
++    WebCore::ScrollingLayerWC* scrollingLayerWC() const override { return m_scrollingLayer.ptr(); }
++    void setScrollingNodeID(std::optional<WebCore::ScrollingNodeID> identifier) override
++    {
++        GraphicsLayer::setScrollingNodeID(identifier);
++        m_scrollingLayer->synchronize(*this);
++    }
++#endif
+     std::optional<WebCore::PlatformLayerIdentifier> primaryLayerID() const override;
+     void setNeedsDisplay() override;
+     void setNeedsDisplayInRect(const WebCore::FloatRect&, ShouldClipToLayer) override;
+@@ -129,6 +143,9 @@
+     GraphicsLayerWC* m_next;
+     WebCore::PlatformLayerIdentifier m_layerID { WebCore::PlatformLayerIdentifier::generate() };
+     Observer* m_observer;
++#if ENABLE(ASYNC_SCROLLING)
++    Ref<WebCore::ScrollingLayerWC> m_scrollingLayer;
++#endif
+     const std::unique_ptr<WCTiledBacking> m_tiledBacking;
+     PlatformLayer* m_platformLayer { nullptr };
+     bool m_hasContentsDisplayDelegate { false };
+--- a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp
+@@ -156,6 +156,9 @@
+ GraphicsLayerWC::GraphicsLayerWC(Type layerType, GraphicsLayerClient& client, Observer& observer)
+     : GraphicsLayer(layerType, client)
+     , m_observer(&observer)
++#if ENABLE(ASYNC_SCROLLING)
++    , m_scrollingLayer(ScrollingLayerWC::create(observer.scrollingSceneWC(), m_layerID))
++#endif
+ {
+     lazyInitialize(m_tiledBacking, makeUnique<WCTiledBacking>(*this));
+     if (layerType == Type::Normal)
+@@ -543,6 +546,9 @@
+ 
+ void GraphicsLayerWC::flushCompositingStateForThisLayerOnly()
+ {
++#if ENABLE(ASYNC_SCROLLING)
++    m_scrollingLayer->synchronize(*this);
++#endif
+     if (!m_uncommittedChanges)
+         return;
+     WCLayerUpdateInfo update {
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
+@@ -71,6 +71,10 @@
+     bool shouldUseTiledBackingForFrameView(const WebCore::LocalFrameView&) const override;
+     void displayDidRefresh(MonotonicTime = MonotonicTime::now()) override;
+     // GraphicsLayerWC::Observer
++#if ENABLE(ASYNC_SCROLLING)
++    WebCore::ScrollingSceneWC& scrollingSceneWC() override { return m_scrollingScene.get(); }
++    Ref<WebCore::ScrollingSceneWC> m_scrollingScene { WebCore::ScrollingSceneWC::create() };
++#endif
+     void graphicsLayerAdded(GraphicsLayerWC&) override;
+     void graphicsLayerRemoved(GraphicsLayerWC&) override;
+     void commitLayerUpdateInfo(WCLayerUpdateInfo&&) override;
+--- a/Source/WebKit/PlatformWin.cmake
++++ b/Source/WebKit/PlatformWin.cmake
+@@ -197,3 +197,8 @@
+         list(APPEND WebKit_PLATFORM_SWIFT_CLANG_FLAG_PAIRS "-Xcc -ivfsoverlay -Xcc ${_win_vfs_overlay}")
+     endif ()
+ endif ()
++
++if (ENABLE_ASYNC_SCROLLING)
++    list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics")
++    list(APPEND WebKit_SOURCES WebProcess/WebPage/CoordinatedGraphics/ScrollingCoordinatorCoordinated.cpp)
++endif ()
+--- a/Source/cmake/OptionsWin.cmake
++++ b/Source/cmake/OptionsWin.cmake
+@@ -194,3 +194,8 @@
+     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+ endif ()
++
++# WC uses the same event-region and scrolling-thread machinery as coordinated
++# graphics; layer publication is provided by the Windows WC bridge.
++SET_AND_EXPOSE_TO_BUILD(ENABLE_SCROLLING_THREAD ${ENABLE_ASYNC_SCROLLING})
++SET_AND_EXPOSE_TO_BUILD(ENABLE_WHEEL_EVENT_REGIONS ${ENABLE_ASYNC_SCROLLING})
+--- a/Source/WebCore/page/scrolling/ScrollingTreeNode.h
++++ b/Source/WebCore/page/scrolling/ScrollingTreeNode.h
+@@ -61,7 +61,7 @@
+     bool isPositionedNodeCocoa() const { return isPositionedNode(); }
+     bool isOverflowScrollProxyNodeCocoa() const { return isOverflowScrollProxyNode(); }
+ #endif
+-#if USE(COORDINATED_GRAPHICS)
++#if USE(COORDINATED_GRAPHICS) || (PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC))
+     bool isFixedNodeCoordinated() const { return isFixedNode(); }
+     bool isPositionedNodeCoordinated() const { return isPositionedNode(); }
+     bool isOverflowScrollProxyNodeCoordinated() const { return isOverflowScrollProxyNode(); }
+--- a/Source/WebCore/platform/PlatformWheelEvent.h
++++ b/Source/WebCore/platform/PlatformWheelEvent.h
+@@ -185,7 +185,7 @@
+     PlatformWheelEventPhase phase() const { return m_phase; }
+     PlatformWheelEventPhase momentumPhase() const { return m_momentumPhase; }
+ 
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     bool isGestureStart() const;
+     bool isGestureCancel() const;
+ 
+@@ -260,7 +260,7 @@
+ 
+ #endif // ENABLE(ASYNC_SCROLLING)
+ 
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+ 
+ inline bool PlatformWheelEvent::isGestureEvent() const
+ {
+--- a/Source/WebCore/page/EventHandler.h
++++ b/Source/WebCore/page/EventHandler.h
+@@ -422,7 +422,7 @@
+ 
+     WEBCORE_EXPORT std::optional<Cursor> selectCursor(const HitTestResult&, bool shiftKey);
+ 
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     std::optional<WheelScrollGestureState> wheelScrollGestureState() const { return m_wheelScrollGestureState; }
+ #endif
+ 
+@@ -798,7 +798,7 @@
+     bool m_hasActiveGesture { false };
+ #endif
+ 
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     std::optional<WheelScrollGestureState> m_wheelScrollGestureState;
+ #endif
+ 
+--- a/Source/WebCore/page/EventHandler.cpp
++++ b/Source/WebCore/page/EventHandler.cpp
+@@ -3652,7 +3652,7 @@
+ std::pair<HandleUserInputEventResult, OptionSet<EventHandling>> EventHandler::handleWheelEvent(const PlatformWheelEvent& wheelEvent, OptionSet<WheelEventProcessingSteps> processingSteps)
+ {
+     Ref frame = m_frame.get();
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     if (wheelEvent.isGestureStart())
+         m_wheelScrollGestureState = std::nullopt;
+ #endif
+@@ -3906,7 +3906,7 @@
+ 
+ std::optional<WheelScrollGestureState> EventHandler::updateWheelGestureState(const PlatformWheelEvent& wheelEvent, OptionSet<EventHandling> eventHandling)
+ {
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     if (!m_wheelScrollGestureState && wheelEvent.isGestureStart() && eventHandling.contains(EventHandling::DispatchedToDOM))
+         m_wheelScrollGestureState = eventHandling.contains(EventHandling::DefaultPrevented) ? WheelScrollGestureState::Blocking : WheelScrollGestureState::NonBlocking;
+ 
+--- a/Source/WebCore/page/scrolling/ScrollingTreeScrollingNode.cpp
++++ b/Source/WebCore/page/scrolling/ScrollingTreeScrollingNode.cpp
+@@ -25,6 +25,9 @@
+ 
+ #include "config.h"
+ #include "ScrollingTreeScrollingNode.h"
++#if PLATFORM(WIN) && USE(TEXTURE_MAPPER)
++#include "TextureMapperPlatformLayer.h"
++#endif
+ 
+ #if ENABLE(ASYNC_SCROLLING)
+ 
+--- a/Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml
++++ b/Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml
+@@ -557,6 +557,7 @@
+     default: false
+     WebKit:
+       "USE(COORDINATED_GRAPHICS)": true
++      "PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)": true
+       "PLATFORM(COCOA)": true
+       default: false
+ 
+@@ -571,6 +572,7 @@
+     default: false
+     WebKit:
+       "USE(COORDINATED_GRAPHICS)": true
++      "PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)": true
+       "PLATFORM(COCOA)": true
+       default: false
+ 
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -126,7 +126,11 @@
+ {
+     Settings& settings = m_webPage->corePage()->settings();
+     settings.setAcceleratedCompositingForFixedPositionEnabled(settings.acceleratedCompositingEnabled());
+-    settings.setForceCompositingMode(store.getBoolValueForKey(WebPreferencesKey::siteIsolationEnabledKey()));
++    bool requiresRootCompositing = store.getBoolValueForKey(WebPreferencesKey::siteIsolationEnabledKey());
++#if ENABLE(ASYNC_SCROLLING)
++    requiresRootCompositing |= settings.acceleratedCompositingEnabled() && settings.asyncFrameScrollingEnabled();
++#endif
++    settings.setForceCompositingMode(requiresRootCompositing);
+ }
+ 
+ bool DrawingAreaWC::shouldUseTiledBackingForFrameView(const WebCore::LocalFrameView& frameView) const
+--- a/Source/WebCore/page/scrolling/ScrollingCoordinator.cpp
++++ b/Source/WebCore/page/scrolling/ScrollingCoordinator.cpp
+@@ -52,7 +52,7 @@
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(ScrollingCoordinator);
+ 
+-#if PLATFORM(IOS_FAMILY) || !ENABLE(ASYNC_SCROLLING) || USE(COORDINATED_GRAPHICS)
++#if PLATFORM(IOS_FAMILY) || !ENABLE(ASYNC_SCROLLING) || USE(COORDINATED_GRAPHICS) || (PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC))
+ Ref<ScrollingCoordinator> ScrollingCoordinator::create(Page* page)
+ {
+     return adoptRef(*new ScrollingCoordinator(page));
+@@ -82,7 +82,7 @@
+ 
+     Ref localFrame = frameView.frame();
+     if (!localFrame->isMainFrame() && !m_page->settings().scrollingTreeIncludesFrames()
+-#if PLATFORM(MAC) || USE(COORDINATED_GRAPHICS)
++#if PLATFORM(MAC) || USE(COORDINATED_GRAPHICS) || (PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC))
+         && !m_page->settings().asyncFrameScrollingEnabled()
+ #endif
+     )
+--- a/Source/WebCore/platform/PlatformWheelEvent.serialization.in
++++ b/Source/WebCore/platform/PlatformWheelEvent.serialization.in
+@@ -22,7 +22,7 @@
+ 
+ enum class WebCore::PlatformWheelEventPhase : uint8_t {
+     None,
+-#if ENABLE(KINETIC_SCROLLING)
++#if ENABLE(KINETIC_SCROLLING) || ENABLE(ASYNC_SCROLLING)
+     Began,
+     Stationary,
+     Changed,

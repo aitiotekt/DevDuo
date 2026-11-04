@@ -11,11 +11,19 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <tuple>
 #include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
 namespace {
 thread_local std::wstring lastError;
+double monotonicSeconds()
+{
+    LARGE_INTEGER tick, frequency;
+    QueryPerformanceCounter(&tick);
+    QueryPerformanceFrequency(&frequency);
+    return static_cast<double>(tick.QuadPart) / frequency.QuadPart;
+}
 class CompositionFailure : public std::runtime_error {
 public:
     HRESULT result;
@@ -39,6 +47,24 @@ D2D1_COLOR_F color(unsigned value, float alpha = 1)
 {
     return { ((value >> 16) & 255) / 255.f, ((value >> 8) & 255) / 255.f, (value & 255) / 255.f, alpha };
 }
+class SharedTextureReadLock {
+    ComPtr<IDXGIKeyedMutex> mutex;
+    bool held = false;
+public:
+    explicit SharedTextureReadLock(ID3D11Texture2D* texture, unsigned long long key)
+    {
+        check(texture->QueryInterface(IID_PPV_ARGS(&mutex)));
+        const auto result = mutex->AcquireSync(key, 0);
+        check(result == S_OK ? S_OK : result == WAIT_TIMEOUT ? E_PENDING : HRESULT_FROM_WIN32(ERROR_INVALID_STATE));
+        held = true;
+    }
+    ~SharedTextureReadLock() { if (held) mutex->ReleaseSync(0); }
+    void release()
+    {
+        check(mutex->ReleaseSync(0));
+        held = false;
+    }
+};
 struct Item {
     DDChrome frame;
     std::wstring text;
@@ -64,9 +90,8 @@ enum Kind { Top,
 bool hasGlass(int kind) { return kind <= TabGroup || kind == CompactAddress; }
 
 // Role-dependent artistic optics; the page and foreground are separate inputs.
-DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
+DDMaterial materialForRole(int kind, bool dark, DDMaterial material)
 {
-    const bool dark = frame.foreground == 0xffffff;
     const float luminance = (((material.tint >> 16) & 255) * .2126f + ((material.tint >> 8) & 255) * .7152f + (material.tint & 255) * .0722f) / 255;
     // Preserve the dark/light recipes at the ends, but blend through the old
     // .36 cutoff. A one-channel sampling change must not switch glass opacity.
@@ -79,14 +104,14 @@ DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
             result |= static_cast<unsigned>(std::round(blend(static_cast<float>((onDark >> shift) & 255), static_cast<float>((onLight >> shift) & 255)))) << shift;
         return result;
     };
-    if (frame.kind == Top) {
+    if (kind == Top) {
         material.tint = dark ? 0x2b3c4f : 0xffffff;
         material.alpha = std::min(.95f, material.alpha * (dark ? 2.4f : 2.7f));
         material.strength = std::min(1.f, material.strength * 2);
         material.blur *= 1.2f;
         material.topHighlight = material.edgeHighlight = material.sheen = 0;
         material.shadow = 0;
-    } else if (frame.kind == CompactAddress) {
+    } else if (kind == CompactAddress) {
         material.tint = dark ? blendTint(0x74808f, 0x657382) : 0xffffff;
         material.alpha *= dark ? blend(.65f, 2.5f) : blend(2.f, .2f);
         material.topHighlight *= .08f;
@@ -94,7 +119,7 @@ DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
         material.sheen = 0;
         material.shadow *= .15f;
         material.blur *= .7f;
-    } else if (frame.kind <= TabGroup) {
+    } else if (kind <= TabGroup) {
         material.tint = dark ? blendTint(0x8b97a5, 0x657382) : 0xffffff;
         material.alpha *= dark ? blend(1.1f, 2.5f) : blend(2.f, .55f);
         material.topHighlight *= dark ? .35f : .65f;
@@ -102,6 +127,35 @@ DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
         material.sheen *= .5f;
     }
     return material;
+}
+
+DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
+{
+    const bool dark = frame.foreground == 0xffffff;
+    if (frame.kind != Address && frame.kind != CompactAddress)
+        return materialForRole(frame.kind, dark, material);
+    auto expanded = materialForRole(Address, dark, material);
+    const auto compact = materialForRole(CompactAddress, dark, material);
+    const auto fraction = std::clamp(frame.compactMaterial, 0.f, 1.f);
+    unsigned tint = 0;
+    for (int shift : { 0, 8, 16 })
+        tint |= static_cast<unsigned>(std::round(std::lerp(static_cast<float>((expanded.tint >> shift) & 255),
+            static_cast<float>((compact.tint >> shift) & 255), fraction))) << shift;
+    expanded.tint = tint;
+    expanded.alpha = std::lerp(expanded.alpha, compact.alpha, fraction);
+    expanded.strength = std::lerp(expanded.strength, compact.strength, fraction);
+    expanded.shadow = std::lerp(expanded.shadow, compact.shadow, fraction);
+    expanded.scale = std::lerp(expanded.scale, compact.scale, fraction);
+    expanded.blur = std::lerp(expanded.blur, compact.blur, fraction);
+    expanded.saturation = std::lerp(expanded.saturation, compact.saturation, fraction);
+    expanded.brightness = std::lerp(expanded.brightness, compact.brightness, fraction);
+    expanded.contrast = std::lerp(expanded.contrast, compact.contrast, fraction);
+    expanded.topHighlight = std::lerp(expanded.topHighlight, compact.topHighlight, fraction);
+    expanded.edgeHighlight = std::lerp(expanded.edgeHighlight, compact.edgeHighlight, fraction);
+    expanded.sheen = std::lerp(expanded.sheen, compact.sheen, fraction);
+    expanded.shadowBlur = std::lerp(expanded.shadowBlur, compact.shadowBlur, fraction);
+    expanded.shadowOffset = std::lerp(expanded.shadowOffset, compact.shadowOffset, fraction);
+    return expanded;
 }
 class Compositor {
 public:
@@ -118,6 +172,19 @@ public:
     ComPtr<IDCompositionTarget> target;
     ComPtr<IDCompositionVisual2> root;
     ComPtr<IUnknown> page;
+    ComPtr<IDCompositionSurface> pageSurface;
+    int pageSurfaceWidth = 0, pageSurfaceHeight = 0;
+    std::vector<ComPtr<IDCompositionVisual2>> pageVisuals;
+    ComPtr<ID3D11Texture2D> sharedPageTexture;
+    ComPtr<ID3D11Texture2D> rawPageTexture, finalPageTexture;
+    ComPtr<ID3D11Texture2D> presentedPageTexture;
+    ComPtr<ID2D1Bitmap1> rawPageBitmap, finalPageBitmap;
+    ComPtr<ID2D1DeviceContext> pageContext;
+    HANDLE sharedPageHandle = nullptr;
+    unsigned long long pageFrameID = 0, pageDocumentEpoch = 0;
+    unsigned long long rawFrameID = 0, rawDocumentEpoch = 0;
+    unsigned long long pagePresentations = 0, gpuTransfers = 0, cpuTransfers = 0, pageCaptures = 0;
+    int rawPageWidth = 0, rawPageHeight = 0, finalPageWidth = 0, finalPageHeight = 0;
     ComPtr<ID2D1Factory1> factory;
     ComPtr<ID2D1Device> drawing;
     ComPtr<IDWriteFactory> textFactory;
@@ -129,10 +196,28 @@ public:
     float pointerDiameter = 0;
     D2D1_RECT_F indicatorRect { };
     float indicatorOpacity = 0;
+    struct GlassNode {
+        size_t index;
+        ComPtr<IDCompositionGaussianBlurEffect> blur;
+        ComPtr<IDCompositionColorMatrixEffect> correction;
+        ComPtr<IDCompositionVisual3> opacity;
+        ComPtr<IDCompositionRectangleClip> clip;
+    };
+    std::vector<GlassNode> glassNodes;
+    std::vector<ComPtr<IDCompositionVisual2>> boundaryVisuals;
+    ComPtr<IDCompositionVisual2> shadowVisual, decorationVisual, foregroundVisual;
+    ComPtr<IDCompositionGaussianBlurEffect> shadowEffect;
+    ComPtr<IDCompositionSurface> foregroundSurface, shadowSurface;
+    std::vector<DDFill> previousFills;
+    DDMaterial previousMaterial { };
+    bool sceneReady = false;
+    bool sceneUpdateIncomplete = false;
+    unsigned long long structureUpdates = 0, materialUpdates = 0, boundaryUpdates = 0, foregroundUpdates = 0;
     std::vector<Item> items;
     int width = 0, height = 0;
     bool softwareDevice = false;
     unsigned long long resourceGeneration = 0, sceneGeneration = 0;
+    double updateStartSeconds = 0, commitStartSeconds = 0, commitEndSeconds = 0;
     HWND presentationWindow = nullptr;
     int rotation = 0, offsetX = 0, offsetY = 0;
 
@@ -146,7 +231,8 @@ public:
     }
     void initialize(bool forceSoftware = false)
     {
-        // The DWM redirection surface is the live source, never a captured image.
+        // The HWND remains the input/native-popup owner. Page pixels arrive
+        // through the frame lease API, independent of window redirection.
         SetWindowLongPtrW(browser, GWL_EXSTYLE, originalStyle | WS_EX_LAYERED);
         SetWindowLongPtrW(browser, GWL_STYLE, originalWindowStyle & ~WS_CLIPSIBLINGS);
         if (!SetLayeredWindowAttributes(browser, 0, 255, LWA_ALPHA))
@@ -175,7 +261,9 @@ public:
         check(desktop->CreateTargetForHwnd(presentationWindow ? presentationWindow : parent, TRUE, &target));
         check(composition->CreateVisual(&root));
         check(target->SetRoot(root.Get()));
-        check(desktop->CreateSurfaceFromHwnd(browser, &page));
+        ComPtr<IDCompositionSurface> empty;
+        check(composition->CreateSurface(1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED, &empty));
+        check(empty.As(&page));
         applyPresentation();
         ++resourceGeneration;
         lastError.clear();
@@ -225,6 +313,7 @@ public:
     }
     void setPresentation(HWND window, int degrees, int x, int y)
     {
+        if (sceneUpdateIncomplete) check(E_UNEXPECTED);
         if (!IsWindow(window) || (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270)) check(E_INVALIDARG);
         if (presentationWindow != window) {
             check(target->SetRoot(nullptr));
@@ -267,8 +356,10 @@ public:
     }
     bool refresh()
     {
-        if (SUCCEEDED(device->GetDeviceRemovedReason()))
+        if (SUCCEEDED(device->GetDeviceRemovedReason())) {
+            if (sceneUpdateIncomplete) check(E_UNEXPECTED);
             return false;
+        }
         resetResources();
         initializeWithFallback();
         return true;
@@ -279,6 +370,12 @@ public:
             target->SetRoot(nullptr);
         if (composition)
             composition->Commit();
+        sceneReady = false;
+        sceneUpdateIncomplete = false;
+        glassNodes.clear();
+        boundaryVisuals.clear();
+        shadowVisual.Reset(); decorationVisual.Reset(); foregroundVisual.Reset();
+        shadowEffect.Reset(); foregroundSurface.Reset(); shadowSurface.Reset();
         decorations.Reset();
         indicatorSurface.Reset();
         indicatorVisual.Reset();
@@ -291,6 +388,15 @@ public:
         indicatorOpacity = 0;
         boundary.Reset();
         page.Reset();
+        pageSurface.Reset();
+        pageSurfaceWidth = pageSurfaceHeight = 0;
+        pageVisuals.clear();
+        sharedPageTexture.Reset();
+        rawPageTexture.Reset(); finalPageTexture.Reset();
+        presentedPageTexture.Reset();
+        rawPageBitmap.Reset(); finalPageBitmap.Reset(); pageContext.Reset();
+        rawPageWidth = rawPageHeight = finalPageWidth = finalPageHeight = 0;
+        sharedPageHandle = nullptr;
         root.Reset();
         target.Reset();
         composition.Reset();
@@ -310,7 +416,7 @@ public:
     template <typename Paint>
     void paintSurface(ComPtr<IDCompositionSurface>& surface, Paint paint)
     {
-        check(composition->CreateSurface(
+        if (!surface) check(composition->CreateSurface(
             width, height, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED, &surface));
         ComPtr<ID2D1DeviceContext> context;
         POINT offset;
@@ -318,25 +424,166 @@ public:
         context->SetDpi(96, 96);
         context->SetTransform(
             D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+        // BeginDraw may return a pooled texture larger than this logical surface.
+        // Clear is not transformed, so constrain it and all drawing to our region.
+        context->PushAxisAlignedClip(D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)), D2D1_ANTIALIAS_MODE_ALIASED);
         context->Clear(D2D1::ColorF(0, 0));
         try {
             paint(context.Get());
         } catch (...) {
+            context->PopAxisAlignedClip();
             surface->EndDraw();
             throw;
         }
+        context->PopAxisAlignedClip();
         check(surface->EndDraw());
     }
     void addBase(IDCompositionVisual2* group)
     {
         auto source = visual(page.Get());
+        pageVisuals.push_back(source);
         check(group->AddVisual(source.Get(), FALSE, nullptr));
         auto fill = visual(boundary.Get());
+        boundaryVisuals.push_back(fill);
         check(group->AddVisual(fill.Get(), FALSE, nullptr));
+    }
+    void createPageBuffers(int w, int h)
+    {
+        if (rawPageTexture && rawPageWidth == w && rawPageHeight == h && finalPageWidth == width && finalPageHeight == height) return;
+        rawPageBitmap.Reset(); finalPageBitmap.Reset(); pageContext.Reset();
+        rawPageTexture.Reset(); finalPageTexture.Reset();
+        D3D11_TEXTURE2D_DESC description { };
+        description.Width = w; description.Height = h;
+        description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        check(device->CreateTexture2D(&description, nullptr, &rawPageTexture));
+        description.Width = std::max(1, width); description.Height = std::max(1, height);
+        check(device->CreateTexture2D(&description, nullptr, &finalPageTexture));
+        check(drawing->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &pageContext));
+        ComPtr<IDXGISurface> raw, final;
+        check(rawPageTexture.As(&raw)); check(finalPageTexture.As(&final));
+        auto properties = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        check(pageContext->CreateBitmapFromDxgiSurface(raw.Get(), &properties, &rawPageBitmap));
+        properties.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET;
+        check(pageContext->CreateBitmapFromDxgiSurface(final.Get(), &properties, &finalPageBitmap));
+        pageContext->SetTarget(finalPageBitmap.Get());
+        pageContext->SetDpi(96, 96);
+        pageContext->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+        rawPageWidth = w; rawPageHeight = h;
+        finalPageWidth = std::max(1, width); finalPageHeight = std::max(1, height);
+    }
+    HRESULT presentPageFrame(DDPageFrame frame, const DDFill* fills, int fillCount)
+    {
+        if (sceneUpdateIncomplete) check(E_UNEXPECTED);
+        const bool contentChanged = frame.flags & 1;
+        if (frame.width < 1 || frame.height < 1 || frame.width > 32767 || frame.height > 32767
+            || fillCount < 0 || fillCount > 16 || (fillCount && !fills)
+            || (contentChanged && !frame.sharedTexture && (!frame.pixels || frame.rowBytes < static_cast<unsigned>(frame.width) * 4)))
+            check(E_INVALIDARG);
+        const auto begin = monotonicSeconds();
+        if (contentChanged) {
+            createPageBuffers(frame.width, frame.height);
+            ComPtr<ID3D11DeviceContext> queue;
+            device->GetImmediateContext(&queue);
+            if (frame.sharedTexture) {
+                // Legacy DXGI sharing tokens are not NT handles; never close
+                // them with CloseHandle. COM references retain the resource.
+                if (sharedPageHandle != frame.sharedTexture) {
+                    sharedPageTexture.Reset();
+                    check(device->OpenSharedResource(frame.sharedTexture, IID_PPV_ARGS(&sharedPageTexture)));
+                    sharedPageHandle = frame.sharedTexture;
+                }
+                SharedTextureReadLock readLock(sharedPageTexture.Get(), frame.flags & 2 ? 0 : 1);
+                D3D11_TEXTURE2D_DESC description;
+                sharedPageTexture->GetDesc(&description);
+                if (description.Width != static_cast<unsigned>(frame.width) || description.Height != static_cast<unsigned>(frame.height)
+                    || description.Format != DXGI_FORMAT_B8G8R8A8_UNORM) check(E_INVALIDARG);
+                queue->CopyResource(rawPageTexture.Get(), sharedPageTexture.Get());
+                queue->Flush();
+                readLock.release();
+                ++gpuTransfers;
+            } else {
+                queue->UpdateSubresource(rawPageTexture.Get(), 0, nullptr, frame.pixels, frame.rowBytes, 0);
+                ++cpuTransfers;
+            }
+            rawFrameID = frame.frameID; rawDocumentEpoch = frame.documentEpoch;
+        } else if (!rawPageTexture || rawFrameID != frame.frameID || rawDocumentEpoch != frame.documentEpoch)
+            return S_FALSE;
+        // Retain raw content even if scene layout overtakes this frame. A later
+        // geometry/resource replay must not reacquire a consumed producer key.
+        // The host validates the source against the current logical geometry
+        // and backing scale, marking stale frames with bit 4. HWND rounding is
+        // independent of that raster extent; do not discard a valid fractional
+        // scale frame merely because one physical edge differs.
+        if ((frame.flags & 4) || finalPageWidth != width || finalPageHeight != height) return S_FALSE;
+        sceneUpdateIncomplete = true;
+        pageContext->SetTarget(finalPageBitmap.Get());
+        pageContext->BeginDraw();
+        pageContext->Clear(color(frame.background));
+        // Copy at native pixel size. Clip excess pixels and clear any physical
+        // rounding margin with the frame's background, never stretch the page.
+        pageContext->DrawBitmap(rawPageBitmap.Get(), D2D1::RectF(0, 0, static_cast<float>(frame.width), static_cast<float>(frame.height)),
+            1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        pageContext->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+        ComPtr<ID2D1SolidColorBrush> brush;
+        check(pageContext->CreateSolidColorBrush(D2D1::ColorF(0, 0), &brush));
+        for (int index = 0; index < fillCount; ++index) {
+            const auto& fill = fills[index];
+            if (!std::isfinite(fill.x) || !std::isfinite(fill.y) || !std::isfinite(fill.width) || !std::isfinite(fill.height)
+                || fill.width < 0 || fill.height < 0) check(E_INVALIDARG);
+            brush->SetColor(color(fill.color));
+            pageContext->FillRectangle(D2D1::RectF(fill.x, fill.y, fill.x + fill.width, fill.y + fill.height), brush.Get());
+        }
+        check(pageContext->EndDraw());
+        pageContext->SetTarget(nullptr);
+        auto next = pageSurface;
+        if (!next || pageSurfaceWidth != width || pageSurfaceHeight != height) next.Reset();
+        paintSurface(next, [&](ID2D1DeviceContext* context) {
+            context->DrawBitmap(finalPageBitmap.Get(), D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)),
+                1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        });
+        for (auto& visual : pageVisuals) check(visual->SetContent(next.Get()));
+        check(next.As(&page));
+        const auto commit = monotonicSeconds();
+        check(composition->Commit());
+        pageSurface = next;
+        presentedPageTexture = finalPageTexture;
+        pageSurfaceWidth = width; pageSurfaceHeight = height;
+        pageFrameID = frame.frameID; pageDocumentEpoch = frame.documentEpoch;
+        ++pagePresentations;
+        updateStartSeconds = begin; commitStartSeconds = commit; commitEndSeconds = monotonicSeconds();
+        sceneUpdateIncomplete = false;
+        return S_OK;
+    }
+    void copyPagePixels(void* pixels, unsigned rowBytes, int w, int h)
+    {
+        if (sceneUpdateIncomplete || !presentedPageTexture || !pixels || w != pageSurfaceWidth || h != pageSurfaceHeight
+            || rowBytes < static_cast<unsigned>(w) * 4) check(E_INVALIDARG);
+        D3D11_TEXTURE2D_DESC description;
+        presentedPageTexture->GetDesc(&description);
+        description.Usage = D3D11_USAGE_STAGING;
+        description.BindFlags = description.MiscFlags = 0;
+        description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;
+        check(device->CreateTexture2D(&description, nullptr, &staging));
+        ComPtr<ID3D11DeviceContext> queue;
+        device->GetImmediateContext(&queue);
+        queue->CopyResource(staging.Get(), presentedPageTexture.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        check(queue->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+        for (int y = 0; y < h; ++y)
+            memcpy(static_cast<unsigned char*>(pixels) + static_cast<size_t>(y) * rowBytes,
+                static_cast<const unsigned char*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch, static_cast<size_t>(w) * 4);
+        queue->Unmap(staging.Get(), 0);
+        ++pageCaptures;
     }
     void update(
         int w, int h, const DDChrome* frames, int count, const DDFill* fills, int fillCount, DDMaterial material)
     {
+        updateStartSeconds = monotonicSeconds();
         if (w < 1 || h < 1 || w > 32767 || h > 32767 || count < 0 || count > 100 || fillCount < 0 || fillCount > 16
             || (count && !frames) || (fillCount && !fills) || !std::isfinite(material.scale) || material.scale <= 0
             || !std::isfinite(material.alpha) || !std::isfinite(material.strength) || !std::isfinite(material.shadow))
@@ -344,11 +591,11 @@ public:
         for (int i = 0; i < count; ++i) {
             const auto& f = frames[i];
             const float values[] = { f.x, f.y, f.width, f.height, f.visualX, f.visualY, f.visualWidth, f.visualHeight,
-                f.radius, f.fontSize, f.clipWidth };
+                f.radius, f.fontSize, f.clipWidth, f.compactMaterial };
             if (f.kind < Top || f.kind > CompactAddress || f.action < 0 || f.action > 7
                 || std::any_of(std::begin(values), std::end(values), [](float value) { return !std::isfinite(value); })
                 || f.width < 0 || f.height < 0 || f.visualWidth < 0 || f.visualHeight < 0 || f.radius < 0
-                || f.fontSize <= 0)
+                || f.fontSize <= 0 || f.compactMaterial < 0 || f.compactMaterial > 1)
                 check(E_INVALIDARG);
         }
         const float optical[] = { material.blur, material.saturation, material.brightness, material.contrast,
@@ -363,13 +610,52 @@ public:
                 || f.width < 0 || f.height < 0)
                 check(E_INVALIDARG);
         }
+        if (sceneUpdateIncomplete) check(E_UNEXPECTED);
+        auto geometryKey = [](const DDChrome& f) {
+            return std::tuple { f.kind, f.x, f.y, f.width, f.height, f.visualX, f.visualY, f.visualWidth, f.visualHeight, f.radius };
+        };
+        auto materialKey = [](const DDMaterial& m) {
+            return std::tuple { m.tint, m.alpha, m.strength, m.shadow, m.scale, m.blur, m.saturation, m.brightness,
+                m.contrast, m.topHighlight, m.edgeHighlight, m.sheen, m.shadowBlur, m.shadowOffset };
+        };
+        auto fillKey = [](const DDFill& f) { return std::tuple { f.x, f.y, f.width, f.height, f.color }; };
+        const bool surfaceSizeChanged = !sceneReady || w != width || h != height;
+        bool structureChanged = surfaceSizeChanged || items.size() != static_cast<size_t>(count);
+        bool geometryChanged = structureChanged;
+        bool textChanged = geometryChanged;
+        bool materialChanged = !sceneReady || materialKey(material) != materialKey(previousMaterial);
+        if (!geometryChanged) {
+            for (int i = 0; i < count; ++i) {
+                structureChanged |= frames[i].kind != items[i].frame.kind;
+                geometryChanged |= geometryKey(frames[i]) != geometryKey(items[i].frame);
+                textChanged |= items[i].text != (frames[i].text ? frames[i].text : L"")
+                    || frames[i].foreground != items[i].frame.foreground || frames[i].fontSize != items[i].frame.fontSize
+                    || frames[i].clipWidth != items[i].frame.clipWidth;
+                materialChanged |= frames[i].foreground != items[i].frame.foreground
+                    || frames[i].compactMaterial != items[i].frame.compactMaterial
+                    || frames[i].clipWidth != items[i].frame.clipWidth;
+            }
+        }
+        textChanged |= geometryChanged || material.scale != previousMaterial.scale;
+        bool fillsChanged = !sceneReady || w != width || h != height || previousFills.size() != static_cast<size_t>(fillCount);
+        if (!fillsChanged)
+            for (int i = 0; i < fillCount; ++i) fillsChanged |= fillKey(fills[i]) != fillKey(previousFills[i]);
         width = w;
         height = h;
-        applyPresentation();
-        items.clear();
-        for (int i = 0; i < count; ++i)
-            items.push_back({ frames[i], frames[i].text ? frames[i].text : L"" });
-        paintSurface(boundary, [&](ID2D1DeviceContext* context) {
+        std::vector<Item> nextItems;
+        for (int i = 0; i < count; ++i) nextItems.push_back({ frames[i], frames[i].text ? frames[i].text : L"" });
+
+        // EndDraw records surface damage for the next Commit. Retain same-size
+        // surfaces so effect caches receive that damage, including boundary fills.
+        // Block every other commit if any part of this transaction fails.
+        sceneUpdateIncomplete = true;
+        ComPtr<IDCompositionSurface> nextBoundary, nextShadow, nextDecoration, nextForeground;
+        if (!surfaceSizeChanged) {
+            if (fillsChanged) nextBoundary = boundary;
+            if (geometryChanged || materialChanged) { nextShadow = shadowSurface; nextDecoration = decorations; }
+            if (textChanged) nextForeground = foregroundSurface;
+        }
+        if (fillsChanged) paintSurface(nextBoundary, [&](ID2D1DeviceContext* context) {
             for (int i = 0; i < fillCount; ++i) {
                 const auto& f = fills[i];
                 ComPtr<ID2D1SolidColorBrush> brush;
@@ -377,103 +663,121 @@ public:
                 context->FillRectangle(D2D1::RectF(f.x, f.y, f.x + f.width, f.y + f.height), brush.Get());
             }
         });
-        check(root->RemoveAllVisuals());
-        addBase(root.Get());
-        // Shadows have their own alpha mask. Text and icons never pass through
-        // the blur or an opacity effect, so their contrast stays independent.
-        ComPtr<IDCompositionSurface> shadowMask;
-        paintSurface(shadowMask, [&](ID2D1DeviceContext* context) {
-            ComPtr<ID2D1SolidColorBrush> brush;
-            check(context->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), &brush));
-            for (const auto& item : items) {
-                const auto& f = item.frame;
-                if (f.kind == Top || !hasGlass(f.kind))
-                    continue;
-                const auto optics = materialFor(f, material);
-                brush->SetOpacity(std::clamp(optics.shadow, 0.f, 1.f));
-                const auto rect = D2D1::RectF(f.x + f.visualX, f.y + f.visualY + material.shadowOffset * material.scale,
-                    f.x + f.visualX + f.visualWidth, f.y + f.visualY + f.visualHeight + material.shadowOffset * material.scale);
-                context->FillRoundedRectangle(D2D1::RoundedRect(rect, f.radius, f.radius), brush.Get());
-            }
-        });
-        auto shadow = visual(shadowMask.Get());
-        ComPtr<IDCompositionGaussianBlurEffect> shadowBlur;
-        check(composition->CreateGaussianBlurEffect(&shadowBlur));
-        check(shadowBlur->SetStandardDeviation(material.shadowBlur * material.scale));
-        check(shadow->SetEffect(shadowBlur.Get()));
-        check(root->AddVisual(shadow.Get(), FALSE, nullptr));
-        for (const auto& item : items) {
-            const auto& f = item.frame;
-            if (!hasGlass(f.kind))
-                continue;
-            const auto optics = materialFor(f, material);
-            ComPtr<IDCompositionVisual2> clipped, blur;
-            check(composition->CreateVisual(&clipped));
-            check(composition->CreateVisual(&blur));
-            addBase(blur.Get());
-            ComPtr<IDCompositionGaussianBlurEffect> effect;
-            check(composition->CreateGaussianBlurEffect(&effect));
-            check(effect->SetStandardDeviation(optics.blur * material.scale));
-            check(effect->SetBorderMode(D2D1_BORDER_MODE_HARD));
-            // CSS-like saturation can exceed one. ColorMatrix supports this
-            // without the [0,1] restriction of the saturation effect.
-            ComPtr<IDCompositionColorMatrixEffect> correction;
-            check(composition->CreateColorMatrixEffect(&correction));
-            const float s = material.saturation, gain = material.brightness * material.contrast;
-            const float lumaR = .2126f * (1 - s), lumaG = .7152f * (1 - s), lumaB = .0722f * (1 - s);
-            const float offset = material.brightness * .5f * (1 - material.contrast);
-            D2D1_MATRIX_5X4_F matrix = {
-                (lumaR + s) * gain, lumaR * gain, lumaR * gain, 0,
-                lumaG * gain, (lumaG + s) * gain, lumaG * gain, 0,
-                lumaB * gain, lumaB * gain, (lumaB + s) * gain, 0,
-                0, 0, 0, 1,
-                offset, offset, offset, 0
-            };
-            check(correction->SetMatrix(matrix));
-            check(correction->SetAlphaMode(D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED));
-            check(correction->SetClampOutput(TRUE));
-            check(correction->SetInput(0, effect.Get(), 0));
-            check(blur->SetEffect(correction.Get()));
-            ComPtr<IDCompositionVisual3> opacityVisual;
-            check(blur.As(&opacityVisual));
-            check(opacityVisual->SetOpacity(std::clamp(optics.strength, 0.f, 1.f)));
-            check(clipped->AddVisual(blur.Get(), FALSE, nullptr));
-            ComPtr<IDCompositionRectangleClip> clip;
-            check(composition->CreateRectangleClip(&clip));
-            float left = f.x + f.visualX, top = f.y + f.visualY, right = left + f.visualWidth,
-                  bottom = top + f.visualHeight;
-            check(clip->SetLeft(left));
-            check(clip->SetTop(top));
-            check(clip->SetRight(right));
-            check(clip->SetBottom(bottom));
-            auto r = f.radius;
-            check(clip->SetTopLeftRadiusX(r));
-            check(clip->SetTopLeftRadiusY(r));
-            check(clip->SetTopRightRadiusX(r));
-            check(clip->SetTopRightRadiusY(r));
-            check(clip->SetBottomLeftRadiusX(r));
-            check(clip->SetBottomLeftRadiusY(r));
-            check(clip->SetBottomRightRadiusX(r));
-            check(clip->SetBottomRightRadiusY(r));
-            check(clipped->SetClip(clip.Get()));
-            check(root->AddVisual(clipped.Get(), FALSE, nullptr));
+        if (geometryChanged || materialChanged) {
+            paintSurface(nextShadow, [&](ID2D1DeviceContext* context) {
+                ComPtr<ID2D1SolidColorBrush> brush;
+                check(context->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), &brush));
+                for (const auto& item : nextItems) {
+                    const auto& f = item.frame;
+                    if (f.kind == Top || !hasGlass(f.kind)) continue;
+                    const auto optics = materialFor(f, material);
+                    brush->SetOpacity(std::clamp(optics.shadow, 0.f, 1.f));
+                    const auto rect = D2D1::RectF(f.x + f.visualX, f.y + f.visualY + material.shadowOffset * material.scale,
+                        f.x + f.visualX + f.visualWidth, f.y + f.visualY + f.visualHeight + material.shadowOffset * material.scale);
+                    context->FillRoundedRectangle(D2D1::RoundedRect(rect, f.radius, f.radius), brush.Get());
+                }
+            });
+            paintSurface(nextDecoration, [&](ID2D1DeviceContext* context) {
+                for (const auto& item : nextItems) paintItem(context, item, material, true);
+            });
         }
-        paintSurface(decorations, [&](ID2D1DeviceContext* context) {
-            for (const auto& item : items)
-                paintItem(context, item, material);
+        if (textChanged) paintSurface(nextForeground, [&](ID2D1DeviceContext* context) {
+            for (const auto& item : nextItems) paintItem(context, item, material, false);
         });
-        auto decoration = visual(decorations.Get());
-        check(root->AddVisual(decoration.Get(), FALSE, nullptr));
-        // A passive retained visual has no host hit rectangle or accessibility item.
-        // Fade updates change this visual alone, without rebuilding glass/chrome.
-        if (indicatorVisual) check(root->AddVisual(indicatorVisual.Get(), FALSE, nullptr));
-        if (pointerGroup) check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
+        if (nextBoundary) boundary = nextBoundary;
+        if (nextShadow) shadowSurface = nextShadow;
+        if (nextDecoration) decorations = nextDecoration;
+        if (nextForeground) foregroundSurface = nextForeground;
+        items = std::move(nextItems);
+        if (structureChanged) {
+            applyPresentation();
+            check(root->RemoveAllVisuals());
+            boundaryVisuals.clear(); glassNodes.clear();
+            pageVisuals.clear();
+            addBase(root.Get());
+            shadowVisual = visual(nextShadow.Get());
+            check(composition->CreateGaussianBlurEffect(&shadowEffect));
+            check(shadowVisual->SetEffect(shadowEffect.Get()));
+            check(root->AddVisual(shadowVisual.Get(), FALSE, nullptr));
+            for (size_t i = 0; i < items.size(); ++i) {
+                const auto& f = items[i].frame;
+                if (!hasGlass(f.kind)) continue;
+                ComPtr<IDCompositionVisual2> clipped, blur;
+                check(composition->CreateVisual(&clipped));
+                check(composition->CreateVisual(&blur));
+                addBase(blur.Get());
+                GlassNode node { i };
+                check(composition->CreateGaussianBlurEffect(&node.blur));
+                check(node.blur->SetBorderMode(D2D1_BORDER_MODE_HARD));
+                check(composition->CreateColorMatrixEffect(&node.correction));
+                check(node.correction->SetAlphaMode(D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED));
+                check(node.correction->SetClampOutput(TRUE));
+                check(node.correction->SetInput(0, node.blur.Get(), 0));
+                check(blur->SetEffect(node.correction.Get()));
+                check(blur.As(&node.opacity));
+                check(clipped->AddVisual(blur.Get(), FALSE, nullptr));
+                check(composition->CreateRectangleClip(&node.clip));
+                check(clipped->SetClip(node.clip.Get()));
+                check(root->AddVisual(clipped.Get(), FALSE, nullptr));
+                glassNodes.push_back(std::move(node));
+            }
+            decorationVisual = visual(decorations.Get());
+            foregroundVisual = visual(foregroundSurface.Get());
+            check(root->AddVisual(decorationVisual.Get(), FALSE, nullptr));
+            check(root->AddVisual(foregroundVisual.Get(), FALSE, nullptr));
+            if (indicatorVisual) check(root->AddVisual(indicatorVisual.Get(), FALSE, nullptr));
+            if (pointerGroup) check(root->AddVisual(pointerGroup.Get(), FALSE, nullptr));
+        } else {
+            if (fillsChanged)
+                for (auto& visual : boundaryVisuals) check(visual->SetContent(boundary.Get()));
+            if (nextShadow) check(shadowVisual->SetContent(nextShadow.Get()));
+            if (nextDecoration) check(decorationVisual->SetContent(decorations.Get()));
+            if (nextForeground) check(foregroundVisual->SetContent(foregroundSurface.Get()));
+        }
+        if (geometryChanged || materialChanged) {
+            check(shadowEffect->SetStandardDeviation(material.shadowBlur * material.scale));
+            for (auto& node : glassNodes) {
+                const auto& frame = items[node.index].frame;
+                if (geometryChanged) {
+                    const auto left = frame.x + frame.visualX, top = frame.y + frame.visualY;
+                    check(node.clip->SetLeft(left)); check(node.clip->SetTop(top));
+                    check(node.clip->SetRight(left + frame.visualWidth)); check(node.clip->SetBottom(top + frame.visualHeight));
+                    check(node.clip->SetTopLeftRadiusX(frame.radius)); check(node.clip->SetTopLeftRadiusY(frame.radius));
+                    check(node.clip->SetTopRightRadiusX(frame.radius)); check(node.clip->SetTopRightRadiusY(frame.radius));
+                    check(node.clip->SetBottomLeftRadiusX(frame.radius)); check(node.clip->SetBottomLeftRadiusY(frame.radius));
+                    check(node.clip->SetBottomRightRadiusX(frame.radius)); check(node.clip->SetBottomRightRadiusY(frame.radius));
+                }
+                const auto optics = materialFor(frame, material);
+                check(node.blur->SetStandardDeviation(optics.blur * material.scale));
+                check(node.opacity->SetOpacity(std::clamp(optics.strength, 0.f, 1.f)));
+                const float s = material.saturation, gain = material.brightness * material.contrast;
+                const float r = .2126f * (1 - s), g = .7152f * (1 - s), b = .0722f * (1 - s);
+                const float offset = material.brightness * .5f * (1 - material.contrast);
+                D2D1_MATRIX_5X4_F matrix = {
+                    (r + s) * gain, r * gain, r * gain, 0, g * gain, (g + s) * gain, g * gain, 0,
+                    b * gain, b * gain, (b + s) * gain, 0, 0, 0, 0, 1, offset, offset, offset, 0
+                };
+                check(node.correction->SetMatrix(matrix));
+            }
+        }
+        commitStartSeconds = monotonicSeconds();
         check(composition->Commit());
+        commitEndSeconds = monotonicSeconds();
+        sceneUpdateIncomplete = false;
+        sceneReady = true;
+        previousMaterial = material;
+        previousFills.clear();
+        for (int i = 0; i < fillCount; ++i) previousFills.push_back(fills[i]);
+        structureUpdates += structureChanged;
+        materialUpdates += geometryChanged || materialChanged;
+        boundaryUpdates += fillsChanged;
+        foregroundUpdates += textChanged;
         ++sceneGeneration;
         lastError.clear();
     }
     void setTouchPointer(float x, float y, float diameter, float left, float top, float right, float bottom)
     {
+        if (sceneUpdateIncomplete) check(E_UNEXPECTED);
         const float values[] = { x, y, diameter, left, top, right, bottom };
         if (std::any_of(std::begin(values), std::end(values), [](float value) { return !std::isfinite(value); })
             || diameter < 0 || diameter > 256 || right < left || bottom < top) check(E_INVALIDARG);
@@ -487,6 +791,7 @@ public:
             check(pointerSurface->BeginDraw(nullptr, IID_PPV_ARGS(&context), &offset));
             context->SetDpi(96, 96);
             context->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+            context->PushAxisAlignedClip(D2D1::RectF(0, 0, static_cast<float>(extent), static_cast<float>(extent)), D2D1_ANTIALIAS_MODE_ALIASED);
             context->Clear(D2D1::ColorF(0, 0));
             ComPtr<ID2D1SolidColorBrush> fill, rim;
             auto result = context->CreateSolidColorBrush(D2D1::ColorF(.35f, .35f, .35f, .5f), &fill);
@@ -497,6 +802,7 @@ public:
                 context->FillEllipse(circle, fill.Get());
                 context->DrawEllipse(circle, rim.Get(), diameter / 20);
             }
+            context->PopAxisAlignedClip();
             auto endResult = pointerSurface->EndDraw();
             check(result);
             check(endResult);
@@ -523,6 +829,7 @@ public:
     }
     void setScrollIndicator(float x, float y, float w, float h, float opacity)
     {
+        if (sceneUpdateIncomplete) check(E_UNEXPECTED);
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(w) || !std::isfinite(h)
             || !std::isfinite(opacity) || w < 0 || h < 0 || opacity < 0 || opacity > 1)
             check(E_INVALIDARG);
@@ -539,10 +846,12 @@ public:
             check(indicatorSurface->BeginDraw(nullptr, IID_PPV_ARGS(&context), &offset));
             context->SetDpi(96, 96);
             context->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+            context->PushAxisAlignedClip(D2D1::RectF(0, 0, std::ceil(w), std::ceil(h)), D2D1_ANTIALIAS_MODE_ALIASED);
             context->Clear(D2D1::ColorF(0, 0));
             ComPtr<ID2D1SolidColorBrush> brush;
             auto result = context->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), &brush);
             if (SUCCEEDED(result)) context->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, w, h), w / 2, w / 2), brush.Get());
+            context->PopAxisAlignedClip();
             auto endResult = indicatorSurface->EndDraw();
             check(result);
             check(endResult);
@@ -611,9 +920,10 @@ public:
             collection.Get(), &highlight));
         context->DrawRoundedRectangle(round, highlight.Get(), .5f * material.scale);
     }
-    void paintItem(ID2D1DeviceContext* context, const Item& item, DDMaterial material)
+    void paintItem(ID2D1DeviceContext* context, const Item& item, DDMaterial material, bool backdrop)
     {
         const auto& f = item.frame;
+        if (f.width <= 0 || f.height <= 0 || f.visualWidth <= 0 || f.visualHeight <= 0) return;
         material = materialFor(f, material);
         auto rect = D2D1::RectF(
             f.x + f.visualX, f.y + f.visualY, f.x + f.visualX + f.visualWidth, f.y + f.visualY + f.visualHeight);
@@ -625,21 +935,35 @@ public:
         if (f.kind == SelectedTab || f.kind == Tab)
             context->PushAxisAlignedClip(D2D1::RectF(rect.left, rect.top, rect.left + f.clipWidth, rect.bottom),
                 D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        if (f.kind == SelectedTab) {
-            ComPtr<ID2D1SolidColorBrush> selected;
-            auto fill = f.foreground == 0xffffff ? D2D1::ColorF(.35f, .4f, .46f, .82f) : D2D1::ColorF(1, 1, 1, .92f);
-            check(context->CreateSolidColorBrush(fill, &selected));
-            context->FillRoundedRectangle(round, selected.Get());
-            context->DrawRoundedRectangle(round, edge.Get(), .65f * material.scale);
-        } else if (hasGlass(f.kind))
-            paintGlass(context, round, material);
-        else if (f.kind == TabTrack) {
-            ComPtr<ID2D1SolidColorBrush> track;
-            check(context->CreateSolidColorBrush(color(f.foreground, .08f), &track));
-            context->FillRoundedRectangle(round, track.Get());
+        if (backdrop) {
+            if (f.kind == SelectedTab) {
+                ComPtr<ID2D1SolidColorBrush> selected;
+                auto fill = f.foreground == 0xffffff ? D2D1::ColorF(.35f, .4f, .46f, .82f) : D2D1::ColorF(1, 1, 1, .92f);
+                check(context->CreateSolidColorBrush(fill, &selected));
+                context->FillRoundedRectangle(round, selected.Get());
+                context->DrawRoundedRectangle(round, edge.Get(), .65f * material.scale);
+            } else if (hasGlass(f.kind))
+                paintGlass(context, round, material);
+            else if (f.kind == TabTrack) {
+                ComPtr<ID2D1SolidColorBrush> track;
+                check(context->CreateSolidColorBrush(color(f.foreground, .08f), &track));
+                context->FillRoundedRectangle(round, track.Get());
+            }
+            if (f.kind == SelectedTab || f.kind == Tab) context->PopAxisAlignedClip();
+            return;
         }
         auto cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
         float s = material.scale, stroke = 1.8f * s;
+        if (f.kind == Back || f.kind == Bookmarks || f.kind == Menu || f.kind == Reload || f.kind == Plus || f.kind == Overview
+            || f.kind == Wifi || f.kind == SelectedTab || f.kind == Tab) {
+            // The host interpolates the existing font metric while these roles
+            // enter/leave. Keep icons with their shrinking optical containers.
+            const float nominalSize = f.kind == SelectedTab || f.kind == Tab ? 14.f : 17.f;
+            const float visibility = std::clamp(f.fontSize / (nominalSize * material.scale), 0.f, 1.f);
+            s *= visibility;
+            stroke *= visibility;
+            ink->SetOpacity(visibility);
+        }
         if (f.kind == Back) {
             context->DrawLine({ cx + 4 * s, cy - 10 * s }, { cx - 6 * s, cy }, ink.Get(), stroke);
             context->DrawLine({ cx - 6 * s, cy }, { cx + 4 * s, cy + 10 * s }, ink.Get(), stroke);
@@ -753,7 +1077,7 @@ public:
     }
 };
 }
-unsigned DDCompositionVersion() { return 4; }
+unsigned DDCompositionVersion() { return 5; }
 void* DDCompositionCreate(HWND parent, HWND browser)
 {
     try {
@@ -780,6 +1104,35 @@ HRESULT DDCompositionSetPresentation(void* handle, HWND target, int degrees, int
     }
 }
 unsigned DDCompositionPresentationVersion() { return 1; }
+unsigned DDCompositionPageFrameVersion() { return 2; }
+DDPageFrameState DDCompositionGetPageFrameState(void* handle)
+{
+    if (!handle) return { };
+    const auto& value = *static_cast<Compositor*>(handle);
+    return { value.pageFrameID, value.pageDocumentEpoch, value.pagePresentations, value.gpuTransfers,
+        value.cpuTransfers, value.pageCaptures, value.pageSurfaceWidth, value.pageSurfaceHeight };
+}
+HRESULT DDCompositionCopyPagePixels(void* handle, void* pixels, unsigned rowBytes, int width, int height)
+{
+    try {
+        if (!handle) check(E_INVALIDARG);
+        static_cast<Compositor*>(handle)->copyPagePixels(pixels, rowBytes, width, height);
+        return S_OK;
+    } catch (const CompositionFailure& error) { return error.result; }
+    catch (...) { return E_OUTOFMEMORY; }
+}
+HRESULT DDCompositionPresentPageFrame(void* handle, DDPageFrame frame, const DDFill* fills, int fillCount)
+{
+    try {
+        if (!handle) check(E_INVALIDARG);
+        return static_cast<Compositor*>(handle)->presentPageFrame(frame, fills, fillCount);
+    } catch (const CompositionFailure& error) {
+        return error.result;
+    } catch (...) {
+        lastError = L"Windows page-frame presentation failed";
+        return E_OUTOFMEMORY;
+    }
+}
 unsigned DDCompositionScrollIndicatorVersion() { return 1; }
 HRESULT DDCompositionSetTouchPointer(void* handle, float x, float y, float diameter, float left, float top, float right, float bottom)
 {
@@ -831,7 +1184,7 @@ DDCompositionState DDCompositionGetState(void* handle)
     if (!handle)
         return { };
     const auto& compositor = *static_cast<Compositor*>(handle);
-    return { 4, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
+    return { 5, compositor.softwareDevice, compositor.resourceGeneration, compositor.sceneGeneration, compositor.width,
         compositor.height };
 }
 unsigned DDCompositionHit(void* handle, int x, int y)
@@ -860,3 +1213,23 @@ HRESULT DDCompositionMeasureText(void* handle, const wchar_t* text, float size, 
 }
 const wchar_t* DDCompositionError() { return lastError.c_str(); }
 void DDCompositionDestroy(void* handle) { delete static_cast<Compositor*>(handle); }
+
+HRESULT DDCompositionGetUpdateCounters(void* handle, unsigned long long* structure, unsigned long long* material,
+    unsigned long long* boundary, unsigned long long* foreground)
+{
+    if (!handle || !structure || !material || !boundary || !foreground) return E_INVALIDARG;
+    const auto* compositor = static_cast<Compositor*>(handle);
+    *structure = compositor->structureUpdates; *material = compositor->materialUpdates;
+    *boundary = compositor->boundaryUpdates; *foreground = compositor->foregroundUpdates;
+    return S_OK;
+}
+
+HRESULT DDCompositionGetUpdateTiming(void* handle, double* startSeconds, double* commitSeconds, double* endSeconds)
+{
+    if (!handle || !startSeconds || !commitSeconds || !endSeconds) return E_INVALIDARG;
+    const auto* compositor = static_cast<Compositor*>(handle);
+    *startSeconds = compositor->updateStartSeconds;
+    *commitSeconds = compositor->commitStartSeconds;
+    *endSeconds = compositor->commitEndSeconds;
+    return S_OK;
+}

@@ -56,6 +56,47 @@ internal sealed partial class WindowsChecks
             await CheckScrollIndicators();
             return;
         }
+        if (Environment.GetCommandLineArgs().Contains("--touch-performance"))
+        {
+            await CheckTouchPerformance(false);
+            await CheckTouchPerformance(true);
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--async-scrolling"))
+        {
+            await CheckAsyncScrolling();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--native-touch"))
+        {
+            await CheckNativeTouch();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--chrome-motion"))
+        {
+            await CheckChromeMotion();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--atomic-continuation"))
+        {
+            await CheckAtomicContinuation();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--fixed-color-transitions"))
+        {
+            await CheckFixedColorTransitions();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--upstream-fixed-colors"))
+        {
+            await CheckUpstreamFixedColors();
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--modal-sequence"))
+        {
+            await CheckModalSequence();
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--fixed-overlay"))
         {
             await CheckFixedOverlay();

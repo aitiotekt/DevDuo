@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Controls;
 
@@ -33,20 +34,44 @@ internal sealed partial class WindowsChecks
         }
         finally { Save("interaction-after-tap", await InteractionSnapshot()); }
         await InteractionPointer(0x201, 280, 300);
-        await InteractionPointer(0x200, 280, 160);
-        await InteractionPointer(0x202, 280, 160);
+        try { await InteractionPointer(0x200, 280, 160); }
+        finally { await InteractionPointer(0x202, 280, 160); }
         await Wait(state => state.GetProperty("scrollY").GetDouble() > 80, "Touch pans actual document");
+        var nativeTouch = State().GetProperty("webKit").TryGetProperty("nativeTouch", out var nativeContact) &&
+            nativeContact.ValueKind == JsonValueKind.Object && nativeContact.GetProperty("enabled").GetBoolean();
+        if (nativeTouch)
+            await Wait(state => !state.GetProperty("webKit").GetProperty("nativeTouch").GetProperty("active").GetBoolean(),
+                "OS button release ends the native contact");
+        else
+            await WaitForScript("String(interactionSnapshot().mode.active)", value => value == "false", "OS button release ends the emulated contact");
+        // Native precise gestures may still be decelerating after release.
+        // Compare wheel policy only after that independent motion has settled.
+        if (nativeTouch)
+        {
+            var previous = double.NaN;
+            var stable = 0;
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (stable < 3)
+            {
+                var position = (await InteractionSnapshot()).GetProperty("scrollY").GetDouble();
+                stable = Math.Abs(position - previous) < .05 ? stable + 1 : 0;
+                previous = position;
+                if (DateTime.UtcNow >= deadline) throw new TimeoutException("Native touch deceleration did not settle.");
+                await Task.Delay(100);
+            }
+        }
         var afterPan = await InteractionSnapshot();
-        Check(afterPan.GetProperty("events").EnumerateArray().Any(item => Text(item, "pointerType", "touch") && !item.GetProperty("trusted").GetBoolean()),
-            "Page receives explicitly synthetic touch PointerEvents.");
-        Check(afterPan.GetProperty("mode").GetProperty("active").GetBoolean() == false && afterPan.GetProperty("tapCount").GetInt32() == 1,
+        Save("interaction-after-pan", afterPan);
+        Check(afterPan.GetProperty("events").EnumerateArray().Any(item => Text(item, "pointerType", "touch") && item.GetProperty("trusted").GetBoolean() == nativeTouch),
+            nativeTouch ? "Page receives trusted native touch PointerEvents." : "Page receives explicitly synthetic touch PointerEvents.");
+        Check((nativeTouch || afterPan.GetProperty("mode").GetProperty("active").GetBoolean() == false) && afterPan.GetProperty("tapCount").GetInt32() == 1,
             "Panning ends the contact and does not produce a stray tap.");
         InteractionWheel();
         await Task.Delay(250);
         var afterWheel = await InteractionSnapshot();
         Check(afterWheel.GetProperty("scrollY").GetDouble() == afterPan.GetProperty("scrollY").GetDouble(), "Touch blocks native mouse-wheel scrolling.");
-        Check(State().GetProperty("chromeScrollInput").GetProperty("source").GetString() == "emulated touch pan",
-            "Safari chrome consumes emulated gesture direction independently of script positioning.");
+        Check(State().GetProperty("chromeScrollInput").GetProperty("source").GetString() == (nativeTouch ? "native touch pan" : "emulated touch pan"),
+            "Safari chrome consumes gesture direction independently of script positioning.");
 
         // Exercise the real REST/UI boundary, retaining this native document.
         var reservation = new TcpListener(IPAddress.Loopback, 0);
@@ -129,20 +154,30 @@ internal sealed partial class WindowsChecks
         finally { System.Windows.Forms.Cursor.Position = saved; browser.UpdateTouchPointer(); }
     }
 
-    private async Task InteractionPointer(uint message, double cssX, double cssY)
+    private async Task InteractionPointer(uint message, double cssX, double cssY, int delayMilliseconds = 80)
     {
+        if (message == 0x202)
+        {
+            var release = new[] { new DesktopKey { Type = 0, MouseFlags = 4 } };
+            Check(DesktopSendInput(1, release, Marshal.SizeOf<DesktopKey>()) == 1, "The OS accepts release of the interaction button.");
+            await Task.Delay(delayMilliseconds);
+            return;
+        }
         var browser = Web.WindowsPanel!.Browser;
         var geometry = State().GetProperty("webKit").GetProperty("logicalGeometry");
         var point = new Point((int)Math.Round((geometry.GetProperty("left").GetDouble() + cssX) * browser.BackingScale),
             (int)Math.Round((geometry.GetProperty("top").GetDouble() + cssY) * browser.BackingScale));
-        // Keep queued OS mouse moves consistent with the injected coordinates;
-        // otherwise a stationary tap can become a pan toward the real cursor.
+        // Use the OS button state as well as coordinates. SendMessage-only drags
+        // can be interleaved with real zero-button moves and lose pointerup.
         System.Windows.Forms.Cursor.Position = browser.PresentationBounds!(new Rectangle(point, new Size(1, 1))).Location;
-        await Task.Delay(80);
+        await Task.Delay(delayMilliseconds);
         PresentationSetFocus(browser.BrowserWindow);
-        PresentationSendMessage(browser.BrowserWindow, message, message == 0x202 ? 0 : 1,
-            (nint)((point.X & 0xffff) | ((point.Y & 0xffff) << 16)));
-        await Task.Delay(80);
+        if (message == 0x201)
+        {
+            var input = new[] { new DesktopKey { Type = 0, MouseFlags = 2 } };
+            Check(DesktopSendInput(1, input, Marshal.SizeOf<DesktopKey>()) == 1, "The OS accepts the interaction button transition.");
+        }
+        await Task.Delay(delayMilliseconds);
     }
 
     private void InteractionWheel()

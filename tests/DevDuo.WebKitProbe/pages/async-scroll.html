@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Independent native scrolling</title>
+<style>
+  html { background: white; }
+  body { margin: 0; min-height: 6000px; background: repeating-linear-gradient(to bottom, rgb(208,48,64) 0 80px, rgb(32,112,192) 80px 160px); }
+  #container { position: fixed; inset: 0; pointer-events: none; }
+  #fixed { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; background: rgb(24,144,96); }
+  #top { position: absolute; left: 0; right: 0; top: 0; height: 48px; background: rgb(24,144,96); }
+  #left, #right { position: absolute; top: 0; bottom: 0; width: 32px; background: rgb(24,144,96); }
+  #left { left: 0; } #right { right: 0; }
+</style>
+<div id="container"><div id="fixed"></div>
+<div id="top"></div><div id="left"></div><div id="right"></div></div>
+<script>
+  window.busyIntervals = [];
+  window.wheelEvents = [];
+  addEventListener("wheel", event => wheelEvents.push({ time: Date.now(), cancelable: event.cancelable }), { passive: true });
+  const cancel = event => event.preventDefault();
+  window.setBlockingWheel = enabled => {
+    removeEventListener("wheel", cancel);
+    if (enabled) addEventListener("wheel", cancel, { passive: false });
+  };
+  window.armBusyInterval = duration => {
+    setTimeout(() => {
+      const interval = { begin: Date.now(), end: null };
+      busyIntervals.push(interval);
+      const deadline = performance.now() + duration;
+      while (performance.now() < deadline) { /* Deliberately occupy only the page main thread. */ }
+      interval.end = Date.now();
+    }, 100);
+  };
+  window.scrollingResult = () => ({
+    busyIntervals, wheelEvents, scroll: [scrollX, scrollY], viewport: [innerWidth, innerHeight],
+    range: document.scrollingElement.scrollHeight - innerHeight,
+    fixed: document.getElementById("fixed").getBoundingClientRect().toJSON(),
+  });
+</script>

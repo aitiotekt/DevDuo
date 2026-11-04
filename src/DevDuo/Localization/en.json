@@ -163,6 +163,8 @@
   "Developer.Running": "Running",
   "Developer.Starting": "Starting…",
   "Developer.Stopped": "Stopped",
+  "Developer.RestoreFailed": "Not restored this session: {0}. Will try again next launch.",
+  "Developer.InvalidSavedSettings": "Invalid saved listener settings: {0}. Apply settings to correct them.",
   "Developer.ServiceError": "Service error: {0}",
   "Developer.ActionError": "Could not apply developer action: {0}",
   "Developer.WindowError": "Could not open the system tools browser: {0}",
@@ -187,7 +189,7 @@
   "Developer.InvalidCdpBearerToken": "Use ASCII letters, digits or - . _ ~ + / = for the CDP token.",
   "Developer.CdpLanTokenRequired": "Set a CDP bearer token before allowing LAN CDP connections.",
   "Developer.ControlApi": "REST control API",
-  "Developer.ControlApiHint": "Off at launch. Local IPv4 only; independent of CDP and LAN settings. Blank token allows local access; otherwise send Authorization: Bearer <token>. The token is saved locally.",
+  "Developer.ControlApiHint": "Enabled services restore at launch. Local IPv4 only; independent of CDP and LAN settings. Blank token allows local access; otherwise send Authorization: Bearer <token>. The token is saved locally.",
   "Developer.ControlApiPort": "Control API port",
   "Developer.ControlApiBearerToken": "Control API bearer token (optional)",
   "Developer.ControlApiAddress": "Control API OpenAPI address",
@@ -198,5 +200,5 @@
   "Control.Interaction": "Interaction",
   "Interaction.Touch": "Touch · single finger",
   "Interaction.Mouse": "Mouse",
-  "Interaction.Hint": "Touch: tap or drag to swipe; wheel is blocked. Mouse restores wheel, selection and hover. Touch events are synthetic; native iOS gestures are not reproduced."
+  "Interaction.Hint": "Touch uses the left button to tap or swipe and blocks the page wheel. Mouse enables wheel scrolling, selection and hover."
 }

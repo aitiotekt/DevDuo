@@ -1,6 +1,27 @@
-(initialMode) => {
+(initialMode, nativeTouch = false) => {
   if (window.__devduoInput) {
     window.__devduoInput.configure(initialMode);
+    return;
+  }
+  if (nativeTouch) {
+    // Native contacts, default gestures and compatibility clicks belong to
+    // WebKit. This branch only reports the configured mode to the observer.
+    let mode = initialMode;
+    function configure(value) {
+      if (value !== "touch" && value !== "mouse") return;
+      mode = value;
+      for (let index = 0; index < frames.length; index++)
+        frames[index].postMessage({ type: "devduo-interaction-mode", mode }, "*");
+      window.__devduoReportContainerObservation?.();
+    }
+    window.addEventListener("message", event => {
+      if (window !== window.top && event.source === parent && event.data?.type === "devduo-interaction-mode") configure(event.data.mode);
+    });
+    Object.defineProperty(window, "__devduoInput", { value: {
+      configure,
+      get state() { return { mode, source: "WebKit native single-contact input", trustedTouchEvents: true, multiTouch: false }; },
+    } });
+    configure(initialMode);
     return;
   }
   let mode = initialMode;
@@ -8,6 +29,9 @@
   let pendingTap = null;
   let panSequence = 0;
   let direction = 0;
+  let moveFrame = 0, pendingMove = null;
+  let receivedMoves = 0, processedMoves = 0, scrollWrites = 0;
+  let wheelSuppression = false;
   const nativeMaxTouchPoints = navigator.maxTouchPoints;
   const touchDescriptor = Object.getOwnPropertyDescriptor(window, "ontouchstart");
 
@@ -54,7 +78,12 @@
     }
     return gesture.target.dispatchEvent(result);
   }
+  function discardMove() {
+    if (moveFrame) cancelAnimationFrame(moveFrame);
+    moveFrame = 0; pendingMove = null;
+  }
   function cancel() {
+    discardMove();
     if (!contact) return;
     const gesture = contact;
     contact = null;
@@ -78,24 +107,42 @@
     }
     return { x, y };
   }
-  function scrollChain(target, dx, dy) {
+  function scrollState(node, root) {
+    const style = getComputedStyle(node);
+    const rootNode = node === root;
+    const bodyStyle = rootNode && document.body ? getComputedStyle(document.body) : style;
+    const overflowX = rootNode && style.overflowX === "visible" ? bodyStyle.overflowX : style.overflowX;
+    const overflowY = rootNode && style.overflowY === "visible" ? bodyStyle.overflowY : style.overflowY;
+    return { node, rootNode,
+      x: rootNode ? !/hidden|clip/.test(overflowX) : /auto|scroll|overlay/.test(overflowX),
+      y: rootNode ? !/hidden|clip/.test(overflowY) : /auto|scroll|overlay/.test(overflowY),
+      stopX: /contain|none/.test(style.overscrollBehaviorX), stopY: /contain|none/.test(style.overscrollBehaviorY) };
+  }
+  function scrollChain(gesture, dx, dy) {
     let remainingX = dx, remainingY = dy;
     const root = document.scrollingElement;
-    for (let node = target; node instanceof Element; node = node.parentElement) {
-      const style = getComputedStyle(node);
-      const rootNode = node === root;
-      const bodyStyle = rootNode && document.body ? getComputedStyle(document.body) : style;
-      const overflowX = rootNode && style.overflowX === "visible" ? bodyStyle.overflowX : style.overflowX;
-      const overflowY = rootNode && style.overflowY === "visible" ? bodyStyle.overflowY : style.overflowY;
-      const x = rootNode ? !/hidden|clip/.test(overflowX) : /auto|scroll|overlay/.test(overflowX);
-      const y = rootNode ? !/hidden|clip/.test(overflowY) : /auto|scroll|overlay/.test(overflowY);
-      if (!x && !y) continue;
+    let states;
+    if (!gesture.chain) {
+      states = [];
+      for (let node = gesture.target; node instanceof Element; node = node.parentElement) {
+        const state = scrollState(node, root);
+        if (state.x || state.y || state.rootNode) states.push(state);
+      }
+      gesture.chain = states.map(state => state.node);
+    } else {
+      // Recheck only scroll candidates, before writing any scroll offset. This
+      // preserves live root/modal locks without restyling every deep ancestor.
+      states = gesture.chain.filter(node => node.isConnected).map(node => scrollState(node, root));
+    }
+    for (const { node, x, y, rootNode, stopX, stopY } of states) {
+      if (!node.isConnected) continue;
       const beforeX = node.scrollLeft, beforeY = node.scrollTop;
+      scrollWrites++;
       node.scrollBy({ left: x ? remainingX : 0, top: y ? remainingY : 0, behavior: "instant" });
       remainingX -= node.scrollLeft - beforeX;
       remainingY -= node.scrollTop - beforeY;
-      if (style.overscrollBehaviorX === "contain" || style.overscrollBehaviorX === "none") remainingX = 0;
-      if (style.overscrollBehaviorY === "contain" || style.overscrollBehaviorY === "none") remainingY = 0;
+      if (stopX) remainingX = 0;
+      if (stopY) remainingY = 0;
       if (rootNode || (!remainingX && !remainingY)) break;
     }
   }
@@ -119,6 +166,17 @@
     if (mode !== "touch" || !event.isTrusted || event.pointerType !== "mouse") return;
     suppress(event);
     if (!contact) return;
+    receivedMoves++;
+    contact.moved ||= Math.hypot(event.clientX - contact.startX, event.clientY - contact.startY) >= 6;
+    pendingMove = event;
+    if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
+  }
+  function flushMove() {
+    const event = pendingMove;
+    discardMove();
+    if (!event || !contact) return;
+    if (!contact.target.isConnected) { cancel(); return; }
+    processedMoves++;
     const gesture = contact;
     const dx = gesture.last.clientX - event.clientX, dy = gesture.last.clientY - event.clientY;
     gesture.moved ||= Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) >= 6;
@@ -131,13 +189,14 @@
       }
       direction = dy > 0 ? 1 : dy < 0 ? -1 : direction;
       panSequence++;
-      scrollChain(gesture.target, gesture.pan.x ? dx : 0, gesture.pan.y ? dy : 0);
+      scrollChain(gesture, gesture.pan.x ? dx : 0, gesture.pan.y ? dy : 0);
     }
     gesture.last = event;
   }
   function up(event) {
     if (mode !== "touch" || !event.isTrusted || event.pointerType !== "mouse" || event.button !== 0) return;
     suppress(event);
+    flushMove();
     if (!contact) return;
     const gesture = contact;
     contact = null;
@@ -172,6 +231,13 @@
     if (value !== "touch" && value !== "mouse") return;
     if (value !== mode) { cancel(); stopTap(); }
     mode = value;
+    // A dormant non-passive wheel handler still makes WebKit consult the page
+    // main thread. Keep that blocking region only while touch emulation needs it.
+    if (wheelSuppression !== (mode === "touch")) {
+      wheelSuppression = mode === "touch";
+      if (wheelSuppression) window.addEventListener("wheel", suppress, { capture: true, passive: false });
+      else window.removeEventListener("wheel", suppress, true);
+    }
     if (mode === "touch" && !touchDescriptor) Object.defineProperty(window, "ontouchstart", { configurable: true, writable: true, value: null });
     else if (mode === "mouse" && !touchDescriptor) delete window.ontouchstart;
     for (let index = 0; index < frames.length; index++)
@@ -190,12 +256,11 @@
   for (const name of ["mousedown", "mousemove", "mouseup", "dblclick", "dragstart", "contextmenu"])
     window.addEventListener(name, event => { if (mode === "touch" && event.isTrusted) suppress(event); }, true);
   window.addEventListener("click", nativeClick, true);
-  window.addEventListener("wheel", event => { if (mode === "touch") suppress(event); }, { capture: true, passive: false });
   window.addEventListener("blur", () => { cancel(); stopTap(); });
   window.addEventListener("pagehide", () => { cancel(); stopTap(); });
   Object.defineProperty(window, "__devduoInput", { value: {
     configure,
-    get state() { return { mode, active: contact !== null, panSequence, direction, source: "DOM single-touch emulation", trustedTouchEvents: false, multiTouch: false }; },
+    get state() { return { mode, active: contact !== null, panSequence, direction, receivedMoves, processedMoves, scrollWrites, source: "DOM single-touch emulation", trustedTouchEvents: false, multiTouch: false }; },
   } });
   configure(initialMode);
 }

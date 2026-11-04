@@ -7,6 +7,7 @@ struct DDChrome {
     float x, y, width, height;
     float visualX, visualY, visualWidth, visualHeight, radius;
     float fontSize, clipWidth;
+    float compactMaterial;
     unsigned foreground;
     const wchar_t* text;
 };
@@ -24,8 +25,25 @@ struct DDCompositionState {
     unsigned long long resourceGeneration, sceneGeneration;
     int width, height;
 };
+struct DDPageFrame {
+    unsigned long long frameID, documentEpoch;
+    void* sharedTexture;
+    const void* pixels;
+    unsigned rowBytes, background, flags;
+    int width, height;
+};
+struct DDPageFrameState {
+    unsigned long long frameID, documentEpoch, presentations, gpuTransfers, cpuTransfers, captures;
+    int width, height;
+};
 
 extern "C" {
+__declspec(dllexport) HRESULT DDCompositionGetUpdateCounters(void*, unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*);
+__declspec(dllexport) HRESULT DDCompositionGetUpdateTiming(void*, double* startSeconds, double* commitSeconds, double* endSeconds);
+__declspec(dllexport) unsigned DDCompositionPageFrameVersion();
+__declspec(dllexport) HRESULT DDCompositionPresentPageFrame(void*, DDPageFrame, const DDFill*, int fillCount);
+__declspec(dllexport) DDPageFrameState DDCompositionGetPageFrameState(void*);
+__declspec(dllexport) HRESULT DDCompositionCopyPagePixels(void*, void* pixels, unsigned rowBytes, int width, int height);
 __declspec(dllexport) unsigned DDCompositionVersion();
 __declspec(dllexport) unsigned DDCompositionPresentationVersion();
 __declspec(dllexport) unsigned DDCompositionScrollIndicatorVersion();

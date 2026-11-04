@@ -3,14 +3,25 @@
   if (window.__devduoShellObserver) return; window.__devduoShellObserver = true;
   const documentId = crypto.randomUUID?.() ?? String(performance.timeOrigin);
   let pending = false, previousY = scrollY;
+  const colorCache = new Map();
+  let colorContext;
   function rgb(value, requireOpaque = false) {
     if (!value || !CSS.supports('color', value)) return null;
-    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
-    const c = canvas.getContext('2d', { willReadFrequently: true }); c.clearRect(0, 0, 1, 1); c.fillStyle = value; c.fillRect(0, 0, 1, 1);
-    const p = c.getImageData(0, 0, 1, 1).data;
-    return p[3] && (!requireOpaque || p[3] === 255) ? Array.from(p).slice(0, 3) : null;
+    let p = colorCache.get(value);
+    if (!p) {
+      if (!colorContext) {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        colorContext = canvas.getContext('2d', { willReadFrequently: true });
+      }
+      colorContext.clearRect(0, 0, 1, 1); colorContext.fillStyle = value; colorContext.fillRect(0, 0, 1, 1);
+      p = Array.from(colorContext.getImageData(0, 0, 1, 1).data);
+      if (colorCache.size >= 64) colorCache.delete(colorCache.keys().next().value);
+      colorCache.set(value, p);
+    }
+    return p[3] && (!requireOpaque || p[3] === 255) ? p.slice(0, 3) : null;
   }
   function fixedBottomColor() {
+    if (window.__devduoNativeFixedColors) return null;
     // Read paint order and geometry without resizing the page or changing its scroll range.
     // This approximates solid fixed-footer color extension; it does not sample arbitrary artwork.
     let sharedFooter = null;

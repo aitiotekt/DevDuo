@@ -75,6 +75,13 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-presentation-insets` | Isolated live-source checks for unmodified color-page pixels exposed by compact chrome; opens Windows UI, separate from final DWM acceptance |
 | `just test-windows-presentation-rotations` | Fresh-document animation frames through eight poses, modal close and rapid rotation; opens Windows UI and is separate from the full fixed-overlay history |
 | `just test-windows-fixed-overlay` | Native modal-overlay viewport alpha, inset colors and geometry preservation; opens Windows UI, not full Safari optical acceptance |
+| `just test-windows-modal-sequence` | Nested popup replacement, retained material/foreground updates and presented frame evidence at one DPI |
+| `just test-windows-upstream-fixed-colors` | Native fixed/sticky color rules, patterned underlays, preserved upstream export and presented inset pixels |
+| `just test-windows-fixed-color-transitions` | Synchronous inset invalidation and native-wheel shell transition color continuity |
+| `just test-windows-chrome-motion` | Closed/Open landscape intermediate widget frames, measured endpoints and retained visual structure |
+| `just test-windows-touch-performance` | Real OS drag and mouse-wheel cadence on a deep local fixture; foreground desktop required |
+| `just test-windows-atomic-continuation` | Animated page/inset pixel agreement at current DPI, 1:1/Fit and verified composited/software paths; top source pixels and composed-window evidence are separate |
+| `just test-windows-developer-restore` | Real application restart, occupied-port isolation and remembered service recovery |
 | `just test-windows-page-dialogs` | Real WebKit alert/confirm/prompt listeners, localized native UI, OS keyboard/UIA, DPI and navigation/disposal cancellation |
 | `just test-windows-accessibility` | Real Windows UIA page names, values, actions, rotated bounds and stale-document rejection; requires desktop API v1 |
 | `just test-windows-popups` | Actual native select anchors, mouse/keyboard selection and Escape dismissal across eight body poses |
@@ -83,6 +90,9 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI, without claiming exact Safari thickness or fade timing |
 | `just test-windows-touch-pointer` | Foreground chrome pixel restoration, rapid-motion coalescing and unchanged page geometry at the current DPI; opens Windows UI |
 | `just test-windows-run-loop` | Actual pinned WTF timers under an external Windows message pump and WTF's own loop; requires the native runtime build |
+| `just test-windows-scrolling-layers` | Headless native WC layer publication, coalescing and acknowledgement primitives; requires the experimental async runtime and does not certify scrolling presentation |
+| `just test-windows-async-scrolling` | Real wheel input, blocked page main thread, fixed/inset pixels and DOM convergence at current DPI and 1:1/Fit; experimental runtime |
+| `just test-windows-native-touch` | Trusted contacts, native gesture policy, nested scrolling and busy-page GPU presentation; experimental native-touch runtime |
 | `just test-debugging` | Real loopback CDP HTTP/WebSocket discovery, token/origin/lifecycle checks; does not certify native page injection |
 | `just prepare-debugging` | Copy locked chii/chobitsu offline assets into `temp/build/debugging/`; included in app dev/build/package recipes |
 | `just probe-windows-webkit` | Pinned official WebKit standalone continuation/boundary diagnostic; opens Windows UI |

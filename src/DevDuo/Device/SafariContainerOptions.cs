@@ -73,6 +73,7 @@ public sealed record SafariTabSlot(bool Active, SafariTabFrame Frame, SafariTabF
 
 public sealed class WindowsMaterialOptions
 {
+    public int ChromeTransitionMilliseconds { get; set; } = 220;
     public double Blur { get; set; } = 14;
     public double Saturation { get; set; } = 1.8;
     public double Brightness { get; set; } = 1.05;

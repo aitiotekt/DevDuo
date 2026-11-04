@@ -13,4 +13,6 @@ BuiltinPageChecks.Run(Check);
 PageTitleChecks.Run(Check);
 ScrollIndicatorChecks.Run(Check);
 FixedColorSamplingChecks.Run(Check);
+ColorStabilityChecks.Run(Check);
+ChromeTransitionChecks.Run(Check);
 Console.WriteLine($"Core checks passed: {assertions} assertions.");

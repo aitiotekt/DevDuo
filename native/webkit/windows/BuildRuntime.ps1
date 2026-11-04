@@ -1,4 +1,4 @@
-param([switch]$ConfigureOnly, [int]$Jobs = 8)
+param([switch]$ConfigureOnly, [int]$Jobs = 8, [string]$RuntimeRoot = '', [switch]$ExperimentalAsyncScrolling, [switch]$KeepRuntimeSelection)
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RuntimeFiles.ps1')
@@ -7,6 +7,8 @@ $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $pin = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'runtime.lock.json') -Raw | ConvertFrom-Json
 $source = Join-Path $repository ('temp/cache/windows-webkit/source-' + $pin.revision.Substring(0, 8))
 $build = Join-Path $repository 'temp/build/windows-webkit-host'
+$runtimeRoot = if ($RuntimeRoot) { [IO.Path]::GetFullPath($RuntimeRoot) } else { $build }
+$runtime = Join-Path $runtimeRoot 'bin'
 $cache = Join-Path $repository 'temp/cache/windows-webkit'
 $patch = Join-Path $PSScriptRoot 'patches/0001-windows-host-viewport-api.patch'
 foreach ($command in @('git', 'cmake', 'ninja', 'ruby', 'perl', 'gperf', 'python', 'pkgconf', 'vcpkg')) {
@@ -38,7 +40,20 @@ Initialize-PinnedSource $source 'https://github.com/WebKit/WebKit.git' $pin.revi
 $paintingPatch = Join-Path $PSScriptRoot 'patches/0002-windows-content-painting.patch'
 $developerPatch = Join-Path $PSScriptRoot 'patches/0003-windows-developer-api.patch'
 $desktopPatch = Join-Path $PSScriptRoot 'patches/0004-windows-desktop-integration.patch'
-Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch)
+$edgeColorPatch = Join-Path $PSScriptRoot 'patches/0005-windows-edge-color-v2.patch'
+$framePipelinePatch = Join-Path $PSScriptRoot 'patches/0006-windows-frame-pipeline.patch'
+$atomicContinuationPatch = Join-Path $PSScriptRoot 'patches/0007-windows-atomic-continuation.patch'
+$frameSurfacePatch = Join-Path $PSScriptRoot 'patches/0008-windows-frame-surfaces.patch'
+$frameClockPatch = Join-Path $PSScriptRoot 'patches/0009-windows-frame-clock.patch'
+$scrollingLayersPatch = Join-Path $PSScriptRoot 'patches/0010-windows-scrolling-layers.patch'
+$directFrameRelayPatch = Join-Path $PSScriptRoot 'patches/0011-windows-direct-frame-relay.patch'
+$asyncPresentationPatch = Join-Path $PSScriptRoot 'patches/0012-windows-async-presentation.patch'
+$nativeTouchPatch = Join-Path $PSScriptRoot 'patches/0013-windows-native-touch.patch'
+$rasterCoveragePatch = Join-Path $PSScriptRoot 'patches/0014-windows-wc-raster-coverage.patch'
+$asyncViewportPatch = Join-Path $PSScriptRoot 'patches/0015-windows-async-viewport-publication.patch'
+$directPanPatch = Join-Path $PSScriptRoot 'patches/0016-windows-direct-pan-work.patch'
+$preciseTouchPatch = Join-Path $PSScriptRoot 'patches/0017-windows-precise-touch-coordinates.patch'
+Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch, $edgeColorPatch, $framePipelinePatch, $atomicContinuationPatch, $frameSurfacePatch, $frameClockPatch, $scrollingLayersPatch, $directFrameRelayPatch, $asyncPresentationPatch, $nativeTouchPatch, $rasterCoveragePatch, $asyncViewportPatch, $directPanPatch, $preciseTouchPatch)
 $registry = Get-Content -LiteralPath (Join-Path $source 'vcpkg-configuration.json') -Raw | ConvertFrom-Json
 $vcpkgRoot = Join-Path $cache ('vcpkg-' + $registry.'default-registry'.baseline.Substring(0, 8))
 Initialize-PinnedSource $vcpkgRoot 'https://github.com/microsoft/vcpkg.git' $registry.'default-registry'.baseline @('scripts', 'triplets')
@@ -67,6 +82,13 @@ $arguments = @('-S', $source, '-B', $build, '-G', 'Ninja', '-DPORT=Win', '-DCMAK
     ('-DRuby_EXECUTABLE=' + (Get-Command ruby).Source), ('-DGPERF_EXECUTABLE=' + (Get-Command gperf).Source),
     ('-DPKG_CONFIG_EXECUTABLE=' + $selectedTools['pkgconf']),
     '-DENABLE_API_TESTS=OFF', '-DENABLE_WEBKIT_LEGACY=OFF', '-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF')
+$arguments += '-DDEVDUO_HOST_RUNTIME_OUTPUT_DIRECTORY=' + $runtime.Replace('\', '/')
+$arguments += '-DENABLE_ASYNC_SCROLLING=' + $(if ($ExperimentalAsyncScrolling) { 'ON' } else { 'OFF' })
+$arguments += '-DENABLE_TOUCH_EVENTS=' + $(if ($ExperimentalAsyncScrolling) { 'ON' } else { 'OFF' })
+if ($runtimeRoot -ne $build -and -not (Test-Path -LiteralPath $runtime)) {
+    [IO.Directory]::CreateDirectory($runtimeRoot) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $build 'bin') -Destination $runtime -Recurse
+}
 # This explicit C++ history-list flavor does not require a system Swift SDK.
 # Never mix its DLLs with the official Swift-enabled runtime.
 $inputFiles = @('mise.toml', 'mise.lock', 'mise.windows-webkit.toml', 'mise.windows-webkit.lock',
@@ -77,6 +99,19 @@ $inputFiles = @('mise.toml', 'mise.lock', 'mise.windows-webkit.toml', 'mise.wind
     'native/webkit/windows/patches/0002-windows-content-painting.patch',
     'native/webkit/windows/patches/0003-windows-developer-api.patch',
     'native/webkit/windows/patches/0004-windows-desktop-integration.patch',
+    'native/webkit/windows/patches/0005-windows-edge-color-v2.patch',
+    'native/webkit/windows/patches/0006-windows-frame-pipeline.patch',
+    'native/webkit/windows/patches/0007-windows-atomic-continuation.patch',
+    'native/webkit/windows/patches/0008-windows-frame-surfaces.patch',
+    'native/webkit/windows/patches/0009-windows-frame-clock.patch',
+    'native/webkit/windows/patches/0010-windows-scrolling-layers.patch',
+    'native/webkit/windows/patches/0011-windows-direct-frame-relay.patch',
+    'native/webkit/windows/patches/0012-windows-async-presentation.patch',
+    'native/webkit/windows/patches/0013-windows-native-touch.patch',
+    'native/webkit/windows/patches/0014-windows-wc-raster-coverage.patch',
+    'native/webkit/windows/patches/0015-windows-async-viewport-publication.patch',
+    'native/webkit/windows/patches/0016-windows-direct-pan-work.patch',
+    'native/webkit/windows/patches/0017-windows-precise-touch-coordinates.patch',
     'native/webkit/windows/runtime.lock.json')
 $inputRecords = foreach ($relative in $inputFiles) {
     $path = Join-Path $repository $relative
@@ -91,6 +126,10 @@ $inputRecords = foreach ($relative in $inputFiles) {
     paintingPatchSha256 = Get-WebKitFileHash $paintingPatch
     developerPatchSha256 = Get-WebKitFileHash $developerPatch
     desktopPatchSha256 = Get-WebKitFileHash $desktopPatch
+    edgeColorPatchSha256 = Get-WebKitFileHash $edgeColorPatch
+    framePipelinePatchSha256 = Get-WebKitFileHash $framePipelinePatch
+    atomicContinuationPatchSha256 = Get-WebKitFileHash $atomicContinuationPatch
+    frameSurfacePatchSha256 = Get-WebKitFileHash $frameSurfacePatch
     testOnlyIPCRequired = $false; backForwardListSwift = $false; cmakeArguments = $arguments
     inputFiles = @($inputRecords); clangSha256 = $clangHash
     systemInputs = $systemInputs; buildTreeIdentity = $identityHash
@@ -110,13 +149,24 @@ $ErrorActionPreference = 'Continue'
 $buildExitCode = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 if ($buildExitCode -ne 0) { exit $buildExitCode }
-$runtime = Join-Path $build 'bin'
 foreach ($name in @('WebKit2.dll', 'WebCore.dll', 'JavaScriptCore.dll', 'WebKitWebProcess.exe', 'WebKitNetworkProcess.exe', 'WebKitGPUProcess.exe')) {
     if (-not (Test-Path -LiteralPath (Join-Path $runtime $name))) { throw "Native build did not produce $name" }
 }
 $exports = & (Get-Command dumpbin).Source /exports (Join-Path $runtime 'WebKit2.dll')
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect host API exports' }
-foreach ($name in @('WKViewGetHostTextInputState', 'WKViewCopyHostTextInputDiagnostics', 'WKViewResetHostTextInput', 'WKViewCopyHostAccessibilityTree', 'WKViewPerformHostAccessibilityAction', 'WKViewGetHostDesktopAPIVersion', 'WKViewSetHostDesktopGeometry', 'WKViewGetViewportHostAPIVersion', 'WKViewSetObscuredContentInsets', 'WKViewSetUnobscuredSizeRange', 'WKViewSetHostPresentationGeometry', 'WKViewGetContentColorAPIVersion', 'WKViewRequestContentEdgeColor', 'WKViewGetHostAppearanceAPIVersion', 'WKViewSetHostDarkAppearance', 'WKViewSetUsesOffscreenRendering', 'WKViewGetHostRenderingStatistics', 'WKViewGetHostDeveloperAPIVersion', 'WKInspectorStartHostRemoteServer', 'WKInspectorStopHostRemoteServer', 'WKInspectorGetHostRemoteServerPort', 'WKUserContentControllerRemoveHostUserScript', 'WKViewGetFixedContainerColorAPIVersion', 'WKViewRequestFixedContainerColors', 'WKViewGetHostScrollIndicatorAPIVersion', 'WKViewSetHostScrollIndicatorEnabled', 'WKViewRequestHostScrollIndicatorState')) {
+foreach ($name in @('WKViewGetHostScrollFrameAPIVersion', 'WKViewCopyHostScrollFrames', 'WKViewCreateWithHostFrameSurface', 'WKViewRequestHostScrollingState')) {
+    if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
+}
+foreach ($name in @('WKViewGetHostTouchAPIVersion', 'WKViewSetHostTouchEnabled', 'WKViewCopyHostTouchDiagnostics')) {
+    if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
+}
+foreach ($name in @('WKViewGetHostFrameSurfaceAPIVersion', 'WKViewSetHostFrameSurfaceEnabled', 'WKViewAcquireHostFrameSurface', 'WKViewAcknowledgeHostFrameSurface', 'WKViewReplayHostFrameSurface', 'WKViewGetHostGDIUploadCount')) {
+    if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
+}
+foreach ($name in @('WKViewGetHostAccessibilityAPIVersion', 'WKViewRequestHostAccessibilityTree', 'WKViewGetHostFrameTimingAPIVersion', 'WKViewCopyHostFrameTimings', 'WKViewGetHostFrameClock', 'WKViewGetHostFramePresentationAPIVersion', 'WKViewCopyHostFrameEdges')) {
+    if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
+}
+foreach ($name in @('WKViewGetHostTextInputState', 'WKViewCopyHostTextInputDiagnostics', 'WKViewResetHostTextInput', 'WKViewCopyHostAccessibilityTree', 'WKViewPerformHostAccessibilityAction', 'WKViewGetHostDesktopAPIVersion', 'WKViewSetHostDesktopGeometry', 'WKViewGetViewportHostAPIVersion', 'WKViewSetObscuredContentInsets', 'WKViewSetUnobscuredSizeRange', 'WKViewSetHostPresentationGeometry', 'WKViewGetContentColorAPIVersion', 'WKViewRequestContentEdgeColor', 'WKViewGetHostAppearanceAPIVersion', 'WKViewSetHostDarkAppearance', 'WKViewSetUsesOffscreenRendering', 'WKViewGetHostRenderingStatistics', 'WKViewGetHostDeveloperAPIVersion', 'WKInspectorStartHostRemoteServer', 'WKInspectorStopHostRemoteServer', 'WKInspectorGetHostRemoteServerPort', 'WKUserContentControllerRemoveHostUserScript', 'WKViewGetFixedContainerColorAPIVersion', 'WKViewRequestFixedContainerColors', 'WKViewRequestFixedContainerColorsV2', 'WKViewGetHostScrollIndicatorAPIVersion', 'WKViewSetHostScrollIndicatorEnabled', 'WKViewRequestHostScrollIndicatorState')) {
     if (-not ($exports -match ('\b' + [Regex]::Escape($name) + '\b'))) { throw "Missing built host API export: $name" }
 }
 $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
@@ -126,8 +176,36 @@ $runtimeFiles = Get-ChildItem -LiteralPath $runtime -File -Recurse |
     }
 [ordered]@{
     schemaVersion = 1; upstreamRevision = $pin.revision
+    hostFrameTimingApiVersion = 2; hostAccessibilityApiVersion = 2
+    hostFramePresentationApiVersion = 1
+    hostFrameSurfaceApiVersion = 1
+    hostScrollFrameApiVersion = 1
+    hostTouchApiVersion = $(if ($ExperimentalAsyncScrolling) { 1 } else { 0 })
+    experimentalAsyncScrolling = [bool]$ExperimentalAsyncScrolling
     inputFiles = @($inputRecords)
-    hostDesktopApiVersion = 1; hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 1; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
+    hostDesktopApiVersion = 1; hostViewportApiVersion = 2; contentPaintingVersion = 2; contentColorApiVersion = 1; hostAppearanceApiVersion = 1; hostDeveloperApiVersion = 1; hostFixedContainerColorApiVersion = 2; hostScrollIndicatorApiVersion = 1; backForwardListSwift = $false; files = @($runtimeFiles)
     runtimeAcceptancePassed = $false
-} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $build 'runtime-manifest.json') -Encoding utf8
+} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $runtimeRoot 'runtime-manifest.json') -Encoding utf8
+if ($runtimeRoot -ne $build) {
+    Copy-Item -LiteralPath (Join-Path $build 'build-inputs.json') -Destination (Join-Path $runtimeRoot 'build-inputs.json')
+    [IO.Directory]::CreateDirectory((Join-Path $runtimeRoot 'inputs')) | Out-Null
+    foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $build 'inputs') -Force) {
+        Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $runtimeRoot 'inputs') -Recurse -Force
+    }
+}
+# Select only a fully built runtime with its manifest and frozen inputs in place.
+# Packaged apps and explicit DEVDUO_WEBKIT_RUNTIME overrides have precedence.
+if ($KeepRuntimeSelection -or $ExperimentalAsyncScrolling) { exit 0 }
+$selectionPath = Join-Path $repository 'temp/build/windows-webkit-runtime.json'
+$selectionTemporary = $selectionPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+try {
+    $selectedDirectory = if ($runtime.StartsWith($repository + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        $runtime.Substring($repository.Length + 1)
+    } else { $runtime }
+    [ordered]@{ schemaVersion = 1; binDirectory = $selectedDirectory.Replace('\', '/') } |
+        ConvertTo-Json | Set-Content -LiteralPath $selectionTemporary -Encoding utf8
+    Move-Item -LiteralPath $selectionTemporary -Destination $selectionPath -Force
+} finally {
+    if (Test-Path -LiteralPath $selectionTemporary) { Remove-Item -LiteralPath $selectionTemporary }
+}
 exit 0

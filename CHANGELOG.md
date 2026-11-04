@@ -2,6 +2,20 @@
 
 <!-- Unreleased -->
 
+## 0.1.2
+
+DevDuo and bundled Windows WebKit both use `0.1.2`; the upstream WebKit revision is unchanged. This release requires the rebuilt runtime's fixed-container color v2, asynchronous accessibility v2 and frame timing v2 and frame presentation/surface v1 capabilities. Native acceptance scope is recorded separately in the Windows handoff.
+
+- Distinguish missing fixed coverage from uncertain popup colors and bound stale-color retention during popup replacement. Reuse upstream background and fixed/sticky predominant-color rules so patterned document content behind transparent wrappers does not suppress their extension.
+- Paint document boundaries and fixed-edge continuation with their submitted WebKit page frame, preserving real viewport and fixed/sticky geometry.
+- Present accelerated Windows pages through shared D3D11 textures and software pages through native bitmap upload into the same GPU framebuffer, removing GDI and page readback from application presentation.
+- Coalesce touch dragging per animation frame, reduce repeated scroll/observer work and avoid redundant stationary pointer commits.
+- Keep the host's blocking wheel listener active only during touch emulation, allowing mouse mode to use the engine's normal event routing.
+- Ease Windows Safari widgets and complete material-role recipes between measured endpoints, with interruptible transitions and the system animation preference.
+- Refresh Windows accessibility through asynchronous, coalesced snapshots and announce properties after publishing the fresh cache.
+- Stabilize Safari material color targets and retain composition nodes, updating boundary, material and foreground surfaces independently.
+- Remember control API, CDP and native remote inspection enablement. Restore services independently; a startup failure retains intent for the next launch without retrying or selecting another port.
+
 ## 0.1.1
 
 Host-only patch release; the bundled Windows WebKit remains at `0.1.0` and does not require rebuilding.

@@ -29,7 +29,7 @@ Avalonia 管理宿主窗口和设备/场景选择。`NativeWebView` 在 macOS �
 
 Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。两种容器使用已记录的移动 Safari 请求身份；真实引擎、platform、DPR、方向、safe area 和键盘仍保持原生行为。Safari 外观不代表引擎变成 iPhone Safari。
 
-机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v4 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
+机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v5 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
 
 ## 宿主控件与导航
 
@@ -46,13 +46,13 @@ Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。�
 
 快捷键：⌘L/Ctrl+L 聚焦地址栏，⌘R/Ctrl+R 或 F5 重新加载，Esc 停止加载，⌘[ ⌘] 或 Alt+←/→ 浏览历史，⌘S/Ctrl+S 保存状态，⌘\\/Ctrl+\\ 显示或隐藏设置。macOS 同时在原生**导航**菜单中列出这些命令，因此 WKWebView 持有焦点时仍可使用。Windows 通过原生 WKView 键盘消息和面板命令键链转发快捷键；IME 已有原生限定验收，广泛键盘遍历仍按平台记录。宿主控件具有本地化的无障碍名称、带快捷键的提示，以及禁用项的说明文字；状态消息为 polite live region。
 
-`Host/PreferenceStore.cs` 将宿主设置保存在 `DevDuo/preferences.json` 的可选 `host` 对象中：`theme`、`containerMode`、`fold`、`previewScale`、`deviceOutline`、`showTabStrip`、四个材质值（null 表示沿用 `config/safari-shell.json`）、面板展开状态和 `lastUrl`（仅 http/https）。各字段独立校验，无效字段使用默认值并给出说明。机身角度从不保存，因此折叠 180° 只能经由记录的顺时针序列到达。有效的 `DEVDUO_URL` 优先于记住的网站；两者都没有时直接加载内置离线欢迎页，没有先行网络导航。主页和颜色实验室是独立的内置页面，不覆盖记住的网站；链接来自项目元数据。标定是开发者工具区的显式操作，需要接收器服务。**重置设置**恢复默认值和机身 0°，不改变语言和当前页面。文件格式与语言行为见[本地化](011-LOCALIZATION.md)。
+`Host/PreferenceStore.cs` 将宿主设置保存在 `DevDuo/preferences.json` 的可选 `host` 对象中：`theme`、`containerMode`、`fold`、`previewScale`、`deviceOutline`、`showTabStrip`、四个材质值（null 表示沿用 `config/safari-shell.json`）、面板展开状态和 `lastUrl`（仅 http/https）。各字段独立校验，无效字段使用显示默认值并给出说明。已启用监听的端口／token／LAN 配置无效时则阻止恢复，原值跨无关保存保留，直到显式应用配置或重置。机身角度从不保存，因此折叠 180° 只能经由记录的顺时针序列到达。有效的 `DEVDUO_URL` 优先于记住的网站；两者都没有时直接加载内置离线欢迎页，没有先行网络导航。主页和颜色实验室是独立的内置页面，不覆盖记住的网站；链接来自项目元数据。标定是开发者工具区的显式操作，需要接收器服务。**重置设置**恢复默认值和机身 0°，不改变语言和当前页面。文件格式与语言行为见[本地化](011-LOCALIZATION.md)。
 
 活动示意标签显示当前已验证文档的真实标题，并跟随动态标题更新。空白或尚未确认的标题回退为本地化的通用页面标签，非活动槽位仍为示意。原生文字排版在现有宽度内使用尾部省略，模型和 Windows 无障碍名称保留完整标题，不改变标签容器、关闭控件或字体几何。
 
 ## 开发工具与页面代理
 
-开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存；旧 JSON 的 `developerExpanded` 作为未知字段兼容忽略。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。两项远程服务每次启动均关闭；监听/局域网偏好、代理配置和明确填写的 CDP 请求头令牌会保存，启用状态和临时前端凭据不保存。
+开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存；旧 JSON 的 `developerExpanded` 作为未知字段兼容忽略。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。原生远程检查、CDP 与控制 API 分别保存启用意图及现有监听设置；缺失的启用字段默认关闭。启动失败保留下次恢复意图，不循环重试或换端口；容器重建只延续已运行或启动中的服务。临时前端凭据不保存。
 
 | 路径 | 传输与范围 |
 | --- | --- |
@@ -112,7 +112,7 @@ WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用�
 
 macOS 通过同一贝塞尔遮罩裁剪 WKWebView 和兄弟 AppKit 视图，避免普通 Avalonia 控件覆盖原生浏览器。当前 macOS 27 包使用 `NSGlassEffectView` clear/tint；较旧 `NSVisualEffectView` 分支需要降低部署目标重编并另行验证。着色、材质贡献、阴影和半径可调，iOS Liquid Glass 私有模糊/折射内核仍未知。
 
-外壳外观独立决定 Light/Dark 字形、材质及原生页面配色；即使存在相反 theme-color 提示，两端也采样 WebKit 实际边缘条带，meta 只作诊断，computed background 仅作标明的回退。Windows 内容取色 API v1 通过普通快照 IPC 仅返回 RGB/状态，图像不进入页面渲染。采样异步防抖，可能滞后移动内容；导航、文档和几何代次拒绝过期结果。D3D11/DirectComposition 桥接 WebKit HWND 的实时重定向表面，先高斯模糊和色彩处理再圆角裁剪，并用 Direct2D/DirectWrite 分层绘制着色、定向高光、边框、阴影和清晰字形。被动摄像头/Wi-Fi/时钟示意及独立外壳动作遵循 macOS 场景规则。文档外条带遵循根背景规则，与工具栏着色独立；有效横向正文继续可见。更广泛的输入、DPI 和实际呈现仍是独立门槛，见 [Windows 实现及限制](014-WINDOWS-WEBKIT.md#实时表面合成)。
+外壳外观独立决定 Light/Dark 字形、材质及原生页面配色；即使存在相反 theme-color 提示，两端也采样 WebKit 实际边缘条带，meta 只作诊断，computed background 仅作标明的回退。Windows 内容取色 API v1 通过普通快照 IPC 仅返回 RGB/状态，图像不进入页面渲染。采样异步防抖，可能滞后移动内容；导航、文档和几何代次拒绝过期结果。D3D11/DirectComposition 通过保留式 GPU 页面帧缓冲消费租借的原生帧，先高斯模糊和色彩处理再圆角裁剪，并用 Direct2D/DirectWrite 分层绘制着色、定向高光、边框、阴影和清晰字形。被动摄像头/Wi-Fi/时钟示意及独立外壳动作遵循 macOS 场景规则。文档外条带遵循根背景规则，与工具栏着色独立；有效横向正文继续可见。更广泛的输入、DPI 和实际呈现仍是独立门槛，见 [Windows 实现及限制](014-WINDOWS-WEBKIT.md#实时表面合成)。
 
 **颜色演示**是用于主题色及内容取色的独立夹具。**保存状态**和 `window.devduoContainerTelemetry` 提供请求/实际框、滚动/chrome 状态、可见与点击边界、颜色来源/RGB 和材质参数。`previewScale` 记录实际呈现比例。源码检出写入 `captures/desktop-validation/container-modes/`，独立安装使用本地应用数据的 `DevDuo/captures`；`DEVDUO_OUTPUT_DIR` 可覆盖位置。
 

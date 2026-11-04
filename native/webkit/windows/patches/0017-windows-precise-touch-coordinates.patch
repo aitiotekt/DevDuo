@@ -1,0 +1,134 @@
+diff --git a/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp b/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp
+--- a/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp
++++ b/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp
+@@ -7,6 +7,7 @@
+ #include "WebEventFactory.h"
+ #include <WebCore/TouchAction.h>
+ #include <cmath>
++#include <windowsx.h>
+ #include <wtf/text/MakeString.h>
+ 
+ namespace WebKit {
+@@ -51,8 +52,8 @@
+     WebWheelEventInit init;
+     init.event = input;
+     init.event.type = WebEventType::Wheel;
+-    init.wheel.position = roundedIntPoint(point);
+-    init.wheel.globalPosition = roundedIntPoint(global);
++    init.wheel.position = flooredIntPoint(point);
++    init.wheel.globalPosition = flooredIntPoint(global);
+     init.wheel.delta = delta;
+     init.wheel.granularity = WebWheelEventGranularity::ScrollByPixelWheelEvent;
+     init.wheel.phase = phase;
+@@ -107,12 +108,20 @@
+             return true;
+         }
+     }
+-    auto mouse = WebEventFactory::createWebMouseEvent(window, message, wParam, lParam, false, m_page->intrinsicDeviceScaleFactor());
++    const auto scale = m_page->intrinsicDeviceScaleFactor();
++    POINT physicalPosition { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
++    auto physicalGlobalPosition = physicalPosition;
++    ::ClientToScreen(window, &physicalGlobalPosition);
++    // A mouse event uses integer CSS coordinates for Windows hit testing.
++    // Preserve physical-pixel deltas for the emulated touch contact instead.
++    const DoublePoint position { physicalPosition.x / static_cast<double>(scale), physicalPosition.y / static_cast<double>(scale) };
++    const DoublePoint globalPosition { physicalGlobalPosition.x / static_cast<double>(scale), physicalGlobalPosition.y / static_cast<double>(scale) };
++    auto mouse = WebEventFactory::createWebMouseEvent(window, message, wParam, lParam, false, scale);
+     // Windows also posts WM_MOUSEMOVE when the window changes under a stationary
+     // cursor. A single emulated contact has no changing pressure/tilt payload;
+     // identical coordinates must not wake page touch handlers or overwrite the
+     // last real movement timestamp.
+-    if (message == WM_MOUSEMOVE && m_hostTouchContact && m_hostTouchContact->current == mouse.mouse.position)
++    if (message == WM_MOUSEMOVE && m_hostTouchContact && m_hostTouchContact->current == position)
+         return true;
+     mouse.event.hostInputSequence = ++m_hostInputSequence;
+     mouse.event.hostInputSeconds = hostFrameClockSeconds();
+@@ -121,21 +130,21 @@
+         m_hostTouchContact.emplace();
+         auto& contact = *m_hostTouchContact;
+         contact.identifier = ++m_hostContactGeneration;
+-        contact.start = contact.current = contact.previous = mouse.mouse.position;
+-        contact.global = contact.globalStart = mouse.mouse.globalPosition;
++        contact.start = contact.current = contact.previous = position;
++        contact.global = contact.globalStart = globalPosition;
+         contact.input = contact.startInput = mouse.event;
+         ++m_hostTouchContacts;
+         SetFocus(window);
+         SetCapture(window);
+-        sendHostTouch(WebEventType::TouchStart, mouse.event, mouse.mouse.position, mouse.mouse.globalPosition);
++        sendHostTouch(WebEventType::TouchStart, mouse.event, position, globalPosition);
+         return true;
+     }
+     if (!m_hostTouchContact)
+         return true;
+     auto& contact = *m_hostTouchContact;
+     contact.input = mouse.event;
+-    contact.current = mouse.mouse.position;
+-    contact.global = mouse.mouse.globalPosition;
++    contact.current = position;
++    contact.global = globalPosition;
+     contact.moved |= std::hypot(contact.current.x() - contact.start.x(), contact.current.y() - contact.start.y()) >= 6;
+     if (message == WM_LBUTTONUP)
+         contact.down = false;
+@@ -209,8 +218,8 @@
+         WebMouseEventInit click;
+         click.event = completed.input;
+         click.event.type = type;
+-        click.mouse.position = completed.current;
+-        click.mouse.globalPosition = completed.global;
++        click.mouse.position = flooredIntPoint(completed.current);
++        click.mouse.globalPosition = flooredIntPoint(completed.global);
+         click.mouse.button = type == WebEventType::MouseMove ? WebMouseEventButton::None : WebMouseEventButton::Left;
+         click.mouse.buttons = type == WebEventType::MouseDown ? 1 : 0;
+         click.mouse.clickCount = 1;
+diff --git a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.h
+@@ -44,6 +44,10 @@
+     bool handleWheelEvent(const PlatformWheelEvent&);
+ 
+ private:
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    FloatPoint adjustedScrollPosition(const FloatPoint&) const final;
++    bool m_preservePrecisePosition { false };
++#endif
+ #if USE(COORDINATED_GRAPHICS_ASYNC_SCROLLBAR)
+     // ThreadedScrollingTreeScrollingNodeDelegate
+     void updateFromStateNode(const ScrollingStateScrollingNode&) final;
+diff --git a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeScrollingNodeDelegateCoordinated.cpp
+@@ -28,6 +28,10 @@
+ #include "ScrollingTreeScrollingNodeDelegateCoordinated.h"
+ 
+ #if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++#include "PlatformWheelEvent.h"
++#include <wtf/SetForScope.h>
++#endif
+ #include "ScrollerCoordinated.h"
+ #include "ScrollingStateFrameScrollingNode.h"
+ #include "ScrollingTreeOverflowScrollingNode.h"
+@@ -67,9 +71,21 @@
+     auto deferrer = ScrollingTreeWheelEventTestMonitorCompletionDeferrer { *scrollingTree(), scrollingNode()->scrollingNodeID(), WheelEventTestMonitor::DeferReason::HandlingWheelEvent };
+ 
+     updateUserScrollInProgressForEvent(wheelEvent);
+-
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    // Preserve the exact device motion for a held contact. The generic
++    // threaded delegate rounds each scroll request to an integer CSS pixel.
++    SetForScope preservePrecisePosition(m_preservePrecisePosition,
++        wheelEvent.hasPreciseScrollingDeltas() && wheelEvent.phase() == PlatformWheelEventPhase::Changed);
++#endif
+     return m_scrollController.handleWheelEvent(wheelEvent);
+ }
++
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++FloatPoint ScrollingTreeScrollingNodeDelegateCoordinated::adjustedScrollPosition(const FloatPoint& position) const
++{
++    return m_preservePrecisePosition ? position : ThreadedScrollingTreeScrollingNodeDelegate::adjustedScrollPosition(position);
++}
++#endif
+ 
+ #if USE(COORDINATED_GRAPHICS_ASYNC_SCROLLBAR)
+ void ScrollingTreeScrollingNodeDelegateCoordinated::updateFromStateNode(const ScrollingStateScrollingNode& scrollingStateNode)

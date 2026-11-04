@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deep scroll input performance</title>
+<style>html,body{margin:0;background:#dce8f4}.layer{min-height:4000px;background:repeating-linear-gradient(#dce8f4 0 80px,#bed4e8 80px 160px)}</style>
+<div id="mount"></div>
+<script>
+  const accelerated = false;
+  if (accelerated) mount.style.willChange = 'transform';
+  let node = mount;
+  for (let depth = 0; depth < 48; depth++) {
+    const child = document.createElement('div'); child.className = 'layer'; node.append(child); node = child;
+  }
+  let last = 0, gaps = [], wheelEvents = 0;
+  addEventListener('wheel', () => wheelEvents++, { passive: true });
+  function frame(now) { if (last) gaps.push(now-last); last = now; requestAnimationFrame(frame); }
+  requestAnimationFrame(frame);
+  window.resetPerformance = () => { last = 0; gaps = []; wheelEvents = 0; return 'reset'; };
+  window.inputPerformance = () => {
+    const sorted = gaps.toSorted((a,b)=>a-b);
+    return { scrollY, viewport:[innerWidth,innerHeight], input:window.__devduoInput.state, wheelEvents,
+      frames:gaps.length, maximumGap:Math.max(0,...gaps), p95Gap:sorted[Math.floor(sorted.length*.95)]??0,
+      over50ms:gaps.filter(value=>value>50).length };
+  };
+</script>

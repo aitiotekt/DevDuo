@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native fixed edge color rules</title>
+<style>
+  html, body { margin: 0; background: white; }
+  #flow { height: 3000px; background: repeating-linear-gradient(90deg,#f04020 0 31px,#2070e0 31px 67px,#e0c030 67px 103px); }
+  #overlay { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 100; }
+  #paint { height: 53px; background: rgba(0,0,0,.8); }
+</style>
+<div id="flow"></div><div id="overlay"><div id="paint"></div></div>
+<script>
+  const mode = new URLSearchParams(location.search).get('mode') || 'nested';
+  if (mode === 'direct') {
+    overlay.style.cssText += 'height:53px;background:rgba(0,0,0,.8)';
+    paint.remove();
+  }
+  if (mode === 'low-alpha') paint.style.background = 'rgba(0,0,0,.5)';
+  if (mode === 'opaque') paint.style.background = 'rgb(40,80,160)';
+  if (mode === 'mixed') paint.style.background = 'linear-gradient(90deg,red,blue)';
+  if (mode === 'partial') overlay.style.width = '40%';
+  if (mode === 'flow') overlay.style.position = 'static';
+  if (mode === 'sticky') {
+    overlay.style.cssText = 'position:sticky;top:0;z-index:100';
+    document.body.prepend(overlay);
+  }
+</script>

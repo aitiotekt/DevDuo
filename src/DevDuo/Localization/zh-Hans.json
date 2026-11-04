@@ -163,6 +163,8 @@
   "Developer.Running": "运行中",
   "Developer.Starting": "正在启动…",
   "Developer.Stopped": "已停止",
+  "Developer.RestoreFailed": "本次未恢复：{0}。下次启动仍会尝试。",
+  "Developer.InvalidSavedSettings": "已保存的监听配置无效：{0}。请应用设置以修正。",
   "Developer.ServiceError": "服务错误：{0}",
   "Developer.ActionError": "无法应用开发者操作：{0}",
   "Developer.WindowError": "无法打开系统工具浏览器：{0}",
@@ -187,7 +189,7 @@
   "Developer.InvalidCdpBearerToken": "CDP 令牌只能包含 ASCII 字母、数字或 - . _ ~ + / =。",
   "Developer.CdpLanTokenRequired": "允许局域网 CDP 连接前，请先设置 CDP 请求头令牌。",
   "Developer.ControlApi": "REST 控制 API",
-  "Developer.ControlApiHint": "每次启动默认关闭，仅本机 IPv4，与 CDP 和局域网设置独立。令牌留空时本机免鉴权；否则发送 Authorization: Bearer <token>。令牌保存在本机。",
+  "Developer.ControlApiHint": "已启用的服务会在启动时恢复，仅本机 IPv4，与 CDP 和局域网设置独立。令牌留空时本机免鉴权；否则发送 Authorization: Bearer <token>。令牌保存在本机。",
   "Developer.ControlApiPort": "控制 API 端口",
   "Developer.ControlApiBearerToken": "控制 API 请求头令牌（可选）",
   "Developer.ControlApiAddress": "控制 API OpenAPI 地址",
@@ -198,5 +200,5 @@
   "Control.Interaction": "交互方式",
   "Interaction.Touch": "触控 · 单指仿真",
   "Interaction.Mouse": "鼠标",
-  "Interaction.Hint": "触控：轻点或按下拖动滑动，禁用滚轮。鼠标模式恢复滚轮、选择和悬停。触摸事件为合成事件，不复现 iOS 原生手势。"
+  "Interaction.Hint": "触控用左键轻点或拖动滑动，并拦截页面滚轮。鼠标模式支持滚轮、选择和悬停。"
 }

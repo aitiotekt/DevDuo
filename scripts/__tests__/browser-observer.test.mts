@@ -32,6 +32,9 @@ test("footer color extension requires a visible opaque full-width fixed edge and
   let visible = true;
   let color = "clear";
   let report: (() => void) | undefined;
+  let canvases = 0,
+    readbacks = 0,
+    edgeHitTests = 0;
   const document = {
     readyState: "complete",
     documentElement: root,
@@ -41,17 +44,26 @@ test("footer color extension requires a visible opaque full-width fixed edge and
     title: "Probe",
     querySelectorAll: () => [],
     elementFromPoint: () => root,
-    elementsFromPoint: () => (visible ? [footer] : []),
-    createElement: () => ({
-      getContext: () => ({
-        clearRect: () => {},
-        fillRect: () => {},
-        set fillStyle(value: string) {
-          color = value;
-        },
-        getImageData: () => ({ data: colors[color] }),
-      }),
-    }),
+    elementsFromPoint: () => {
+      edgeHitTests++;
+      return visible ? [footer] : [];
+    },
+    createElement: () => {
+      canvases++;
+      return {
+        getContext: () => ({
+          clearRect: () => {},
+          fillRect: () => {},
+          set fillStyle(value: string) {
+            color = value;
+          },
+          getImageData: () => {
+            readbacks++;
+            return { data: colors[color] };
+          },
+        }),
+      };
+    },
   };
   const window: Record<string, unknown> = { addEventListener: () => {} };
   window.top = window;
@@ -106,6 +118,24 @@ test("footer color extension requires a visible opaque full-width fixed edge and
     [24, 185, 168],
   );
   assert.equal(initial.documentId, "test-document");
+  const previousReadbacks = readbacks;
+  observedColor();
+  assert.equal(canvases, 1, "Color conversion reuses one detached canvas");
+  assert.equal(
+    readbacks,
+    previousReadbacks,
+    "Repeated identical colors do not force more pixel readbacks",
+  );
+  const previousHits = edgeHitTests;
+  window.__devduoNativeFixedColors = true;
+  assert.equal(observedColor(), null);
+  assert.equal(
+    edgeHitTests,
+    previousHits,
+    "Native fixed-color hosts bypass the legacy DOM footer scan",
+  );
+  delete window.__devduoNativeFixedColors;
+
   let jsonMessage = "";
   window.webkit = {
     messageHandlers: {

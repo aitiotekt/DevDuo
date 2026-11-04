@@ -9,7 +9,7 @@ using ChromeKind = DevDuo.WindowsComposition.Kind;
 using ChromeAction = DevDuo.WindowsComposition.Action;
 namespace DevDuo;
 
-internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
+internal sealed partial class WindowsWebViewPanel : System.Windows.Forms.Panel
 {
     private DeviceProfile profile;
     private readonly IntPtr clippingParent;
@@ -37,7 +37,11 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     private Color tintColor = Color.FromArgb(239, 243, 248);
     private const string NativeColorSource = "WebKit native edge average";
     private readonly System.Windows.Forms.Timer colorTimer = new() { Interval = 180 };
+    private readonly MaterialColorState materialColor = new();
+    private readonly System.Windows.Forms.Timer materialTimer = new() { Interval = 16 };
+    private int colorAttempts;
     private readonly System.Windows.Forms.Timer clockTimer = new() { Interval = 1000 };
+    private readonly System.Windows.Forms.Timer telemetryTimer = new() { Interval = 100 };
     private readonly record struct ColorObservationKey(string? Document, double X, double Y, double Width,
         double Height, string Layout, double BackingScale, int Background, double DocumentWidth, double DocumentHeight);
     private ColorObservationKey? colorKey;
@@ -66,6 +70,14 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         clippingParent = nativeParent;
         target = url;
         options = configuration;
+        chromeMotionTimer.Tick += (_, _) => { if (!disposed) PresentChromeMotion(); };
+        telemetryTimer.Tick += (_, _) =>
+        {
+            telemetryTimer.Stop();
+            if (disposed) return;
+            telemetryPublicationCount++;
+            Evaluate("window.devduoContainerTelemetry=" + ReadState() + ";window.dispatchEvent(new CustomEvent('devduo:container',{detail:window.devduoContainerTelemetry}));");
+        };
         observer = observerSource;
         BackColor = tintColor;
         webkit.Observation += ObserveJson;
@@ -98,6 +110,17 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
                     compact = false; ApplyLayout(); break;
             }
         };
+        materialColor.Reset((uint)tintColor.ToArgb() & 0xffffff);
+        materialTimer.Tick += (_, _) =>
+        {
+            materialColor.AcceptPending(Environment.TickCount64);
+            if (materialColor.Advance(Environment.TickCount64))
+            {
+                tintColor = Color.FromArgb(unchecked((int)(0xff000000 | materialColor.Display)));
+                ApplyLayout();
+            }
+            if (!materialColor.Animating && !materialColor.Pending) materialTimer.Stop();
+        };
         colorTimer.Tick += async (_, _) => await SampleContentColor();
         // The DOM can finish reporting before a delayed image/mask reaches a
         // rendered frame. A successful early snapshot is not the final color.
@@ -125,6 +148,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             {
                 pageDocumentId = null;
                 compact = false;
+                ResetChromeMotion();
                 chromeScroll.Reset();
                 actualWidth = actualHeight = scrollX = scrollY = 0;
                 tintSource = "initial fallback";
@@ -155,7 +179,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             webkit.SetInteractionMode(options.InteractionMode);
             webkit.Initialize(observer, options.Mode == "safari");
             initializationState = "ready";
-            runtimeVersion = "324423@main + DevDuo host viewport API v2 + content painting v2 + content color API v1 + host appearance API v1 + fixed-container color API v1";
+            runtimeVersion = "324423@main + DevDuo host viewport API v2 + content painting v2 + content color API v1 + host appearance API v1 + fixed-container color API v2";
             ApplyMask();
             ApplyLayout();
             if (pendingHtml is { } content) webkit.ShowHtml(content, pendingHtmlBaseUrl);
@@ -237,6 +261,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         if (disposed)
             return;
         if (options.ShellAppearance != current.ShellAppearance) InvalidateContentColor();
+        if (options.Mode != current.Mode) ResetChromeMotion();
         options = current;
         webkit.SetInteractionMode(current.InteractionMode);
         UpdateLocalizedLabels();
@@ -247,6 +272,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         if (disposed) return;
         profile = geometry;
         compact = false;
+        ResetChromeMotion();
         chromeScroll.Reset();
         InvalidateContentColor();
         Configure(current);
@@ -311,6 +337,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             if (tintSource != NativeColorSource)
             {
                 tintColor = computedColor;
+                materialColor.Reset((uint)tintColor.ToArgb() & 0xffffff);
                 tintSource = "computed content background fallback";
             }
             var nextKey = new ColorObservationKey(pageDocumentId, scrollX, scrollY, actualWidth, actualHeight,
@@ -328,6 +355,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     }
     private void OnDocumentNavigationStarted()
     {
+        ResetChromeMotion();
         pageTitle.BeginNavigation();
         title = "";
         tintSource = "initial fallback";
@@ -337,9 +365,8 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     private static Color ReadColor(JsonElement values) => Color.FromArgb(Math.Clamp(values[0].GetInt32(), 0, 255), Math.Clamp(values[1].GetInt32(), 0, 255), Math.Clamp(values[2].GetInt32(), 0, 255));
     private void ScheduleContentColor()
     {
-        colorRevision++;
-        colorTimer.Stop();
-        colorTimer.Start();
+        colorAttempts = 0;
+        if (!colorTimer.Enabled && !colorBusy) colorTimer.Start();
     }
     private void InvalidateContentColor()
     {
@@ -347,6 +374,9 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         colorKey = null;
         colorTimer.Stop();
         sampledColor = null;
+        colorAttempts = 0;
+        materialTimer.Stop();
+        materialColor.Reset((uint)computedColor.ToArgb() & 0xffffff);
         colorStatus = "invalidated";
     }
     private async Task SampleContentColor()
@@ -355,6 +385,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         if (disposed || colorBusy || colorKey is null || options.Mode != "safari") return;
         var revision = colorRevision;
         colorBusy = true;
+        colorAttempts++;
         colorStatus = "pending";
         try
         {
@@ -363,7 +394,9 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             sampledColor = result;
             if (result is { Status: 0 })
             {
-                tintColor = Color.FromArgb((int)(result.Rgb >> 16) & 255, (int)(result.Rgb >> 8) & 255, (int)result.Rgb & 255);
+                materialColor.Observe(result.Rgb, Environment.TickCount64);
+                if (materialColor.Animating || materialColor.Pending)
+                    materialTimer.Start();
                 tintSource = NativeColorSource;
                 colorStatus = "accepted";
             }
@@ -386,7 +419,8 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         finally
         {
             colorBusy = false;
-            if (!disposed && revision != colorRevision && colorKey is not null) colorTimer.Start();
+            if (!disposed && colorKey is not null &&
+                (revision != colorRevision || colorAttempts == 0 || materialColor.Pending && colorAttempts < 3)) colorTimer.Start();
         }
     }
     private void ApplyLayout()
@@ -420,6 +454,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         BackColor = neutral;
         if (!safari)
         {
+            ResetChromeMotion();
             LayoutContent(0, 0, 0, 0, (int)o.LogicalHeight, (int)o.LogicalHeight);
             webkit.Chrome = [];
             webkit.Present();
@@ -512,6 +547,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         void Add(ChromeKind kind, ChromeAction action, RectangleF hit, string name, string text = "", float fontSize = 0, float radius = 0)
         {
             elements.Add(new() { Kind = kind, Action = action, X = hit.X, Y = hit.Y, Width = hit.Width, Height = hit.Height,
+                CompactMaterial = kind == ChromeKind.CompactAddress ? 1 : 0,
                 VisualWidth = hit.Width, VisualHeight = hit.Height, Radius = radius, FontSize = fontSize > 0 ? fontSize : (float)(17 * scale),
                 Foreground = foreground, Text = text });
             names.Add(name);
@@ -583,9 +619,7 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
                     Add(ChromeKind.Divider, ChromeAction.None, new(r.Left + exposedWidth + (float)(1.5 * sx), (float)(87 * sy), (float)sx, (float)(22 * sy)), "");
             }
         }
-        webkit.Chrome = elements.ToArray();
-        webkit.ChromeNames = names.ToArray();
-        webkit.Present();
+        SetChromeTarget(elements.ToArray(), names.ToArray());
         PublishState();
     }
     private void LayoutContent(int topInset, int rightInset, int bottomInset, int leftInset, int minimumHeight, int maximumHeight)
@@ -596,8 +630,9 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
     }
     private void PublishState()
     {
-        telemetryPublicationCount++;
-        Evaluate("window.devduoContainerTelemetry=" + ReadState() + ";window.dispatchEvent(new CustomEvent('devduo:container',{detail:window.devduoContainerTelemetry}));");
+        // Coalesce diagnostics independently of input and native presentation.
+        // Do not serialize/evaluate the full host state for every drag frame.
+        if (!disposed && !telemetryTimer.Enabled) telemetryTimer.Start();
     }
     public string ReadState()
     {
@@ -625,6 +660,9 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
             underChromeContentContinuation = initializationState == "ready" && webkit.IsReady && options.Mode == "safari",
             containerMode = options.Mode == "safari" ? "safari-approximation" : "app-webview",
             chromeState = options.Mode == "safari" ? (compact ? "compact" : "expanded") : "absent",
+            chromeAnimation = new { running = chromeMotion.Running, fraction = chromeMotion.Fraction, frames = chromeMotionFrames,
+                durationMilliseconds = options.WindowsMaterial.ChromeTransitionMilliseconds, clientAnimationsEnabled,
+                curve = "cubic-bezier(0.333333,0,0.666667,1); desktop approximation", layout = "target inset committed once; presentation interpolated" },
             chromeVisible = options.Mode == "safari",
             addressGeometryActive = options.Mode == "safari",
             chromeLayout = options.ChromeLayout,
@@ -675,11 +713,14 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
                 wifiVisible = webkit.Chrome.Any(element => element.Kind == ChromeKind.Wifi),
                 clockVisible = webkit.Chrome.Any(element => element.Kind == ChromeKind.Clock), clockText },
             chromeElements = webkit.Chrome.Select((element, index) => new { kind = element.Kind.ToString(), action = element.Action.ToString(),
+                compactMaterial = element.CompactMaterial,
                 name = index < webkit.ChromeNames.Length ? webkit.ChromeNames[index] : "",
                 hitFrameSceneCssPx = new { x = element.X / scale, y = element.Y / scale, width = element.Width / scale, height = element.Height / scale },
                 visualFrameSceneCssPx = new { x = (element.X + element.VisualX) / scale, y = (element.Y + element.VisualY) / scale,
                     width = element.VisualWidth / scale, height = element.VisualHeight / scale } }),
             contentColor = new { apiVersion = 1, revision = colorRevision, inFlight = colorBusy, status = colorStatus,
+                rawRgb = materialColor.Raw, targetRgb = materialColor.Target, displayedRgb = materialColor.Display,
+                acceptedTargets = materialColor.AcceptedCount, pendingTarget = materialColor.Pending, animating = materialColor.Animating,
                 sampleRectSceneCssPx = sampledColor is { } sample ? new { x = sample.SampleRect.X, y = sample.SampleRect.Y,
                     width = sample.SampleRect.Width, height = sample.SampleRect.Height } : null,
                 navigationGeneration = sampledColor?.NavigationGeneration, geometryGeneration = sampledColor?.GeometryGeneration },
@@ -789,7 +830,10 @@ internal sealed class WindowsWebViewPanel : System.Windows.Forms.Panel
         if (disposing && !disposed)
         {
             disposed = true;
+            chromeMotionTimer.Stop(); chromeMotionTimer.Dispose();
+            telemetryTimer.Stop(); telemetryTimer.Dispose();
             colorTimer.Stop(); colorTimer.Dispose();
+            materialTimer.Stop(); materialTimer.Dispose();
             clockTimer.Stop(); clockTimer.Dispose();
             webkit.Observation -= ObserveJson;
             webkit.DocumentNavigationStarted -= OnDocumentNavigationStarted;

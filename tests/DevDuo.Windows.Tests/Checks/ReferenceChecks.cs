@@ -64,7 +64,11 @@ internal sealed partial class WindowsChecks
             NativeWheel(compact);
             await Task.Delay(120);
             Check(Text(State(), "initializationState", "ready"), "Native presentation remains ready during wheel input.");
-            if (Text(State(), "chromeState", compact ? "compact" : "expanded")) return;
+            if (Text(State(), "chromeState", compact ? "compact" : "expanded"))
+            {
+                await Wait(state => !state.GetProperty("chromeAnimation").GetProperty("running").GetBoolean(), "Chrome endpoint settles");
+                return;
+            }
         }
         var events = await Web.EvaluateResultAsync("JSON.stringify({url:location.href,ready:document.readyState,documentId:window.devduoShellObservation?.documentId,events:window.__wheelHistory,scroll:[scrollX,scrollY],visibility:document.visibilityState,focused:document.hasFocus(),size:[innerWidth,innerHeight],range:(document.scrollingElement?.scrollHeight??0)-innerHeight,hit:document.elementFromPoint(innerWidth/3,innerHeight/2)?.outerHTML.slice(0,300)})");
         File.WriteAllText(Path.Combine(Program.Output, "wheel-failure-events.json"), events ?? "null");

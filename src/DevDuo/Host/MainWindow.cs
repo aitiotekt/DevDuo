@@ -229,6 +229,7 @@ public sealed partial class MainWindow : SukiWindow
         {
             ready = true;
             Rebuild(null);
+            RestoreDeveloperServices();
             telemetryTimer.Start();
         };
         Closing += (_, _) =>
@@ -328,6 +329,9 @@ public sealed partial class MainWindow : SukiWindow
     // Restores the documented initial host state (Safari, Closed, body 0°, 1:1). Language and the current page stay.
     private void ResetSettings()
     {
+        preferences.AcceptListenerSettings(PreferenceStore.NativeListenerFields.Concat(PreferenceStore.CdpListenerFields)
+            .Concat(PreferenceStore.ControlListenerFields).Distinct().ToArray());
+        nativeRestoreError = cdpRestoreError = null;
         DetachDeveloperTools();
         _ = StopControlApiAsync();
         host = new HostSettings { LastUrl = host.LastUrl };
@@ -335,6 +339,7 @@ public sealed partial class MainWindow : SukiWindow
         ApplyHostSettingsToControls();
         ApplyTheme();
         Rebuild("Status.Rebuilt");
+        RefreshControlApi();
         SavePreferences();
     }
 
@@ -654,10 +659,8 @@ public sealed partial class MainWindow : SukiWindow
             developerTools.Changed += OnDeveloperToolsChanged;
             developerTools.CdpTargetChanged += OnCdpTargetChanged;
             developerTools.ApplyProxy(new DeveloperProxyOptions(host.ProxyMode, host.ProxyEndpoint));
-            if (nativeRemoteEnabled)
-                developerTools.ApplyNativeRemote(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.NativeRemotePort));
-            if (cdpEnabled)
-                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken));
+            if (nativeRemoteEnabled) TryRestoreNativeRemote();
+            if (cdpEnabled) TryRestoreCdp();
             nativeLayer.Children.Add(web);
             ApplyPreviewSize();
             RefreshSceneDescription();
@@ -677,7 +680,12 @@ public sealed partial class MainWindow : SukiWindow
         var source = developerTools;
         Dispatcher.UIThread.Post(() =>
         {
-            if (ReferenceEquals(source, developerTools)) RefreshDeveloperTools();
+            if (!ReferenceEquals(source, developerTools)) return;
+            if (host.NativeRemoteEnabled && source?.NativeRemoteStatus is { Enabled: false, Starting: false, Error: { } nativeError })
+                nativeRestoreError = nativeError;
+            if (host.CdpEnabled && source?.CdpStatus is { Enabled: false, Starting: false, Error: { } cdpError })
+                cdpRestoreError = cdpError;
+            RefreshDeveloperTools();
         });
     }
 
@@ -728,6 +736,7 @@ public sealed partial class MainWindow : SukiWindow
         host.DeveloperAllowLan = panel.AllowLan.IsChecked == true;
         host.NativeRemotePort = nativePort;
         host.CdpPort = cdpPort;
+        preferences.AcceptListenerSettings(PreferenceStore.NativeListenerFields.Concat(PreferenceStore.CdpListenerFields).Distinct().ToArray());
         QueueSave();
         return true;
     }
@@ -742,6 +751,11 @@ public sealed partial class MainWindow : SukiWindow
             RefreshDeveloperTools();
             return;
         }
+        if (native) host.NativeRemoteEnabled = enabled;
+        else host.CdpEnabled = enabled;
+        if (native) nativeRestoreError = null;
+        else cdpRestoreError = null;
+        QueueSave();
         RunDeveloperAction(() =>
         {
             if (native)
@@ -764,13 +778,13 @@ public sealed partial class MainWindow : SukiWindow
             return;
         RunDeveloperAction(() =>
         {
-            if (developerTools?.NativeRemoteStatus is { Enabled: true } or { Starting: true })
-                developerTools.ApplyNativeRemote(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.NativeRemotePort));
-            if (developerTools?.CdpStatus is { Enabled: true } or { Starting: true })
+            if (host.NativeRemoteEnabled)
+                TryRestoreNativeRemote();
+            if (host.CdpEnabled)
             {
                 devToolsWindow?.Close();
                 devToolsWindow = null;
-                developerTools.ApplyCdp(true, new DeveloperListenOptions(host.DeveloperAllowLan, host.CdpPort, host.CdpBearerToken));
+                TryRestoreCdp();
             }
             SetDeveloperMessage("Developer.ListenersSaved");
         });
@@ -842,14 +856,18 @@ public sealed partial class MainWindow : SukiWindow
         {
             var native = developerTools?.NativeRemoteStatus ?? new DeveloperServiceStatus(false);
             var cdp = developerTools?.CdpStatus ?? new DeveloperServiceStatus(false);
-            panel.NativeRemote.IsChecked = native.Enabled || native.Starting;
-            panel.Cdp.IsChecked = cdp.Enabled || cdp.Starting;
+            if (nativeRestoreError is not null) native = native with { Error = nativeRestoreError };
+            if (cdpRestoreError is not null) cdp = cdp with { Error = cdpRestoreError };
+            // Switches own startup intent; status/address describe actual listeners.
+            // A failed restore must still allow one click to forget that intent.
+            panel.NativeRemote.IsChecked = host.NativeRemoteEnabled;
+            panel.Cdp.IsChecked = host.CdpEnabled;
             panel.NativeRemote.IsEnabled = panel.Cdp.IsEnabled = developerTools is not null;
-            string Status(DeveloperServiceStatus state) => state.Error is { } error
-                ? language.Format("Developer.ServiceError", error)
+            string Status(DeveloperServiceStatus state, bool remembered) => state.Error is { } error
+                ? language.Format(remembered && !state.Enabled && !state.Starting ? "Developer.RestoreFailed" : "Developer.ServiceError", error)
                 : language.Text(state.Starting ? "Developer.Starting" : state.Enabled ? "Developer.Running" : "Developer.Stopped");
-            panel.NativeRemoteStatus.Text = Status(native);
-            panel.CdpStatus.Text = Status(cdp);
+            panel.NativeRemoteStatus.Text = Status(native, host.NativeRemoteEnabled);
+            panel.CdpStatus.Text = Status(cdp, host.CdpEnabled);
             panel.NativeRemoteAddress.Text = native.Address ?? "";
             panel.CdpAddress.Text = cdp.Address ?? "";
             panel.NativeRemoteAddress.IsVisible = !string.IsNullOrEmpty(native.Address);

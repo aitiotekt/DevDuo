@@ -15,6 +15,10 @@ internal sealed class WindowsComposition : IDisposable
     private (string Text, float FontSize, float Width)? textMeasurement;
     private string? textMeasurementLanguage;
     private ulong nativeTextMeasurementCount, textMeasurementCacheHits;
+    private readonly Queue<object> commitTimings = new();
+    private (int Width, int Height)? pageSceneSize;
+    internal bool NeedsPageFrame { get; private set; } = true;
+    internal bool PageResourcesLost { get; private set; }
     private (nint Target, int Degrees, int X, int Y)? presentation;
     private (float X, float Y, float Width, float Height, float Opacity)? scrollIndicator;
     internal string? Error => Marshal.PtrToStringUni(DDCompositionError());
@@ -32,6 +36,8 @@ internal sealed class WindowsComposition : IDisposable
             var state = native == 0 ? default : DDCompositionGetState(native);
             return new { apiVersion = state.ApiVersion, softwareDevice = state.SoftwareDevice != 0, resourceGeneration = state.ResourceGeneration,
                 sceneGeneration = state.SceneGeneration, width = state.Width, height = state.Height,
+                page = PageFrameDiagnostics(),
+                commitTimings = commitTimings.TakeLast(Environment.GetEnvironmentVariable("DEVDUO_FRAME_TIMING_HISTORY") == "1" ? 128 : 8).ToArray(),
                 hostTextMeasurement = new { nativeCalls = nativeTextMeasurementCount, cacheHits = textMeasurementCacheHits },
                 presentationApiVersion = 1, sceneInCanvasDegrees = presentation?.Degrees ?? 0, offsetX = presentation?.X ?? 0, offsetY = presentation?.Y ?? 0 };
         }
@@ -41,12 +47,26 @@ internal sealed class WindowsComposition : IDisposable
     {
         public Kind Kind;
         public Action Action;
-        public float X, Y, Width, Height, VisualX, VisualY, VisualWidth, VisualHeight, Radius, FontSize, ClipWidth;
+        public float X, Y, Width, Height, VisualX, VisualY, VisualWidth, VisualHeight, Radius, FontSize, ClipWidth, CompactMaterial;
         public uint Foreground;
         [MarshalAs(UnmanagedType.LPWStr)] public string Text;
     }
     [StructLayout(LayoutKind.Sequential)]
     internal struct Fill { public float X, Y, Width, Height; public uint Color; }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PageFrame
+    {
+        public ulong FrameId, DocumentEpoch;
+        public nint SharedTexture, Pixels;
+        public uint RowBytes, Background, Flags;
+        public int Width, Height;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PageFrameState
+    {
+        public ulong FrameId, DocumentEpoch, Presentations, GpuTransfers, CpuTransfers, Captures;
+        public int Width, Height;
+    }
     [StructLayout(LayoutKind.Sequential)]
     internal struct Material
     {
@@ -56,7 +76,8 @@ internal sealed class WindowsComposition : IDisposable
     }
     internal WindowsComposition(nint parent, nint browser)
     {
-        if (DDCompositionVersion() != 4) throw new InvalidOperationException("Windows composition API v4 is required.");
+        if (DDCompositionVersion() != 5) throw new InvalidOperationException("Windows composition API v5 is required.");
+        if (DDCompositionPageFrameVersion() != 2) throw new InvalidOperationException("Windows page frame API v2 is required.");
         if (DDCompositionPresentationVersion() != 1) throw new InvalidOperationException("Windows composition presentation API v1 is required.");
         if (DDCompositionScrollIndicatorVersion() != 1) throw new InvalidOperationException("Windows composition scroll indicator API v1 is required.");
         native = DDCompositionCreate(parent, browser);
@@ -67,10 +88,72 @@ internal sealed class WindowsComposition : IDisposable
         if (native == 0 || width <= 0 || height <= 0) return;
         var scene = JsonSerializer.Serialize(new { width, height, chrome, fill, material }, SceneOptions);
         if (scene == previousScene) return;
+        if (pageSceneSize != (width, height)) NeedsPageFrame = true;
         var result = DDCompositionUpdate(native, width, height, chrome, chrome.Length, fill, fill.Length, material);
         if (result < 0) throw new InvalidOperationException(Marshal.PtrToStringUni(DDCompositionError()));
+        if (DDCompositionGetUpdateTiming(native, out var started, out var commit, out var finished) < 0)
+            throw new InvalidOperationException(Error);
+        var state = DDCompositionGetState(native);
+        commitTimings.Enqueue(new { sceneGeneration = state.SceneGeneration, started, commit, finished, scope = "DComp submission; excludes scanout" });
+        if (commitTimings.Count > 128) commitTimings.Dequeue();
         previousScene = scene;
+        pageSceneSize = (width, height);
     }
+    internal enum PageFrameResult { Presented, Dropped, Pending }
+    internal PageFrameResult PresentPageFrame(PageFrame frame, Fill[] fill)
+    {
+        if (native == 0) return PageFrameResult.Dropped;
+        var result = DDCompositionPresentPageFrame(native, frame, fill, fill.Length);
+        if (result == unchecked((int)0x8000000A)) return PageFrameResult.Pending;
+        if (result < 0) throw new InvalidOperationException(Error);
+        if (result != 0) return PageFrameResult.Dropped;
+        NeedsPageFrame = PageResourcesLost = false;
+        if (DDCompositionGetUpdateTiming(native, out var started, out var commit, out var finished) < 0)
+            throw new InvalidOperationException(Error);
+        commitTimings.Enqueue(new { kind = "page-frame", frameId = frame.FrameId, documentEpoch = frame.DocumentEpoch, started, commit, finished });
+        if (commitTimings.Count > 128) commitTimings.Dequeue();
+        return PageFrameResult.Presented;
+    }
+    private object PageFrameDiagnostics()
+    {
+        var state = native == 0 ? default : DDCompositionGetPageFrameState(native);
+        return new { apiVersion = 2, frameId = state.FrameId, documentEpoch = state.DocumentEpoch, presentations = state.Presentations,
+            gpuTransfers = state.GpuTransfers, cpuTransfers = state.CpuTransfers, captures = state.Captures, width = state.Width, height = state.Height };
+    }
+    internal System.Drawing.Bitmap? CapturePageFramebuffer()
+    {
+        if (native == 0) return null;
+        var state = DDCompositionGetPageFrameState(native);
+        if (state.Width <= 0 || state.Height <= 0) return null;
+        var bitmap = new System.Drawing.Bitmap(state.Width, state.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        try
+        {
+            var pixels = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, state.Width, state.Height),
+                System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            try
+            {
+                if (DDCompositionCopyPagePixels(native, pixels.Scan0, (uint)pixels.Stride, state.Width, state.Height) < 0)
+                    throw new InvalidOperationException(Error);
+            }
+            finally { bitmap.UnlockBits(pixels); }
+            return bitmap;
+        }
+        catch { bitmap.Dispose(); throw; }
+    }
+    internal object UpdateCounters
+    {
+        get
+        {
+            if (native == 0) return new { unavailable = true };
+            if (DDCompositionGetUpdateCounters(native, out var structure, out var material, out var boundary, out var foreground) < 0)
+                throw new InvalidOperationException(Error);
+            return new { structure, material, boundary, foreground };
+        }
+    }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DDCompositionGetUpdateCounters(nint native, out ulong structure, out ulong material, out ulong boundary, out ulong foreground);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DDCompositionGetUpdateTiming(nint native, out double started, out double commit, out double finished);
     internal Action Hit(int x, int y) => native == 0 ? Action.None : (Action)DDCompositionHit(native, x, y);
     internal void SetScrollIndicator(float x, float y, float width, float height, float opacity)
     {
@@ -118,6 +201,7 @@ internal sealed class WindowsComposition : IDisposable
         if (result < 0) throw new InvalidOperationException(Error);
         if (result == 0) return false;
         previousScene = null;
+        NeedsPageFrame = PageResourcesLost = true;
         scrollIndicator = null;
         textMeasurement = null;
         textMeasurementLanguage = null;
@@ -133,6 +217,10 @@ internal sealed class WindowsComposition : IDisposable
     }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int DDCompositionSetTouchPointer(nint native, float x, float y, float diameter, float left, float top, float right, float bottom);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionVersion();
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionPageFrameVersion();
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int DDCompositionPresentPageFrame(nint native, PageFrame frame, [In] Fill[] fills, int fillCount);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern PageFrameState DDCompositionGetPageFrameState(nint native);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int DDCompositionCopyPagePixels(nint native, nint pixels, uint rowBytes, int width, int height);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionPresentationVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern uint DDCompositionScrollIndicatorVersion();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int DDCompositionSetScrollIndicator(nint native, float x, float y, float width, float height, float opacity);

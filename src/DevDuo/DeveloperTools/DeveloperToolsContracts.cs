@@ -10,7 +10,7 @@ public sealed record DeveloperProxyOptions(string Mode, string? Endpoint);
 
 public sealed record DeveloperServiceStatus(bool Enabled, string? Address = null, string? Error = null, bool Starting = false);
 
-// Service state is deliberately separate from persisted configuration. A launch never starts a listener.
+// Actual service state is separate from the user's persisted startup intent.
 public interface IDeveloperToolsController
 {
     event Action? Changed;

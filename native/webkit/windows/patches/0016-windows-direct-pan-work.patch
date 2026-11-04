@@ -1,0 +1,42 @@
+diff --git a/Source/WebCore/platform/ScrollingEffectsController.cpp b/Source/WebCore/platform/ScrollingEffectsController.cpp
+--- a/Source/WebCore/platform/ScrollingEffectsController.cpp
++++ b/Source/WebCore/platform/ScrollingEffectsController.cpp
+@@ -435,7 +435,8 @@
+     }
+ #endif
+ 
+-#if ENABLE(COORDINATED_TOUCH_EVENTS)
++#if ENABLE(COORDINATED_TOUCH_EVENTS) && !(PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC))
++    // Windows WC services precise input on its own scrolling-thread tick.
+     if (m_client.scrollAnimationEnabled() && m_inScrollGesture) {
+         // For precise-delta wheel events, which are dispatched by touchpad or synthesized from touch events,
+         // scroll immediately with immediateScrollBy below.
+diff --git a/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp b/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
+--- a/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
++++ b/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
+@@ -131,14 +131,18 @@
+         processingSteps.remove(WheelEventProcessingSteps::BlockingDOMEventDispatch);
+ #endif
+ 
+-    ensureOnMainRunLoop([pageID] {
+-        if (RefPtr webPage = WebProcess::singleton().webPage(pageID)) {
+-            if (RefPtr corePage = webPage->corePage()) {
+-                if (CheckedPtr keyboardScrollingAnimator = corePage->currentKeyboardScrollingAnimator())
+-                    keyboardScrollingAnimator->stopScrollingImmediately();
++#if PLATFORM(WIN)
++    // A host pan takes over keyboard scrolling once, at its beginning.
++    if (!wheelEvent.isHostTouchGesture() || wheelEvent.phase() == WebWheelEvent::Phase::Began)
++#endif
++        ensureOnMainRunLoop([pageID] {
++            if (RefPtr webPage = WebProcess::singleton().webPage(pageID)) {
++                if (RefPtr corePage = webPage->corePage()) {
++                    if (CheckedPtr keyboardScrollingAnimator = corePage->currentKeyboardScrollingAnimator())
++                        keyboardScrollingAnimator->stopScrollingImmediately();
++                }
+             }
+-        }
+-    });
++        });
+ 
+ #if ENABLE(ASYNC_SCROLLING) && ENABLE(SCROLLING_THREAD)
+     do {

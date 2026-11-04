@@ -99,7 +99,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         var name = WKStringCreateWithUTF8CString("devduoShellJSON");
         try { WKUserContentControllerAddScriptMessageHandler(controller, name, messageCallback, token); }
         finally { WKRelease(name); }
-        var source = WKStringCreateWithUTF8CString(observer);
+        var source = WKStringCreateWithUTF8CString("window.__devduoNativeFixedColors=true;\n" + observer);
         var script = WKUserScriptCreateWithSource(source, 0, true);
         try
         {
@@ -109,11 +109,16 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         finally { WKRelease(script); WKRelease(source); }
         InstallInputScript();
         // The default configuration disables test-only IPC. No testing entry is bound here.
-        view = WKViewCreate(new Rect { Right = Math.Max(1, Width), Bottom = Math.Max(1, Height) }, configuration, Handle);
+        var initialFrame = new Rect { Right = Math.Max(1, Width), Bottom = Math.Max(1, Height) };
+        view = CreateHostFrameView is { } createHostFrame
+            ? createHostFrame(initialFrame, configuration, Handle)
+            : WKViewCreate(initialFrame, configuration, Handle);
         if (view == 0) throw new InvalidOperationException("WKViewCreate failed.");
-        // Keep accelerated WebKit frames in its native retained painter. Direct
-        // OpenGL swaps bypass the layered HWND surface consumed by DirectComposition.
+        // WC produces offscreen frames. The frame-surface bridge transports GPU
+        // textures or the native CPU bitmap without uploading through a GDI HWND.
         WKViewSetUsesOffscreenRendering(view, true);
+        WKViewSetHostFrameSurfaceEnabled(view, true);
+        ApplyNativeTouchMode();
         page = WKViewGetPage(view);
         ConfigureScrollIndicator(safariScrollIndicator);
         var userAgent = WKStringCreateWithUTF8CString(BrowserIdentity.MobileUserAgent);
@@ -129,8 +134,16 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         keyboardWindow.AccessibleObjectRequested = GetWebAccessibility;
         keyboardWindow.UiaProviderRequested = GetWebUiaProvider;
         keyboardWindow.AccessibilityChanged = AccessibilityChanged;
+        keyboardWindow.FrameAvailable = PresentNativeFrame;
+        keyboardWindow.TimingReported = RecordHostFrameTiming;
         keyboardWindow.PointerMessage = FilterBrowserPointer;
         keyboardWindow.ScrollInput = (direction, source) => { RecordScrollIndicatorInput(); NativeScrollInput?.Invoke(direction, source); };
+        keyboardWindow.TouchPanInput = (direction, generation) =>
+        {
+            if (NativeTouchDiagnostics() is not { } touch || touch.GetProperty("generation").GetUInt64() != generation) return;
+            RecordScrollIndicatorInput();
+            NativeScrollInput?.Invoke(direction, "native touch pan");
+        };
         composition = new WindowsComposition(Handle, browserWindow);
         touchPointerTimer.Tick += (_, _) => UpdateTouchPointer();
         touchPointerWindow = new TouchPointerWindow(GetAncestor(Handle, 2), HideTouchPointer);
@@ -167,7 +180,10 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                 if (inspectorRequested) WKInspectorShow(inspector);
             }
             if (InspectorVisible) inspectorRequested = false;
-            try { if (composition.Refresh()) Present(); }
+            try
+            {
+                if (composition.Refresh()) { touchPointerFrame = null; Present(); }
+            }
             catch (InvalidOperationException failure)
             {
                 presentationFailed = true;
@@ -176,6 +192,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                 return;
             }
             ReportNavigation();
+            PresentNativeFrame();
             if (WKViewGetHostRenderingStatistics(view, out var updates, out _, out _) && reportedRenderingUpdate != updates)
             {
                 reportedRenderingUpdate = updates;
@@ -344,7 +361,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             oldGeometry.Scale == scale && oldGeometry.Left == left && oldGeometry.Right == right;
         geometry = next;
         geometryGeneration++;
-        var clearedFixedColors = InvalidateFixedContainerColors();
+        var hadFixedColors = InvalidateFixedContainerColors(retainColors: true);
         ResetScrollIndicator(false, indicatorSameScene);
         if (observation is null) ShowUnobscuredContent();
         if (!WKViewSetHostPresentationGeometry(view, new Size(width, height), (float)scale) ||
@@ -352,7 +369,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             !WKViewSetUnobscuredSizeRange(view, new Size(width - left - right, minimumHeight), new Size(width - left - right, maximumHeight)))
             throw new InvalidOperationException("Windows WebKit rejected the logical scene/insets.");
         InvalidatePresentation();
-        if (clearedFixedColors) Present();
+        if (hadFixedColors) Present();
         _ = EvaluateAsync("window.__devduoReportContainerObservation?.()");
     }
 
@@ -485,7 +502,6 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     {
         firstObservationMilliseconds ??= navigationClock.Elapsed.TotalMilliseconds;
         ObserveScrollIndicatorMotion(root);
-        if (observation is null) fixedColorSchedule.Wake();
         observation = root.Clone();
         observationCount++;
         // The panel's observation handler lays out and presents the scene. Give
@@ -544,7 +560,6 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         validFlow = Rectangle.FromLTRB(RasterClipEdge(x0 * scale), RasterClipEdge(y0 * scale), RasterClipEdge(x1 * scale), RasterClipEdge(y1 * scale));
         static Color ColorOf(JsonElement rgb) => Color.FromArgb(Math.Clamp(rgb[0].GetInt32(), 0, 255), Math.Clamp(rgb[1].GetInt32(), 0, 255), Math.Clamp(rgb[2].GetInt32(), 0, 255));
         rootColor = ColorOf(r.GetProperty("underPageBackgroundFallback"));
-        WKViewSetHostUnderPageBackgroundColor(view, (uint)rootColor.ToArgb() & 0xffffff);
         // Native fixed-container colors own all fixed edges, including opaque
         // footers. The DOM footer observation remains diagnostic only.
         if (present) Present();
@@ -562,31 +577,18 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     {
         if (composition is null || disposed || presentationFailed) return;
         presentCount++;
-        var rectangles = new List<WindowsComposition.Fill>();
-        void Add(Rectangle r, Color color)
+        // WebKit paints continuation and the page in one native frame. Material
+        // animation must never commit an independently sampled edge overlay.
+        try
         {
-            r.Intersect(ClientRectangle);
-            if (r.Width > 0 && r.Height > 0) rectangles.Add(new() { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height, Color = (uint)color.ToArgb() & 0xffffff });
+            composition.Update(Width, Height, Chrome, [], Material);
+            if (composition.NeedsPageFrame)
+            {
+                WKViewReplayHostFrameSurface(view, composition.PageResourcesLost);
+                PresentNativeFrame();
+            }
+            PaintScrollIndicator(); UpdateTouchPointer();
         }
-        var root = rootColor;
-        Add(Rectangle.FromLTRB(0, 0, Width, validFlow.Top), root);
-        Add(Rectangle.FromLTRB(0, validFlow.Bottom, Width, Height), root);
-        Add(Rectangle.FromLTRB(0, validFlow.Top, validFlow.Left, validFlow.Bottom), root);
-        Add(Rectangle.FromLTRB(validFlow.Right, validFlow.Top, Width, validFlow.Bottom), root);
-        if (geometry is { } g)
-        {
-            // Cover actual obscured insets even where valid document flow exists.
-            // The real layout viewport and the page's fixed rectangles stay intact.
-            var horizontalLeft = RasterClipEdge(g.Left * g.Scale);
-            var horizontalRight = RasterClipEdge((g.Width - g.Right) * g.Scale);
-            // Side continuation owns the intersections, including the ordinary
-            // under-page background when that side has no accepted fixed color.
-            if (FixedColor(0) is { } top) Add(Rectangle.FromLTRB(horizontalLeft, 0, horizontalRight, RasterClipEdge(g.Top * g.Scale)), top);
-            if (FixedColor(2) is { } bottom) Add(Rectangle.FromLTRB(horizontalLeft, RasterClipEdge((g.Height - g.Bottom) * g.Scale), horizontalRight, Height), bottom);
-            if (FixedColor(1) is { } right) Add(Rectangle.FromLTRB(RasterClipEdge((g.Width - g.Right) * g.Scale), 0, Width, Height), right);
-            if (FixedColor(3) is { } left) Add(Rectangle.FromLTRB(0, 0, RasterClipEdge(g.Left * g.Scale), Height), left);
-        }
-        try { composition.Update(Width, Height, Chrome, rectangles.ToArray(), Material); PaintScrollIndicator(); touchPointerFrame = null; UpdateTouchPointer(); }
         catch (InvalidOperationException failure)
         {
             presentationFailed = true;
@@ -600,10 +602,10 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         if (presentation == next) return;
         presentation = next;
         geometryGeneration++;
-        var clearedFixedColors = InvalidateFixedContainerColors();
+        var hadFixedColors = InvalidateFixedContainerColors(retainColors: true);
         ResetScrollIndicator(false);
         composition?.SetPresentation(target, degrees, offsetX, offsetY);
-        if (clearedFixedColors) Present();
+        if (hadFixedColors) Present();
         if (view != 0)
         {
             SetNativeDesktopGeometry(target, degrees, offsetX, offsetY);
@@ -622,6 +624,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         interactionMode = mode;
         UpdateTouchPointer();
         if (controller == 0 || disposed) return;
+        ApplyNativeTouchMode();
         InstallInputScript();
         if (IsReady) _ = EvaluateAsync(PageInteraction.Update(mode));
     }
@@ -632,7 +635,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             WKUserContentControllerRemoveHostUserScript(controller, inputUserScript);
             WKRelease(inputUserScript);
         }
-        var source = WKStringCreateWithUTF8CString(PageInteraction.Bootstrap(PageInteraction.Source, interactionMode));
+        var source = WKStringCreateWithUTF8CString(PageInteraction.Bootstrap(PageInteraction.Source, interactionMode, SetHostTouchEnabled is not null));
         try
         {
             inputUserScript = WKUserScriptCreateWithSource(source, 0, false);
@@ -651,6 +654,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         }
         return ForwardPointer(ref message);
     }
+    private void ApplyNativeTouchMode()
+    {
+        if (view != 0 && SetHostTouchEnabled is { } configure && !configure(view, interactionMode == "touch"))
+            throw new InvalidOperationException("WebKit rejected the native interaction mode.");
+    }
+    private JsonElement? NativeTouchDiagnostics()
+    {
+        if (!IsReady || CopyHostTouchDiagnostics is not { } copy) return null;
+        var value = copy(view);
+        if (value == 0) return null;
+        try { using var document = JsonDocument.Parse(WindowsWebKitApi.String(value)); return document.RootElement.Clone(); }
+        finally { WKRelease(value); }
+    }
     private bool ForwardPointer(ref System.Windows.Forms.Message message) => PointerMessage?.Invoke(ref message) == true;
     protected override void WndProc(ref System.Windows.Forms.Message message)
     {
@@ -664,14 +680,18 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
     }
     internal object Diagnostics => new
     {
-        hostDesktopApiVersion = 1, hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 1, hostScrollIndicatorApiVersion = 1,
+        hostDesktopApiVersion = 1, hostViewportApiVersion = 2, contentPaintingVersion = 2, contentColorApiVersion = 1, hostAppearanceApiVersion = 1, hostFixedContainerColorApiVersion = 2, hostScrollIndicatorApiVersion = 1,
         accessibility = webAccessibility?.Diagnostics,
+        frameTiming = FrameTimingDiagnostics(),
+        frameSurface = FrameSurfaceDiagnostics(),
         textInput = TextInputDiagnostics(),
         touchPointer = new { visible = touchPointerVisible, systemCursorHidden = touchPointerVisible, diameterDip = 20, error = touchPointerError,
-            pending = touchPointerTimer.Enabled, requests = touchPointerRequests, commits = touchPointerCommits,
+            pending = touchPointerTimer.Enabled, requests = touchPointerRequests, commits = touchPointerCommits, scrollFrameCommits = touchPointerScrollFrameCommits,
             frameIntervalMilliseconds = touchPointerTimer.Interval, frameX = touchPointerFrame?.Position.X, frameY = touchPointerFrame?.Position.Y,
+            submittedQpcSeconds = touchPointerSubmittedQpcSeconds,
             source = "independent host composition device; latest-position coalescing; excluded from WebKit snapshots" },
         interactionMode, nativeWheelBlocked = interactionMode == "touch",
+        nativeTouch = NativeTouchDiagnostics(),
         pageInput = observation is { } inputObservation && inputObservation.TryGetProperty("pageInput", out var inputState) ? inputState : (JsonElement?)null,
         darkAppearance, testOnlyIPCEnabled = false, nonPersistentStore = false,
         websiteStore = "persistent DevDuo user profile",
@@ -682,7 +702,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         backingScaleFactor = BackingScale, pageZoomFactor = 1,
         renderingPipeline = RenderingPipelineDiagnostics(),
         logicalGeometry = geometry is { } g ? new { width = g.Width, height = g.Height, top = g.Top, right = g.Right, bottom = g.Bottom, left = g.Left, minimumHeight = g.Minimum, maximumHeight = g.Maximum } : null,
-        composition = new { apiVersion = 4, error = composition?.Error, resources = composition?.Diagnostics, sourceWindow = SourceWindowDiagnostics(), strategy = "live DWM WebKit surface; DirectComposition blur/color matrix; layered Direct2D chrome", screenshotsUsedForRendering = false },
+        composition = new { apiVersion = 5, error = composition?.Error, resources = composition?.Diagnostics, updates = composition?.UpdateCounters, sourceWindow = SourceWindowDiagnostics(), strategy = "frame-bound native texture/bitmap; retained GPU framebuffer; DirectComposition blur/color matrix and Direct2D chrome", screenshotsUsedForRendering = false },
         continuation = new { cornerPriority = "side-over-horizontal", validFlowRectanglePx = new[] { validFlow.Left, validFlow.Top, validFlow.Right, validFlow.Bottom }, visible = validFlow != ClientRectangle, fixedFooterColorApproximation = false, fixedContainerColorExtension = FixedContainerColorDiagnostics(), backgroundSource = "read-only opaque html/body CSS fallback; otherwise white" }
     };
     private object TextInputDiagnostics()
@@ -757,7 +777,6 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         owner.finishMilliseconds = owner.navigationClock.Elapsed.TotalMilliseconds;
         // A valid early "none" or unavailable result must not own the final
         // document just because readiness produced no extra backing-store update.
-        owner.fixedColorSchedule.Wake();
         owner.InvalidatePresentation();
         owner.ContentRenderingUpdated?.Invoke();
         _ = owner.EvaluateAsync("window.__devduoReportContainerObservation?.()");
@@ -798,6 +817,7 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
             StopRemoteInspection();
             CloseInspector();
             disposed = true; views.Remove(token); metadataTimer.Stop(); metadataTimer.Dispose();
+            webAccessibility?.Dispose();
             InvalidateFixedContainerColors();
             ResetScrollIndicator(true);
             indicatorAnimation.Stop(); indicatorAnimation.Dispose(); scrollIndicator.Dispose(); ScrollIndicatorChanged = null;
@@ -842,9 +862,12 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
         internal Action<WindowsComposition.Action>? ChromeClick;
         internal PointerMessageHandler? PointerMessage;
         internal Action<int, string>? ScrollInput;
+        internal Action<int, ulong>? TouchPanInput;
         internal Func<nint, nint>? AccessibleObjectRequested;
         internal Func<nint, nint, nint>? UiaProviderRequested;
         internal Action<uint, ulong>? AccessibilityChanged;
+        internal Action? FrameAvailable;
+        internal Action<string, long, long>? TimingReported;
         internal Action? SourceDestroyed;
         private WindowsComposition.Action pressed;
         private long paints, wheels, lastPaintTick;
@@ -883,6 +906,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                 message.Result = 0;
                 return;
             }
+            if (message.Msg == 0x803E)
+            {
+                FrameAvailable?.Invoke();
+                message.Result = 0;
+                return;
+            }
+            if (message.Msg == 0x803F)
+            {
+                var direction = unchecked((int)message.WParam);
+                if (direction is -1 or 1) TouchPanInput?.Invoke(direction, unchecked((ulong)(long)message.LParam));
+                message.Result = 0;
+                return;
+            }
             if (message.Msg == 0x3D && unchecked((int)message.LParam) == -4 && AccessibleObjectRequested is { } accessibility)
             {
                 message.Result = accessibility(message.WParam);
@@ -895,14 +931,19 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                 var delta = (short)(message.WParam.ToInt64() >> 16);
                 ScrollInput?.Invoke(-Math.Sign(delta), "native wheel");
             }
-            if (message.Msg is 0x201 or 0x202)
+            if (message.Msg is 0x8 or 0x1F or 0x215) pressed = WindowsComposition.Action.None;
+            if (message.Msg is 0x201 or 0x203 || message.Msg == 0x202 && pressed != WindowsComposition.Action.None)
             {
                 var value = message.LParam.ToInt64();
                 var role = ChromeHit?.Invoke((short)value, (short)(value >> 16)) ?? WindowsComposition.Action.None;
-                if (message.Msg == 0x201) pressed = role;
-                if (role != WindowsComposition.Action.None)
+                var releasing = message.Msg == 0x202;
+                var owner = releasing ? pressed : role;
+                pressed = releasing ? WindowsComposition.Action.None : role;
+                // Keep ownership from button-down. A WebKit drag can release
+                // over chrome while it still owns the native mouse capture.
+                if (owner != WindowsComposition.Action.None)
                 {
-                    if (message.Msg == 0x202 && pressed == role) { pressed = WindowsComposition.Action.None; ChromeClick?.Invoke(role); }
+                    if (releasing && owner == role) ChromeClick?.Invoke(role);
                     message.Result = 0;
                     return;
                 }
@@ -933,10 +974,18 @@ internal sealed partial class WindowsWebKitView : System.Windows.Forms.Panel
                     if (direction != 0) ScrollInput?.Invoke(direction, "native keyboard");
                 }
             }
-            if (message.Msg != 0xF) { base.WndProc(ref message); return; }
+            if (message.Msg != 0xF)
+            {
+                var inputStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+                base.WndProc(ref message);
+                if (message.Msg is 0x20A or 0x20E or 0x201 or 0x202 || message.Msg == 0x200 && ((long)message.WParam & 1) != 0)
+                    TimingReported?.Invoke("native-input", inputStarted, System.Diagnostics.Stopwatch.GetTimestamp());
+                return;
+            }
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
             base.WndProc(ref message);
             lastPaintTick = System.Diagnostics.Stopwatch.GetTimestamp();
+            TimingReported?.Invoke("wm-paint-complete", started, lastPaintTick);
             var elapsed = (lastPaintTick - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             paints++;
             paintWorkMilliseconds += elapsed;

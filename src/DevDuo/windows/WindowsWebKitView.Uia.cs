@@ -28,7 +28,6 @@ internal sealed partial class WindowsWebKitView
     private void NotifyWebUia(uint nativeEvent, ulong objectId)
     {
         if (webAccessibility is not { } tree || !AutomationInteropProvider.ClientsAreListening) return;
-        tree.Refresh();
         var root = tree.Provider(tree.Root);
         var target = tree.Provider(tree.Object(objectId) ?? tree.Root);
         if (nativeEvent == 0x8005)

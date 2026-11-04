@@ -1,0 +1,317 @@
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
+@@ -129,6 +129,9 @@
+     HostFrameTiming hostTiming;
+     HostFrameEdges hostEdges;
+     bool hostFrameSurfaceEnabled { false };
++    uint64_t hostPageProxyID { 0 }, hostBackingStateID { 0 };
++    WebCore::IntSize hostLogicalSize;
++    float hostBackingScale { 1 };
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
+@@ -114,6 +114,10 @@
+     WebKit::HostFrameTiming hostTiming;
+     WebKit::HostFrameEdges hostEdges;
+     bool hostFrameSurfaceEnabled;
++    uint64_t hostPageProxyID;
++    uint64_t hostBackingStateID;
++    WebCore::IntSize hostLogicalSize;
++    float hostBackingScale;
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -316,6 +316,10 @@
+         m_updateInfo.hostTiming = m_hostFrameTiming;
+         m_updateInfo.hostEdges = m_hostFrameEdges;
+         m_updateInfo.hostFrameSurfaceEnabled = m_hostFrameSurfaceEnabled;
++        m_updateInfo.hostPageProxyID = m_webPage->webPageProxyIdentifier().toUInt64();
++        m_updateInfo.hostBackingStateID = m_backingStoreStateID;
++        m_updateInfo.hostLogicalSize = size;
++        m_updateInfo.hostBackingScale = m_webPage->intrinsicDeviceScaleFactor();
+         m_updateInfo.hostTiming.commitSeconds = hostFrameClockSeconds();
+ #endif
+         updateRootLayerDeviceScaleFactor(rootLayer.layer);
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.h
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.h
+@@ -48,6 +48,7 @@
+ #if PLATFORM(WIN)
+     bool beginHostFrame(int width, int height);
+     uint64_t endHostFrame();
++    void discardHostFrame();
+     uint64_t hostFrameAdapterLuid() const;
+     uint32_t hostFrameStatus() const { return m_hostFrameStatus; }
+ #endif
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.cpp
+@@ -156,6 +156,11 @@
+     return reinterpret_cast<uintptr_t>(frame.handle);
+ }
+ 
++void WCSceneContext::discardHostFrame()
++{
++    m_hostSharedFrame = nullptr;
++}
++
+ uint64_t WCSceneContext::hostFrameAdapterLuid() const
+ {
+     return m_hostSharedFrame ? m_hostSharedFrame->adapterLuid : 0;
+--- a/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.h
++++ b/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.h
+@@ -35,6 +35,7 @@
+ #include <WebCore/ProcessIdentifier.h>
+ #include <wtf/RefCounted.h>
+ #include <wtf/TZoneMalloc.h>
++#include <wtf/WeakPtr.h>
+ 
+ namespace IPC {
+ class StreamConnectionWorkQueue;
+@@ -60,6 +61,9 @@
+ private:
+     RemoteWCLayerTreeHost(GPUConnectionToWebProcess&, WebKit::WCLayerTreeHostIdentifier, uint64_t nativeWindow, bool usesOffscreenRendering);
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    void publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&&, CompletionHandler<void(std::optional<UpdateInfo>)>&&);
++#endif
+     // IPC::MessageReceiver
+     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+     // IPC::MessageSender
+--- a/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.cpp
+@@ -30,6 +30,13 @@
+ 
+ #include "GPUConnectionToWebProcess.h"
+ #include "GPUProcess.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include "GPUProcessProxyMessages.h"
++#include "MessageSenderInlines.h"
++#include "UpdateInfo.h"
++#include "WebPageProxyIdentifier.h"
++#include "WCSceneContext.h"
++#endif
+ #include "RemoteGraphicsContextGL.h"
+ #include "RemoteWCLayerTreeHostMessages.h"
+ #include "StreamConnectionWorkQueue.h"
+@@ -99,14 +106,66 @@
+ 
+ void RemoteWCLayerTreeHost::update(WCUpdateInfo&& update, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&& completionHandler)
+ {
+-    remoteGraphicsStreamWorkQueue().dispatch([scene = m_scene.get(), update = WTF::move(update), completionHandler = WTF::move(completionHandler)]() mutable {
++    remoteGraphicsStreamWorkQueue().dispatch([scene = m_scene.get(), update = WTF::move(update), completionHandler = WTF::move(completionHandler)
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++        , weakThis = WeakPtr { *this }
++#endif
++    ]() mutable {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++        const bool directFrame = update.hostFrameSurfaceEnabled && !update.remoteContextHostedIdentifier;
++        const auto pageProxyID = update.hostPageProxyID, backingStateID = update.hostBackingStateID;
++        const auto logicalSize = update.hostLogicalSize;
++        const auto backingScale = update.hostBackingScale;
++#endif
+         auto updateInfo = scene->update(WTF::move(update));
+-        RunLoop::mainSingleton().dispatch([updateInfo = WTF::move(updateInfo), completionHandler = WTF::move(completionHandler)]() mutable {
++        RunLoop::mainSingleton().dispatch([updateInfo = WTF::move(updateInfo), completionHandler = WTF::move(completionHandler)
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            , weakThis, directFrame, pageProxyID, backingStateID, logicalSize, backingScale
++#endif
++        ]() mutable {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            if (weakThis && directFrame && updateInfo) {
++                updateInfo->viewSize = logicalSize;
++                updateInfo->deviceScaleFactor = backingScale;
++                updateInfo->updateRectBounds = WebCore::IntRect { { }, logicalSize };
++                updateInfo->updateRects.clear();
++                updateInfo->updateRects.append(updateInfo->updateRectBounds);
++                weakThis->publishHostFrame(pageProxyID, backingStateID, WTF::move(*updateInfo), WTF::move(completionHandler));
++                return;
++            }
++#endif
+             completionHandler(WTF::move(updateInfo));
+         });
+     });
+ }
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void RemoteWCLayerTreeHost::publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&& update, CompletionHandler<void(std::optional<UpdateInfo>)>&& completionHandler)
++{
++    ASSERT(isMainRunLoop());
++    auto* connection = m_connectionToWebProcess ? m_connectionToWebProcess->gpuProcess().parentProcessConnection() : nullptr;
++    if (!connection || !pageProxyID) {
++        completionHandler(std::nullopt);
++        return;
++    }
++    // The reply is held by the UI process until it copies or rejects this lease.
++    // No Web-process main-thread hop stands between GPU completion and display.
++    connection->sendWithAsyncReply(Messages::GPUProcessProxy::DidRenderHostFrame(
++        pageProxyID, m_webProcessIdentifier, backingStateID, WTF::move(update)),
++        [weakThis = WeakPtr { *this }, completionHandler = WTF::move(completionHandler)](bool presented) mutable {
++            if (weakThis && !presented) {
++                auto* holder = weakThis->m_sharedSceneContextHolder.get();
++                remoteGraphicsStreamWorkQueue().dispatch([holder] {
++                    if (holder->context) holder->context->discardHostFrame();
++                });
++            }
++            // Returning no bitmap releases DrawingAreaWC's normal rendering
++            // backpressure after the UI lease completes, without double paint.
++            completionHandler(std::nullopt);
++        }, 0);
++}
++#endif
++
+ } // namespace WebKit
+ 
+ #endif // USE(GRAPHICS_LAYER_WC)
+--- a/Source/WebKit/UIProcess/GPU/GPUProcessProxy.messages.in
++++ b/Source/WebKit/UIProcess/GPU/GPUProcessProxy.messages.in
+@@ -28,6 +28,9 @@
+     ExceptionForEnabledBy
+ ]
+ messages -> GPUProcessProxy {
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING)
++    DidRenderHostFrame(uint64_t pageProxyID, WebCore::ProcessIdentifier webProcess, uint64_t backingStateID, struct WebKit::UpdateInfo update) -> (bool presented) Async
++#endif
+ 
+ #if HAVE(VISIBILITY_PROPAGATION_VIEW)
+     DidCreateContextForVisibilityPropagation(WebKit::WebPageProxyIdentifier pageProxyID, WebCore::PageIdentifier pageID, WebKit::LayerHostingContextID contextID)
+--- a/Source/WebKit/UIProcess/GPU/GPUProcessProxy.h
++++ b/Source/WebKit/UIProcess/GPU/GPUProcessProxy.h
+@@ -83,6 +83,9 @@
+ struct GPUProcessConnectionParameters;
+ struct GPUProcessCreationParameters;
+ struct SecurityFlags;
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++struct UpdateInfo;
++#endif
+ struct SharedPreferencesForWebProcess;
+ 
+ class GPUProcessProxy final : public AuxiliaryProcessProxy {
+@@ -91,6 +94,9 @@
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(GPUProcessProxy);
+     friend LazyNeverDestroyed<GPUProcessProxy>;
+ public:
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    void didRenderHostFrame(uint64_t pageProxyID, WebCore::ProcessIdentifier, uint64_t backingStateID, UpdateInfo&&, CompletionHandler<void(bool)>&&);
++#endif
+     static void keepProcessAliveTemporarily();
+     static Ref<GPUProcessProxy> getOrCreate();
+     static GPUProcessProxy* LEGACY_NODELETE singletonIfCreated();
+--- a/Source/WebKit/UIProcess/GPU/GPUProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/GPU/GPUProcessProxy.cpp
+@@ -28,6 +28,10 @@
+ #include "win/HostProcessCapabilityTransfer.h"
+ #endif
+ #include "GPUProcessProxy.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include "DrawingAreaProxyWC.h"
++#include "UpdateInfo.h"
++#endif
+ 
+ #if ENABLE(GPU_PROCESS)
+ 
+@@ -1123,6 +1127,19 @@
+ 
+ #endif
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void GPUProcessProxy::didRenderHostFrame(uint64_t pageProxyID, WebCore::ProcessIdentifier process, uint64_t backingStateID, UpdateInfo&& update, CompletionHandler<void(bool)>&& completionHandler)
++{
++    RefPtr page = WebPageProxyIdentifier::isValidIdentifier(pageProxyID) ? WebProcessProxy::webPage(WebPageProxyIdentifier { pageProxyID }) : nullptr;
++    if (!page || !page->hasRunningProcess() || page->legacyMainFrameProcess().coreProcessIdentifier() != process
++        || !page->drawingArea() || !is<DrawingAreaProxyWC>(*page->drawingArea())) {
++        completionHandler(false);
++        return;
++    }
++    static_cast<DrawingAreaProxyWC&>(*page->drawingArea()).receiveHostFrameFromGPU(backingStateID, WTF::move(update), WTF::move(completionHandler));
++}
++#endif
++
+ } // namespace WebKit
+ 
+ #endif // ENABLE(GPU_PROCESS)
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -48,6 +48,10 @@
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(DrawingAreaProxyWC);
+ public:
+     static Ref<DrawingAreaProxyWC> create(WebPageProxy&, WebProcessProxy&);
++    ~DrawingAreaProxyWC() override;
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    void receiveHostFrameFromGPU(uint64_t, UpdateInfo&&, CompletionHandler<void(bool)>&&);
++#endif
+ 
+     void ref() const final { RefCounted::ref(); }
+     void deref() const final { RefCounted::deref(); }
+@@ -95,6 +99,9 @@
+     uint32_t m_hostSurfaceStatus { 0 };
+     WebCore::IntSize m_hostSurfaceSize;
+     float m_hostSurfaceScale { 1 };
++#if ENABLE(ASYNC_SCROLLING)
++    CompletionHandler<void(bool)> m_hostGPUFrameCompletion;
++#endif
+     bool m_hostReplayKeyZero { false };
+     bool m_hostAwaitingDisplayRefresh { false }, m_hostDiscardAfterAck { false }, m_hostSurfaceIsStale { false };
+ #endif
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -65,6 +65,29 @@
+ #endif
+ }
+ 
++DrawingAreaProxyWC::~DrawingAreaProxyWC()
++{
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    if (m_hostGPUFrameCompletion) m_hostGPUFrameCompletion(false);
++#endif
++}
++
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void DrawingAreaProxyWC::receiveHostFrameFromGPU(uint64_t stateID, UpdateInfo&& update, CompletionHandler<void(bool)>&& completionHandler)
++{
++    if (!m_hostFrameSurfaceEnabled || m_hostGPUFrameCompletion || update.updateRectBounds.isEmpty()) {
++        completionHandler(false);
++        return;
++    }
++    m_hostGPUFrameCompletion = WTF::move(completionHandler);
++    m_hostSurfaceIsStale = stateID != m_currentBackingStoreStateID
++        || update.hostEdges.documentEpoch < m_hostEdges.documentEpoch;
++    if (m_hostSurfaceIsStale) ++m_hostStaleUpdateCount;
++    else ++m_hostUpdateCount;
++    incorporateUpdate(WTF::move(update));
++}
++#endif
++
+ void DrawingAreaProxyWC::paint(PlatformPaintContextPtr context, const WebCore::IntRect& rect, WebCore::Region& unpaintedRegion)
+ {
+     unpaintedRegion = rect;
+@@ -335,8 +358,14 @@
+         if (m_hostPaintTimings.size() == 128) m_hostPaintTimings.removeAt(0);
+         m_hostPaintTimings.append(m_hostFrameTiming);
+     }
++#if ENABLE(ASYNC_SCROLLING)
++    auto gpuCompletion = std::exchange(m_hostGPUFrameCompletion, { });
++#endif
+     const bool refresh = std::exchange(m_hostAwaitingDisplayRefresh, false);
+     if (std::exchange(m_hostDiscardAfterAck, false)) discardBackingStore();
++#if ENABLE(ASYNC_SCROLLING)
++    if (gpuCompletion) gpuCompletion(presented);
++#endif
+     if (refresh) send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
+ }
+ #endif
+@@ -344,7 +373,11 @@
+ void DrawingAreaProxyWC::discardBackingStore()
+ {
+ #if PLATFORM(WIN)
+-    if (m_hostFrameSurfaceEnabled && m_hostAwaitingDisplayRefresh) {
++    if (m_hostFrameSurfaceEnabled && (m_hostAwaitingDisplayRefresh
++#if ENABLE(ASYNC_SCROLLING)
++        || m_hostGPUFrameCompletion
++#endif
++    )) {
+         // Keep the leased raw store alive until the host drains it. WebCore
+         // may accept new geometry while its prior presentation is pending.
+         m_hostDiscardAfterAck = true;

@@ -2,6 +2,7 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Windows.Automation.Provider;
 using Forms = System.Windows.Forms;
 using static DevDuo.WindowsWebKitApi;
 
@@ -10,12 +11,23 @@ namespace DevDuo;
 internal sealed partial class WindowsWebKitView
 {
     private WebAccessibility? webAccessibility;
+    private sealed record AccessibilityRequest(WebAccessibility Tree, TaskCompletionSource<string?> Completion);
+    private static readonly Dictionary<nint, AccessibilityRequest> accessibilityRequests = new();
+    private static readonly HostAccessibilityTreeCallback accessibilityTreeCallback = AccessibilityTreeFinished;
+
+    private static void AccessibilityTreeFinished(ulong request, nint value, nint context)
+    {
+        string? json = null;
+        try { if (value != 0) json = WindowsWebKitApi.String(value); }
+        finally { if (value != 0) WKRelease(value); }
+        if (accessibilityRequests.Remove(context, out var pending))
+            pending.Completion.TrySetResult(request == (ulong)context ? json : null);
+    }
     private void AccessibilityChanged(uint nativeEvent, ulong objectId)
     {
         if (!IsReady || webAccessibility is null) return;
-        webAccessibility.Invalidate();
-        NotifyWinEvent(nativeEvent, browserWindow, -4, 0);
-        NotifyWebUia(nativeEvent, objectId);
+        webAccessibility.Invalidate(nativeEvent, objectId);
+        webAccessibility.Refresh(fromNotification: true);
     }
 
     private nint GetWebAccessibility(nint parameter)
@@ -35,10 +47,13 @@ internal sealed partial class WindowsWebKitView
     [DllImport("oleacc.dll")]
     private static extern nint LresultFromObject(ref Guid interfaceId, nint parameter, nint accessible);
     [DllImport("user32.dll")] private static extern void NotifyWinEvent(uint nativeEvent, nint window, int objectId, int childId);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWinEventHookInstalled(uint nativeEvent);
 
     // The semantic source is WebCore AX, including ARIA and native editing
     // semantics. No user-page scripts participate in this provider.
-    private sealed class WebAccessibility
+    private sealed class WebAccessibility : IDisposable
     {
         private readonly WindowsWebKitView owner;
         private Dictionary<ulong, WebAccessibilityNode> nodes = new();
@@ -49,8 +64,18 @@ internal sealed partial class WindowsWebKitView
         private bool invalidated = true;
         private long navigation = -1;
         private bool refreshing;
+        private bool refreshRequestedByRead;
+        private bool disposed;
+        private long nextRefreshTick;
+        private readonly Forms.Timer refreshTimer = new() { Interval = 100 };
+        private ulong snapshotRequests, completedSnapshots;
+        private ulong suppressedNotificationRefreshes;
+        private double snapshotMilliseconds, maximumSnapshotMilliseconds;
+        private readonly HashSet<(uint Event, ulong Object)> pendingEvents = new();
         private string? failure;
-        internal object Diagnostics => new { source = "WebCore AX over production IPC", nodeCount = nodes.Count, document = Document, failure, invalidated };
+        internal object Diagnostics => new { source = "WebCore AX over asynchronous production IPC", nodeCount = nodes.Count, document = Document, failure, invalidated,
+            inFlight = refreshing, snapshotRequests, completedSnapshots, snapshotMilliseconds, maximumSnapshotMilliseconds,
+            suppressedNotificationRefreshes, notificationSubscribers = HasNotificationSubscribers() };
         internal string Document { get; private set; } = "";
         internal ulong RootId { get; private set; }
         internal WebAccessibleObject Root { get; }
@@ -77,28 +102,62 @@ internal sealed partial class WindowsWebKitView
             this.owner = owner;
             Root = new(this, 0, "");
             Root.AttachWindow(owner.browserWindow);
+            refreshTimer.Tick += RefreshPending;
         }
 
-        internal void Refresh(bool force = false)
+        private void RefreshPending(object? sender, EventArgs args)
         {
-            if (owner.disposed || !owner.IsReady || refreshing) return;
+            refreshTimer.Stop();
+            Refresh(fromNotification: !refreshRequestedByRead);
+        }
+
+        private bool HasNotificationSubscribers() => AutomationInteropProvider.ClientsAreListening ||
+            pendingEvents.Any(item => IsWinEventHookInstalled(item.Event));
+
+        internal async void Refresh(bool force = false, bool fromNotification = false)
+        {
+            // A past UIA/MSAA query must not turn every future scroll/layout
+            // notification into a permanent full-tree walk. Real reads always
+            // refresh; notification work requires an actual event consumer.
+            if (!fromNotification) refreshRequestedByRead = true;
+            if (fromNotification && !HasNotificationSubscribers())
+            {
+                suppressedNotificationRefreshes++;
+                return;
+            }
+            if (disposed || owner.disposed || !owner.IsReady || refreshing) return;
             // A running process may still be bootstrapping its first page.
             // Never synchronously query AX before a committed document exists.
             if (!owner.committed) { Clear(); invalidated = true; return; }
-            if (!force && !invalidated && navigation == owner.navigationGeneration) return;
+            if (!force && !invalidated && navigation == owner.navigationGeneration)
+            {
+                refreshRequestedByRead = false;
+                return;
+            }
+            // AX notifications can arrive once per layout/scroll update. Do not
+            // rebuild the whole semantic tree for each property in a UIA walk.
+            if (!force && Environment.TickCount64 < nextRefreshTick)
+            {
+                refreshTimer.Start();
+                return;
+            }
             refreshing = true;
-            // Synchronous IPC can pump a newer native AX notification. Retain
-            // that invalidation instead of clearing it when this reply returns.
+            refreshRequestedByRead = false;
             invalidated = false;
             var generation = owner.navigationGeneration;
+            var notifications = pendingEvents.ToArray();
+            pendingEvents.Clear();
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var requestId = (nint)Interlocked.Increment(ref nextToken);
+            var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            accessibilityRequests.Add(requestId, new(this, completion));
+            snapshotRequests++;
             try
             {
-                var value = WKViewCopyHostAccessibilityTree(owner.view);
-                if (value == 0) { Clear(); failure = "Native AX query unavailable or timed out."; return; }
-                string json;
-                try { json = WindowsWebKitApi.String(value); }
-                finally { WKRelease(value); }
-                if (owner.disposed || generation != owner.navigationGeneration || string.IsNullOrEmpty(json)) { Clear(); return; }
+                WKViewRequestHostAccessibilityTree(owner.view, (ulong)requestId, requestId, accessibilityTreeCallback);
+                var json = await completion.Task;
+                if (disposed || owner.disposed || generation != owner.navigationGeneration) return;
+                if (string.IsNullOrEmpty(json)) { failure = "Native AX query unavailable."; return; }
                 using var tree = JsonDocument.Parse(json);
                 var document = tree.RootElement.GetProperty("document").GetString()!;
                 if (document != Document) { objects.Clear(); providers.Clear(); }
@@ -125,6 +184,19 @@ internal sealed partial class WindowsWebKitView
                     objects.Remove(id);
                 }
                 navigation = generation;
+                completedSnapshots++;
+                // Announce the published cache. Raising UIA events never starts
+                // a synchronous IPC or reads a half-published replacement tree.
+                owner.NotifyWebUia(0x8004, RootId);
+                NotifyWinEvent(0x8004, owner.browserWindow, -4, 0);
+                foreach (var notification in notifications)
+                {
+                    // Property/focus notifications must describe the published
+                    // cache, not the old value read while an IPC is in flight.
+                    NotifyWinEvent(notification.Event, owner.browserWindow, -4, 0);
+                    if (notification.Event is 0x8005 or 0x800E)
+                        owner.NotifyWebUia(notification.Event, notification.Object);
+                }
             }
             catch (JsonException error)
             {
@@ -132,10 +204,39 @@ internal sealed partial class WindowsWebKitView
                 failure = "Invalid native AX response.";
                 System.Diagnostics.Trace.WriteLine(error);
             }
-            finally { refreshing = false; }
+            finally
+            {
+                accessibilityRequests.Remove(requestId);
+                snapshotMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                maximumSnapshotMilliseconds = Math.Max(maximumSnapshotMilliseconds, snapshotMilliseconds);
+                nextRefreshTick = Environment.TickCount64 + 100;
+                refreshing = false;
+                if (!invalidated) refreshRequestedByRead = false;
+                if (invalidated && !disposed && !owner.disposed && (refreshRequestedByRead || HasNotificationSubscribers()))
+                    refreshTimer.Start();
+            }
         }
 
-        internal void Invalidate() => invalidated = true;
+        internal void Invalidate(uint nativeEvent, ulong objectId)
+        {
+            invalidated = true;
+            if (pendingEvents.Count >= 128) pendingEvents.Clear();
+            pendingEvents.Add((nativeEvent, nativeEvent is 0x8005 or 0x800E ? objectId : 0));
+        }
+
+        public void Dispose()
+        {
+            disposed = true;
+            refreshTimer.Stop();
+            refreshTimer.Dispose();
+            pendingEvents.Clear();
+            foreach (var pending in accessibilityRequests.Where(item => ReferenceEquals(item.Value.Tree, this)).ToArray())
+            {
+                accessibilityRequests.Remove(pending.Key);
+                pending.Value.Completion.TrySetResult(null);
+            }
+            Clear();
+        }
 
         private void Clear() { nodes.Clear(); children.Clear(); objects.Clear(); providers.Clear(); Document = ""; RootId = 0; }
         internal WebAccessibilityNode? Node(ulong id, string document)

@@ -155,10 +155,9 @@ function Get-WebKitWorkingDiff([string]$source, [string[]]$addedPaths) {
         $env:GIT_INDEX_FILE = $temporaryIndex
         Invoke-CheckedGit $source @('read-tree', 'HEAD')
         Invoke-CheckedGit $source @('add', '--update', '--', '.')
-        foreach ($relative in $addedPaths) {
-            if ([IO.File]::Exists((Join-Path $source $relative))) {
-                Invoke-CheckedGit $source @('add', '--', $relative)
-            }
+        $existingAddedPaths = @($addedPaths | Where-Object { [IO.File]::Exists((Join-Path $source $_)) })
+        if ($existingAddedPaths.Count) {
+            Invoke-CheckedGit $source (@('add', '--') + $existingAddedPaths)
         }
         $lines = & git -C $source diff --cached --binary --no-ext-diff
         if ($LASTEXITCODE -ne 0) { throw 'Cannot compare maintained native source additions' }
@@ -209,7 +208,9 @@ function Sync-WebKitPatches([string]$source, [string]$cache, [string]$revision, 
             $sourcePrefix = [IO.Path]::GetFullPath($source).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
             $changedPaths = & git -C $source -c core.quotepath=false diff --name-only --no-renames
             if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect patched source paths' }
-            foreach ($relative in $changedPaths) {
+            # Patch-created files are absent from HEAD and from diff --name-only.
+            # Include them so unchanged private headers retain their timestamps.
+            foreach ($relative in (@($changedPaths) + $addedPaths | Select-Object -Unique)) {
                 $path = [IO.Path]::GetFullPath((Join-Path $source $relative))
                 if (-not $path.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Patched path escapes source directory' }
                 if ([IO.File]::Exists($path)) {

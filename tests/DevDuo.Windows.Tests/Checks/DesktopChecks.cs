@@ -148,10 +148,16 @@ internal sealed partial class WindowsChecks
         var handle = window.TryGetPlatformHandle()!.Handle;
         var pageHandle = browser.AccessibilityHostWindow;
         // UIA clients must query on another thread while the UI dispatcher pumps.
-        var observed = await Task.Run(() => new
+        var hostTree = await Task.Run(() => ReadAutomation(handle)).WaitAsync(TimeSpan.FromSeconds(15));
+        AutomationObservation[] pageTree = [];
+        var snapshotDeadline = DateTime.UtcNow.AddSeconds(5);
+        do
         {
-            host = ReadAutomation(handle), page = ReadAutomation(pageHandle)
-        }).WaitAsync(TimeSpan.FromSeconds(15));
+            pageTree = await Task.Run(() => ReadAutomation(pageHandle)).WaitAsync(TimeSpan.FromSeconds(15));
+            if (pageTree.Any(item => item.Name == "Composition text" && item.Type == "ControlType.Edit")) break;
+            await Task.Delay(40);
+        } while (DateTime.UtcNow < snapshotDeadline);
+        var observed = new { host = hostTree, page = pageTree };
         Save("desktop-accessibility", JsonSerializer.SerializeToElement(new { observed, host = State() }));
         Check(observed.host.Any(item => item.Name == AppLocalization.Current.Text("Address.Name") && item.Type == "ControlType.Edit"),
             "The real Windows UIA host tree exposes an editable address field.");
@@ -163,6 +169,26 @@ internal sealed partial class WindowsChecks
             "Ordinary WebCore static text is readable through UIA Name without an editable Value pattern.");
         foreach (var name in new[] { "Multiline text", "Editable paragraph" })
             Check(observed.page.Any(item => item.Name == name && item.Type == "ControlType.Edit"), "WebCore exposes labelled textarea/contenteditable semantics through the real UIA tree.");
+        var changedValue = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var subscribedInput = await Task.Run(() => FindWebAutomation(pageHandle, "Composition text", ControlType.Edit));
+        AutomationPropertyChangedEventHandler valueHandler = (_, args) =>
+        {
+            if (args.Property == ValuePatternIdentifiers.ValueProperty && args.NewValue as string == "notification 中文")
+                changedValue.TrySetResult(true);
+        };
+        await Task.Run(() => Automation.AddAutomationPropertyChangedEventHandler(subscribedInput, TreeScope.Element,
+            valueHandler, ValuePatternIdentifiers.ValueProperty));
+        try
+        {
+            await Web.EvaluateResultAsync("document.querySelector('#text').value='notification 中文';'changed'");
+            Check(await changedValue.Task.WaitAsync(TimeSpan.FromSeconds(5)),
+                "An actual UIA subscriber receives the published value after a page-originated change without polling the provider");
+            Save("desktop-accessibility-subscription", State());
+        }
+        finally
+        {
+            await Task.Run(() => Automation.RemoveAutomationPropertyChangedEventHandler(subscribedInput, valueHandler));
+        }
         for (var pose = 0; pose < 2; pose++)
         {
             if (pose == 1)

@@ -60,6 +60,7 @@ internal static class HostPreferenceChecks
                 "Material values are limited to the host slider ranges.");
             var developer = new HostSettings
             {
+                NativeRemoteEnabled = true, CdpEnabled = true, ControlApiEnabled = true,
                 DeveloperAllowLan = true, NativeRemotePort = 9931, CdpPort = 9932, CdpBearerToken = "fixture-agent-token", ControlApiPort = 9934, ControlApiBearerToken = "fixture-control-token",
                 ProxyMode = "custom", ProxyEndpoint = "socks5://127.0.0.1:1080"
             };
@@ -70,9 +71,10 @@ internal static class HostPreferenceChecks
             check(!JsonSerializer.Serialize(restoredDeveloper.Host).Contains(developer.CdpBearerToken, StringComparison.Ordinal), "General host diagnostics do not serialize the CDP credential.");
             check(restoredDeveloper.Host.ControlApiPort == 9934 && restoredDeveloper.Host.ControlApiBearerToken == developer.ControlApiBearerToken, "Control API preferences persist independently of CDP.");
             check(!JsonSerializer.Serialize(restoredDeveloper.Host).Contains(developer.ControlApiBearerToken, StringComparison.Ordinal), "General host diagnostics omit the control credential.");
-            using (var saved = JsonDocument.Parse(File.ReadAllText(path)))
-                check(!saved.RootElement.GetProperty("host").EnumerateObject().Any(property => property.Name.EndsWith("Enabled", StringComparison.Ordinal)),
-                    "Listener enablement is session state and is never persisted.");
+            check(restoredDeveloper.Host.NativeRemoteEnabled && restoredDeveloper.Host.CdpEnabled && restoredDeveloper.Host.ControlApiEnabled,
+                "Each listener startup intent survives restarting the preference store.");
+            check(!languageOnly.Host.NativeRemoteEnabled && !languageOnly.Host.CdpEnabled && !languageOnly.Host.ControlApiEnabled,
+                "Older preference files do not enable listeners.");
             File.WriteAllText(path, "{\"schemaVersion\":1,\"language\":\"en\",\"host\":{\"developerExpanded\":true,\"materialExpanded\":true,\"diagnosticsExpanded\":true,\"futureField\":true}}");
             var legacyExpansion = new PreferenceStore(path);
             check(legacyExpansion.InvalidHostFields.Count == 0 && legacyExpansion.Host.MaterialExpanded && legacyExpansion.Host.DiagnosticsExpanded,
@@ -88,6 +90,22 @@ internal static class HostPreferenceChecks
                 "Invalid listener ports and authenticated proxy endpoints fall back without starting services.");
             check(invalidDeveloper.InvalidHostFields.Order().SequenceEqual(new[] { "cdpPort", "nativeRemotePort", "proxyEndpoint", "proxyMode" }),
                 "Invalid developer configuration fields are reported.");
+            File.WriteAllText(path, """{"schemaVersion":1,"language":"en","host":{"controlApiEnabled":true,"controlApiPort":0,"cdpEnabled":true,"cdpBearerToken":"bad\ntoken"}}""");
+            var blocked = new PreferenceStore(path);
+            check(blocked.InvalidListenerFields.Order().SequenceEqual(new[] { "cdpBearerToken", "controlApiPort" }),
+                "Invalid enabled-service fields block only their owning listeners.");
+            blocked.SaveLanguage("zh-Hans");
+            blocked.SaveHost(blocked.Host);
+            var stillBlocked = new PreferenceStore(path);
+            check(stillBlocked.Host.ControlApiEnabled && stillBlocked.Host.CdpEnabled && stillBlocked.InvalidListenerFields.Count() == 2,
+                "Unrelated preference writes cannot replace a bad port or credential with a listening default.");
+            stillBlocked.AcceptListenerSettings(PreferenceStore.ControlListenerFields);
+            stillBlocked.SaveHost(stillBlocked.Host);
+            check(new PreferenceStore(path).InvalidListenerFields.SequenceEqual(["cdpBearerToken"]),
+                "Applying one service's valid configuration does not unblock another service.");
+            stillBlocked.AcceptListenerSettings(PreferenceStore.CdpListenerFields);
+            stillBlocked.SaveHost(stillBlocked.Host);
+            check(!new PreferenceStore(path).InvalidListenerFields.Any(), "Explicit correction clears the persisted restore block.");
         }
         finally { Directory.Delete(hostFolder, true); }
 

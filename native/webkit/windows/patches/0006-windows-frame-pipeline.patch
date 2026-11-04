@@ -1,0 +1,498 @@
+--- a/Source/WebKit/Shared/UpdateInfo.h
++++ b/Source/WebKit/Shared/UpdateInfo.h
+@@ -39,7 +39,28 @@
+ 
+ namespace WebKit {
+ 
++#if PLATFORM(WIN)
++struct HostFrameTiming {
++    uint64_t frameID { 0 };
++    uint64_t inputSequence { 0 };
++    double inputEventSeconds { 0 };
++    double inputDispatchSeconds { 0 };
++    double renderStartSeconds { 0 };
++    double renderEndSeconds { 0 };
++    double commitSeconds { 0 };
++    double gpuStartSeconds { 0 };
++    double gpuEndSeconds { 0 };
++    double receiveSeconds { 0 };
++    double paintStartSeconds { 0 };
++    double paintEndSeconds { 0 };
++};
++
++#endif
++
+ struct UpdateInfo {
++#if PLATFORM(WIN)
++    HostFrameTiming hostTiming;
++#endif
+     // The size of the web view.
+     WebCore::IntSize viewSize;
+     float deviceScaleFactor { 0 };
+--- a/Source/WebKit/Shared/UpdateInfo.serialization.in
++++ b/Source/WebKit/Shared/UpdateInfo.serialization.in
+@@ -22,7 +22,27 @@
+ 
+ #if !PLATFORM(WPE) && !PLATFORM(GTK) && (USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER))
+ 
++#if PLATFORM(WIN)
++[CustomHeader] struct WebKit::HostFrameTiming {
++    uint64_t frameID;
++    uint64_t inputSequence;
++    double inputEventSeconds;
++    double inputDispatchSeconds;
++    double renderStartSeconds;
++    double renderEndSeconds;
++    double commitSeconds;
++    double gpuStartSeconds;
++    double gpuEndSeconds;
++    double receiveSeconds;
++    double paintStartSeconds;
++    double paintEndSeconds;
++}
++#endif
++
+ [RValue] struct WebKit::UpdateInfo {
++#if PLATFORM(WIN)
++    WebKit::HostFrameTiming hostTiming;
++#endif
+     WebCore::IntSize viewSize;
+     float deviceScaleFactor;
+     WebCore::IntRect scrollRect;
+--- a/Source/WebKit/Shared/WebEvent.h
++++ b/Source/WebKit/Shared/WebEvent.h
+@@ -58,6 +58,9 @@
+     OptionSet<WebEventModifier> modifiers;
+     MonotonicTime timestamp;
+     WTF::UUID authorizationToken { WTF::UUID::createVersion4() };
++#if PLATFORM(WIN)
++    uint64_t hostInputSequence { 0 };
++#endif
+ #if PLATFORM(GTK) || PLATFORM(WPE)
+     uintptr_t signpostIdentifier { generateSignpostIdentifier() };
+ #endif
+@@ -79,6 +82,10 @@
+     OptionSet<WebEventModifier> modifiers() const { return m_data.modifiers; }
+ 
+     MonotonicTime timestamp() const { return m_data.timestamp; }
++#if PLATFORM(WIN)
++    void setHostInputSequence(uint64_t sequence) { m_data.hostInputSequence = sequence; }
++    uint64_t hostInputSequence() const { return m_data.hostInputSequence; }
++#endif
+ 
+     bool LEGACY_NODELETE isActivationTriggeringEvent() const;
+     WTF::UUID authorizationToken() const { return m_data.authorizationToken; }
+--- a/Source/WebKit/Shared/WebEvent.serialization.in
++++ b/Source/WebKit/Shared/WebEvent.serialization.in
+@@ -34,6 +34,9 @@
+     OptionSet<WebKit::WebEventModifier> modifiers;
+     MonotonicTime timestamp;
+     WTF::UUID authorizationToken;
++#if PLATFORM(WIN)
++    uint64_t hostInputSequence;
++#endif
+ #if PLATFORM(GTK) || PLATFORM(WPE)
+     uintptr_t signpostIdentifier;
+ #endif
+--- a/Source/WebKit/UIProcess/win/WebView.h
++++ b/Source/WebKit/UIProcess/win/WebView.h
+@@ -141,6 +141,7 @@
+     virtual void windowReceivedMessage(HWND, UINT message, WPARAM, LPARAM);
+ 
+     HWND m_window { nullptr };
++    uint64_t m_hostInputSequence { 0 };
+     HWND m_topLevelParentWindow { nullptr };
+     HWND m_toolTipWindow { nullptr };
+     WTF::String m_toolTip;
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -352,6 +352,7 @@
+ LRESULT WebView::onMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
+ {
+     Ref mouseEvent = NativeWebMouseEvent::create(hWnd, message, wParam, lParam, m_wasActivatedByMouseEvent, m_page->intrinsicDeviceScaleFactor());
++    mouseEvent->setHostInputSequence(++m_hostInputSequence);
+     setWasActivatedByMouseEvent(false);
+ 
+     switch (message) {
+@@ -389,6 +390,7 @@
+ LRESULT WebView::onWheelEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
+ {
+     Ref wheelEvent = NativeWebWheelEvent::create(hWnd, message, wParam, lParam, m_page->intrinsicDeviceScaleFactor());
++    wheelEvent->setHostInputSequence(++m_hostInputSequence);
+     if (wheelEvent->controlKey()) {
+         // We do not want WebKit to handle Control + Wheel, this should be handled by the client application
+         // to zoom the page.
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -32,6 +32,9 @@
+ #include "RunJavaScriptResult.h"
+ #include "SandboxExtension.h"
+ #include "SharedPreferencesForWebProcess.h"
++#if PLATFORM(WIN)
++#include "UpdateInfo.h"
++#endif
+ #include <JavaScriptCore/InspectorFrontendChannel.h>
+ #include <WebCore/AgentClusterAssignment.h>
+ #include <WebCore/BoxExtents.h>
+@@ -2548,6 +2551,7 @@
+ #if PLATFORM(WIN)
+     void hostSetComposition(uint32_t, const String&, uint32_t, const Vector<uint8_t>&);
+     void getHostCaretRect(CompletionHandler<void(bool, const WebCore::IntRect&, uint64_t)>&&);
++    void requestHostAccessibilityTree(CompletionHandler<void(const String&)>&& callback) { getHostAccessibilityTree(WTF::move(callback)); }
+     void getHostAccessibilityTree(CompletionHandler<void(const String&)>&&);
+     void hostAccessibilityAction(const String&, uint64_t, uint32_t, const String&, CompletionHandler<void(bool)>&&);
+     WeakPtr<WebCore::LocalFrame> m_hostCompositionFrame;
+@@ -2555,6 +2559,11 @@
+     WeakPtr<WebCore::Element, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionElement;
+     void setHostScrollIndicatorEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
++public:
++    HostFrameTiming hostFrameTiming() const { return m_hostInputTiming; }
++private:
++    void noteHostInput(const WebEvent&);
++    HostFrameTiming m_hostInputTiming;
+     void getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+     void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+ #endif
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -4295,6 +4295,9 @@
+ void WebPage::mouseEvent(FrameIdentifier frameID, Ref<WebMouseEvent>&& mouseEventRef, std::optional<Vector<SandboxExtension::Handle>>&& sandboxExtensions, CompletionHandler<void(bool, std::optional<RemoteUserInputEventData>)>&& completionHandler)
+ {
+     const auto& mouseEvent = mouseEventRef.get();
++#if PLATFORM(WIN)
++    noteHostInput(mouseEvent);
++#endif
+     SetForScope userIsInteractingChange { m_userIsInteracting, true };
+ 
+     m_internals->userActivity.impulse();
+@@ -4492,6 +4495,9 @@
+     m_internals->userActivity.impulse();
+ 
+     CurrentEvent currentEvent(wheelEvent);
++#if PLATFORM(WIN)
++    noteHostInput(wheelEvent);
++#endif
+ 
+     auto dispatchWheelEvent = [&](const WebWheelEvent& wheelEvent, OptionSet<WheelEventProcessingSteps> processingSteps) {
+         RefPtr frame = WebProcess::singleton().webFrame(frameID);
+@@ -5373,6 +5379,14 @@
+ }
+ 
+ #if PLATFORM(WIN)
++void WebPage::noteHostInput(const WebEvent& event)
++{
++    // Coalesced events retain the last native input sequence, not a sample count.
++    m_hostInputTiming.inputSequence = event.hostInputSequence();
++    m_hostInputTiming.inputEventSeconds = event.timestamp().secondsSinceEpoch().value();
++    m_hostInputTiming.inputDispatchSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++}
++
+ void WebPage::setHostScrollIndicatorEnabled(bool enabled)
+ {
+     WebCore::setHostScrollIndicatorEnabled(*m_page, enabled);
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
+@@ -28,6 +28,9 @@
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+ #include "WCBackingStore.h"
++#if PLATFORM(WIN)
++#include "UpdateInfo.h"
++#endif
+ #include "WCContentBufferIdentifier.h"
+ #include <WebCore/GraphicsLayer.h>
+ #include <WebCore/TextureMapperSparseBackingStore.h>
+@@ -122,6 +125,9 @@
+ };
+ 
+ struct WCUpdateInfo {
++#if PLATFORM(WIN)
++    HostFrameTiming hostTiming;
++#endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+     Markable<WebCore::PlatformLayerIdentifier> rootLayer;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
+@@ -110,6 +110,9 @@
+ }
+ 
+ struct WebKit::WCUpdateInfo {
++#if PLATFORM(WIN)
++    WebKit::HostFrameTiming hostTiming;
++#endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+     Markable<WebCore::PlatformLayerIdentifier> rootLayer;
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
+@@ -102,6 +102,10 @@
+     bool m_waitDidUpdate { false };
+     bool m_isForceRepaintCompletionHandlerDeferred { false };
+     WCUpdateInfo m_updateInfo;
++#if PLATFORM(WIN)
++    HostFrameTiming m_hostFrameTiming;
++    uint64_t m_hostFrameID { 0 };
++#endif
+     Vector<RootLayerInfo, 1> m_rootLayers;
+     const Ref<WorkQueue> m_commitQueue;
+     int64_t m_backingStoreStateID { 0 };
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -260,6 +260,11 @@
+     m_waitDidUpdate = true;
+ 
+     Ref webPage = m_webPage.get();
++#if PLATFORM(WIN)
++    m_hostFrameTiming = webPage->hostFrameTiming();
++    m_hostFrameTiming.frameID = ++m_hostFrameID;
++    m_hostFrameTiming.renderStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+     webPage->updateRendering();
+     webPage->flushPendingEditorStateUpdate();
+ 
+@@ -268,6 +273,9 @@
+     webPage->didUpdateRendering();
+ 
+     willStartRenderingUpdateDisplay();
++#if PLATFORM(WIN)
++    m_hostFrameTiming.renderEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+ 
+     if (isCompositingMode())
+         sendUpdateAC();
+@@ -298,6 +306,10 @@
+         FloatSize viewport { size };
+         viewport.scale(m_webPage->intrinsicDeviceScaleFactor());
+         m_updateInfo.viewport = WebCore::expandedIntSize(viewport);
++#if PLATFORM(WIN)
++        m_updateInfo.hostTiming = m_hostFrameTiming;
++        m_updateInfo.hostTiming.commitSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+         updateRootLayerDeviceScaleFactor(rootLayer.layer);
+         rootLayer.layer->flushCompositingStateForThisLayerOnly();
+ 
+@@ -394,6 +406,9 @@
+     m_dirtyRegion = { };
+ 
+     UpdateInfo updateInfo;
++#if PLATFORM(WIN)
++    updateInfo.hostTiming = m_hostFrameTiming;
++#endif
+     updateInfo.viewSize = webPage->size();
+     updateInfo.deviceScaleFactor = deviceScaleFactor;
+     updateInfo.updateRectBounds = bounds;
+@@ -408,6 +423,9 @@
+     for (const auto& rect : rects)
+         webPage->drawRect(graphicsContext, rect);
+     image->flushDrawingContextAsync();
++#if PLATFORM(WIN)
++    updateInfo.hostTiming.commitSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+ 
+ #if PLATFORM(WIN)
+     // Local raster drawing is complete before the commit task reads its handle.
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
+@@ -271,6 +271,9 @@
+     } else
+         glViewport(0, 0, update.viewport.width(), update.viewport.height());
+ 
++#if PLATFORM(WIN)
++    update.hostTiming.gpuStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+     m_textureMapper->beginPainting(WebCore::TextureMapper::FlipY::No, surface);
+     rootLayer->paint(*m_textureMapper);
+     if (showFPS)
+@@ -287,6 +290,10 @@
+     else if (m_usesOffscreenRendering) {
+         if (auto handle = bitmap->createHandle()) {
+             result.emplace();
++#if PLATFORM(WIN)
++            result->hostTiming = update.hostTiming;
++            result->hostTiming.gpuEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+             result->viewSize = update.viewport;
+             result->deviceScaleFactor = 1;
+             result->updateScaleFactor = 1;
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -29,6 +29,9 @@
+ 
+ #include "BackingStore.h"
+ #include "DrawingAreaProxy.h"
++#if PLATFORM(WIN)
++#include "UpdateInfo.h"
++#endif
+ #include <wtf/RefCounted.h>
+ #include <wtf/TZoneMallocInlines.h>
+ 
+@@ -49,6 +52,9 @@
+     void deref() const final { RefCounted::deref(); }
+ 
+     void paint(PlatformPaintContextPtr, const WebCore::IntRect&, WebCore::Region& unpaintedRegion);
++#if PLATFORM(WIN)
++    const Vector<HostFrameTiming>& hostPaintTimings() const { return m_hostPaintTimings; }
++#endif
+     uint64_t hostUpdateCount() const { return m_hostUpdateCount; }
+     uint64_t hostAcceleratedTransitionCount() const { return m_hostAcceleratedTransitionCount; }
+     uint64_t hostStaleUpdateCount() const { return m_hostStaleUpdateCount; }
+@@ -68,6 +74,10 @@
+     void incorporateUpdate(UpdateInfo&&);
+     void discardBackingStore();
+ 
++#if PLATFORM(WIN)
++    HostFrameTiming m_hostFrameTiming;
++    Vector<HostFrameTiming> m_hostPaintTimings;
++#endif
+     uint64_t m_currentBackingStoreStateID { 0 };
+     uint64_t m_hostUpdateCount { 0 };
+     uint64_t m_hostAcceleratedTransitionCount { 0 };
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -57,7 +57,16 @@
+ 
+     if (!m_backingStore)
+         return;
++#if PLATFORM(WIN)
++    m_hostFrameTiming.paintStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+     m_backingStore->paint(context, rect);
++#if PLATFORM(WIN)
++    m_hostFrameTiming.paintEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++    if (m_hostPaintTimings.size() == 128)
++        m_hostPaintTimings.removeAt(0);
++    m_hostPaintTimings.append(m_hostFrameTiming);
++#endif
+     unpaintedRegion.subtract(WebCore::IntRect({ }, m_backingStore->size()));
+ }
+ 
+@@ -112,6 +121,10 @@
+     } else
+         damageRegion = WebCore::IntRect({ }, page->viewSize());
+ 
++#if PLATFORM(WIN)
++    m_hostFrameTiming = updateInfo.hostTiming;
++    m_hostFrameTiming.receiveSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++#endif
+     m_backingStore->incorporateUpdate(WTF::move(updateInfo));
+ 
+     page->setViewNeedsDisplay(damageRegion);
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -110,6 +110,29 @@
+ WK_EXPORT void WKViewRequestContentEdgeColor(WKViewRef view, int x, int y, int width, int height,
+     unsigned long long requestID, const void* context, WKContentColorCallback callback);
+ 
++// Accessibility snapshot API v2. Callback transfers an owned WKStringRef.
++typedef void (*WKHostAccessibilityTreeCallback)(unsigned long long requestID, WKStringRef tree, const void* context);
++WK_EXPORT unsigned WKViewGetHostAccessibilityAPIVersion(void);
++WK_EXPORT void WKViewRequestHostAccessibilityTree(WKViewRef, unsigned long long requestID, const void* context, WKHostAccessibilityTreeCallback);
++
++// Frame timeline API v1: bounded native paint history, no IPC or repaint.
++typedef struct WKHostFrameTiming {
++    unsigned long long frameID;
++    unsigned long long inputSequence;
++    double inputEventSeconds;
++    double inputDispatchSeconds;
++    double renderStartSeconds;
++    double renderEndSeconds;
++    double commitSeconds;
++    double gpuStartSeconds;
++    double gpuEndSeconds;
++    double receiveSeconds;
++    double paintStartSeconds;
++    double paintEndSeconds;
++} WKHostFrameTiming;
++WK_EXPORT unsigned WKViewGetHostFrameTimingAPIVersion(void);
++WK_EXPORT unsigned WKViewCopyHostFrameTimings(WKViewRef, WKHostFrameTiming* output, unsigned capacity);
++
+ // Read-only UI-thread counters; no paint, capture or IPC is requested.
+ WK_EXPORT bool WKViewGetHostRenderingStatistics(WKViewRef view, unsigned long long* updates,
+     unsigned long long* acceleratedTransitions, unsigned long long* staleUpdates);
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -85,6 +85,36 @@
+ void WKViewSetUsesOffscreenRendering(WKViewRef viewRef, bool enabled)
+ {
+     toImpl(viewRef)->setUsesOffscreenRendering(enabled);
++}
++
++unsigned WKViewGetHostFrameTimingAPIVersion(void) { return 1; }
++
++unsigned WKViewCopyHostFrameTimings(WKViewRef viewRef, WKHostFrameTiming* output, unsigned capacity)
++{
++    if (!viewRef || !output || !capacity)
++        return 0;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed() || !page->drawingArea())
++        return 0;
++    const auto& history = static_cast<DrawingAreaProxyWC*>(page->drawingArea())->hostPaintTimings();
++    auto count = std::min(capacity, static_cast<unsigned>(history.size()));
++    auto offset = history.size() - count;
++    for (unsigned index = 0; index < count; ++index) {
++        const auto& item = history[offset + index];
++        output[index].frameID = item.frameID;
++        output[index].inputSequence = item.inputSequence;
++        output[index].inputEventSeconds = item.inputEventSeconds;
++        output[index].inputDispatchSeconds = item.inputDispatchSeconds;
++        output[index].renderStartSeconds = item.renderStartSeconds;
++        output[index].renderEndSeconds = item.renderEndSeconds;
++        output[index].commitSeconds = item.commitSeconds;
++        output[index].gpuStartSeconds = item.gpuStartSeconds;
++        output[index].gpuEndSeconds = item.gpuEndSeconds;
++        output[index].receiveSeconds = item.receiveSeconds;
++        output[index].paintStartSeconds = item.paintStartSeconds;
++        output[index].paintEndSeconds = item.paintEndSeconds;
++    }
++    return count;
+ }
+ 
+ bool WKViewGetHostRenderingStatistics(WKViewRef viewRef, unsigned long long* updates,
+@@ -387,6 +417,23 @@
+     return updated;
+ }
+ 
++unsigned WKViewGetHostAccessibilityAPIVersion(void) { return 2; }
++
++void WKViewRequestHostAccessibilityTree(WKViewRef viewRef, unsigned long long requestID, const void* context, WKHostAccessibilityTreeCallback callback)
++{
++    if (!callback)
++        return;
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    if (!page || page->isClosed() || !page->hasRunningProcess()) {
++        callback(requestID, nullptr, context);
++        return;
++    }
++    page->legacyMainFrameProcess().sendWithAsyncReply(Messages::WebPage::RequestHostAccessibilityTree(),
++        [requestID, context, callback](const String& tree) {
++            callback(requestID, toAPILeakingRef(API::String::create(tree)), context);
++        }, page->webPageIDInMainFrameProcess());
++}
++
+ WKStringRef WKViewCopyHostAccessibilityTree(WKViewRef viewRef)
+ {
+     if (!viewRef)
+--- a/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp
++++ b/Source/WebKit/WebProcess/WebPage/win/WebPageWin.cpp
+@@ -375,7 +375,8 @@
+         if (name.isEmpty() && object->isWebArea())
+             name = document->title();
+         node->setString("name"_s, name);
+-        node->setString("value"_s, object->isSecureField() ? String() : object->stringValue());
++        const bool hasValue = object->canSetValueAttribute() || object->isSlider() || object->isProgressIndicator();
++        node->setString("value"_s, !object->isSecureField() && hasValue ? object->stringValue() : String());
+         node->setString("description"_s, object->description());
+         // Stable platform roles, independent of WebCore's internal enum values.
+         unsigned role = 0x14; // ROLE_SYSTEM_GROUPING
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+@@ -275,6 +275,7 @@
+     HostSetComposition(uint32_t operation, String text, uint32_t cursor, Vector<uint8_t> attributes)
+     GetHostCaretRect() -> (bool editable, WebCore::IntRect rect, uint64_t editor)
+     GetHostAccessibilityTree() -> (String tree) Synchronous
++    RequestHostAccessibilityTree() -> (String tree)
+     HostAccessibilityAction(String document, uint64_t objectID, uint32_t action, String value) -> (bool success) Synchronous
+     SetHostScrollIndicatorEnabled(bool enabled)
+     GetHostScrollIndicatorState() -> (uint32_t status, uint32_t flags, uint64_t epoch, uint64_t userSequence, double position, double range, double viewportHeight)

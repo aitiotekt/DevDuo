@@ -23,9 +23,11 @@ Settings and language persist, but body angle resets and the **Developer** group
 
 New profiles default to **Touch · single finger** under **Preview → Interaction**. Tap with the left button, or hold and drag to pan; the page wheel/trackpad wheel is blocked at the native browser boundary. Inside the simulated phone screen, including Safari chrome, a translucent circular pointer replaces the system cursor. Its 20-DIP diameter stays constant at Fit scales and rotations. The host address bar and settings sidebar retain the normal cursor; the marker is excluded from WebKit snapshots and backdrop color sampling. The settings sidebar keeps its normal scrolling. **Mouse** restores desktop wheel scrolling, text selection and mouse events. The selected mode persists, and switching keeps the current document, viewport, history and scroll while cancelling an active contact.
 
-Single-finger emulation sends synthetic touch PointerEvents and touch events, pans nested scroll containers, respects `touch-action`, `preventDefault()` and scroll chaining/containment, and attributes Safari shell expansion/compaction to the gesture direction. Taps prefer the engine compatibility click and use a single fallback if needed. Pages see emulated `navigator.maxTouchPoints = 1`; Mouse restores the native value. Existing and future frames receive the selected mode.
+Touch mode presents one contact to the page. It supports nested scrolling and follows `touch-action`, event cancellation and scroll containment. Gesture direction drives Safari shell expansion and compaction. Mouse mode restores the desktop touch-point count. The selected mode applies to existing and future frames.
 
-This is desktop DOM input emulation, not trusted iOS input: touch/pointer events have `isTrusted = false`, constructor availability depends on the engine, and native CSS pointer/hover media capabilities are unchanged. Multi-touch, pinch, long-press, inertial flings and native iOS form-control gestures are not reproduced. Use Mouse when a page requires desktop/native activation or selection. The mode is also available through `PATCH /api/settings` with `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`; live input diagnostics are in `/api/state` telemetry.
+The experimental Windows runtime with host touch API v1 dispatches trusted WebKit touch and pointer events. WebKit handles pan and inertia. Other runtimes use DOM emulation with `isTrusted = false` and batch drag updates per animation frame. CSS pointer and hover media queries reflect the desktop engine in both paths. Set the mode with `PATCH /api/settings` and `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`. The `/api/state` telemetry identifies the active path.
+
+Windows Safari widgets ease between their measured expanded and compact sizes according to the system animation preference. The page viewport changes to the target size once per transition.
 
 ## Keyboard shortcuts
 
@@ -69,9 +71,11 @@ This is an endpoint for a compatible agent/MCP/skill client, not a bundled MCP s
 
 ## REST control API
 
+The service switches represent remembered enablement; the status and address show whether a listener actually started. After a restore failure, turn the switch off to cancel future restoration, or apply settings to retry. Invalid saved settings for an enabled service block its restoration and remain preserved until explicitly corrected/applied or reset; startup does not substitute a default port or empty token.
+
 **9222 is only CDP's default port.** Change **CDP port** and apply the listener settings when another service uses it. Fixed addresses mean a stable configured port/path without a random prefix; an occupied port reports an error rather than silently choosing another.
 
-Enable **REST control API** under **Developer** when needed. It starts **off on every launch**, independently of CDP. Its **Control API port** defaults to **9224** and is editable; **Apply control API settings** saves the port/token and restarts an already running listener. It binds only `127.0.0.1`, regardless of **Allow LAN connections**. Closing the app or resetting settings stops it; changing the device/container keeps it running.
+Enable **REST control API** under **Developer** when needed. It starts **off for a new preference file**, independently of CDP. Its **Control API port** defaults to **9224** and is editable; **Apply control API settings** saves the port/token and restarts an already running listener. It binds only `127.0.0.1`, regardless of **Allow LAN connections**. Enabled control services restore on the next launch with the same port and token. A startup failure leaves the service stopped for that session and retains its next-launch intent. Closing the app stops it; reset also clears that intent. Changing the device/container keeps it running.
 
 - Open `http://127.0.0.1:9224/api/openapi` for offline **Swagger UI**, including **Try it out**.
 - Fetch `http://127.0.0.1:9224/api/openapi.json` for the OpenAPI 3.1 JSON contract. Its server address and authentication requirement reflect the running configuration.
@@ -132,7 +136,7 @@ PNG/JPEG and JPEG quality are supported. Omit `clip`; region/full-document captu
 
 ## Page proxy
 
-Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. Proxy/listener configuration and an explicitly configured CDP bearer token persist; remote-service enablement does not. See [Privacy](../../PRIVACY.md) for stored settings and network data.
+Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. Proxy/listener configuration and an explicitly configured CDP bearer token persist; remote-service enablement also persists. Enabled services restore independently on launch; an occupied port or another startup error leaves that service stopped for this session and retains its preference for next launch. Apply settings or toggle the service to retry manually. See [Privacy](../../PRIVACY.md) for stored settings and network data.
 
 ## Diagnostics and troubleshooting
 

@@ -4,6 +4,7 @@
   "glassStrength": 0.35,
   "shadowOpacity": 0.16,
   "windowsMaterial": {
+    "chromeTransitionMilliseconds": 220,
     "blur": 14,
     "saturation": 1.8,
     "brightness": 1.05,

@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native touch input</title>
+<style>
+  html { background: white; }
+  body { margin: 0; height: 6000px; background: repeating-linear-gradient(to bottom, rgb(208,48,64) 0 80px, rgb(32,112,192) 80px 160px); }
+  #tap { position: absolute; left: 20px; top: 20px; width: 120px; height: 50px; }
+  #nested { display: none; position: fixed; top: 150px; left: 40px; width: 300px; height: 230px; overflow: auto; overscroll-behavior: contain; background: white; }
+  #nested > div { height: 1800px; background: repeating-linear-gradient(#f8d080 0 80px, #80a0e0 80px 160px); }
+  #fixed { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgb(24,144,96); pointer-events: none; }
+</style>
+<button id="tap">Native tap</button>
+<div id="nested"><div></div></div><div id="fixed"></div>
+<script>
+  const events = [], busyIntervals = [];
+  let clicks = 0, trustedTouchStarts = 0, touchMoves = 0;
+  const record = value => { events.push(value); if (events.length > 256) events.shift(); };
+  const nested = document.getElementById('nested');
+  const tap = document.getElementById('tap');
+  const cancel = event => {
+    event.preventDefault();
+    record({ type: 'cancel-' + event.type, trusted: event.isTrusted, cancelable: event.cancelable, defaultPrevented: event.defaultPrevented });
+  };
+  for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'wheel']) {
+    addEventListener(type, event => {
+      if (type === 'touchstart' && event.isTrusted) trustedTouchStarts++;
+      if (type === 'touchmove') touchMoves++;
+      record({ type, trusted: event.isTrusted, cancelable: event.cancelable, pointerType: event.pointerType,
+        x: event.clientX ?? event.changedTouches?.[0]?.clientX, y: event.clientY ?? event.changedTouches?.[0]?.clientY,
+        target: event.target.id || event.target.tagName });
+    }, { passive: true });
+  }
+  tap.addEventListener('click', () => clicks++);
+  window.configureTouchFixture = mode => {
+    for (const type of ['touchstart', 'touchmove', 'pointerdown', 'wheel']) removeEventListener(type, cancel);
+    document.documentElement.style.touchAction = mode === 'none' ? 'none' : mode === 'pan-x' ? 'pan-x' : mode === 'pan-y' ? 'pan-y' : 'auto';
+    document.documentElement.style.overflow = mode === 'locked' ? 'hidden' : '';
+    document.body.style.overflow = mode === 'locked' ? 'hidden' : '';
+    nested.style.display = mode === 'nested' ? 'block' : 'none';
+    if (mode === 'prevent-start') addEventListener('touchstart', cancel, { passive: false });
+    if (mode === 'prevent-move') addEventListener('touchmove', cancel, { passive: false });
+    if (mode === 'prevent-pointer') addEventListener('pointerdown', cancel, { passive: false });
+    if (mode === 'wheel-block') addEventListener('wheel', cancel, { passive: false });
+    events.length = 0;
+    trustedTouchStarts = 0;
+    touchMoves = 0;
+  };
+  window.armBusyInterval = duration => setTimeout(() => {
+    const interval = { begin: Date.now(), end: null };
+    busyIntervals.push(interval);
+    const deadline = performance.now() + duration;
+    while (performance.now() < deadline) { /* Deliberate page-main-thread work. */ }
+    interval.end = Date.now();
+  }, 100);
+  window.nativeTouchResult = () => ({
+    events, clicks, trustedTouchStarts, touchMoves, busyIntervals, scrollY, nestedY: nested.scrollTop,
+    viewport: [innerWidth, innerHeight], range: document.scrollingElement.scrollHeight - innerHeight,
+    fixed: document.getElementById('fixed').getBoundingClientRect().toJSON(),
+    maxTouchPoints: navigator.maxTouchPoints, input: window.__devduoInput.state,
+  });
+</script>

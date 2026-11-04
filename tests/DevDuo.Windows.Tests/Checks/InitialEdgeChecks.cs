@@ -60,11 +60,21 @@ internal sealed partial class WindowsChecks
                         OverlayRgb(FixedExtension(state).GetProperty(edge + "Rgb")).All(value => value == 0)),
                         "Initial black mask reaches native inset metadata without a refresh: " + label);
                 }
-                await Task.Delay(600);
+                // DOM/load completion and the last accelerated frame are separate
+                // events. Require a bounded quiet interval after final delivery,
+                // rather than assuming every image settles at a fixed delay.
+                var deadline = Environment.TickCount64 + 5000;
+                var quietSince = Environment.TickCount64;
                 var idle = FixedExtension(State()).GetProperty("revision").GetInt64();
-                await Task.Delay(600);
-                Check(FixedExtension(State()).GetProperty("revision").GetInt64() == idle,
-                    "A completed static initial document does not sustain color sampling IPC.");
+                while (Environment.TickCount64 - quietSince < 1200 && Environment.TickCount64 < deadline)
+                {
+                    await Task.Delay(200);
+                    var next = FixedExtension(State()).GetProperty("revision").GetInt64();
+                    if (next != idle) { idle = next; quietSince = Environment.TickCount64; }
+                }
+                Save(label + "-idle", State());
+                Check(Environment.TickCount64 - quietSince >= 1200,
+                    "A completed static initial document stops sampling IPC within five seconds and remains quiet for 1.2 seconds.");
             }
         }
     }

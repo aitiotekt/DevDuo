@@ -2,6 +2,20 @@
 
 <!-- Unreleased -->
 
+## 0.1.2
+
+DevDuo 与 bundled Windows WebKit 均使用 `0.1.2`，WebKit 上游 revision 不变；本版要求重建运行时，包含 fixed-container color v2、异步 accessibility v2 及 frame timing v2 及 frame presentation／surface v1。原生验收范围单独记录于 Windows 交接文档。
+
+- 区分 fixed 覆盖消失与弹窗颜色不确定，并限制弹窗交替时旧色保留时间。复用上游背景色及 fixed/sticky 主色规则，避免透明包装后方的文档图案导致延伸被取消。
+- 文档边界及 fixed 延伸随提交的 WebKit 页面帧一起绘制，保持真实 viewport 及 fixed／sticky 几何。
+- Windows 加速页面使用共享 D3D11 纹理，软件页面通过原生位图上传至同一 GPU 帧缓冲，应用呈现不再经过 GDI 或页面读回。
+- 按动画帧合并触控拖动，减少重复滚动／观察工作及静止圆点的冗余提交。
+- 宿主仅在触控仿真期间注册阻塞滚轮的监听器，鼠标模式使用引擎原有的事件分发路径。
+- Windows Safari 控件及完整材质角色配方在实测端点间缓动，支持中途反向并遵循系统动画偏好。
+- Windows 无障碍改为合并异步快照刷新，在发布新缓存后通知属性变化。
+- 稳定 Safari 材质目标颜色，保留合成节点，分别更新边缘、材质及前景表面。
+- 记住控制 API、CDP 与原生远程检查的启用状态；各服务独立恢复，启动失败保留下次恢复意图，不循环重试或改用其他端口。
+
 ## 0.1.1
 
 本次为宿主补丁版本；bundled Windows WebKit 保持 `0.1.0`，无需重建。

@@ -1,4 +1,5 @@
 #if WINDOWS
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
@@ -10,9 +11,10 @@ internal sealed partial class WindowsWebKitView
     private string? touchPointerError;
     private TouchPointerWindow? touchPointerWindow;
     private (Point Position, Rectangle Screen, int Diameter)? touchPointerFrame;
+    private double? touchPointerSubmittedQpcSeconds;
     private Point? touchPointerScreen;
     private readonly System.Windows.Forms.Timer touchPointerTimer = new() { Interval = 16 };
-    private long touchPointerRequests, touchPointerCommits;
+    private long touchPointerRequests, touchPointerCommits, touchPointerScrollFrameCommits;
 
     internal void ObserveTouchPointer(ref System.Windows.Forms.Message message)
     {
@@ -47,13 +49,32 @@ internal sealed partial class WindowsWebKitView
         var next = (point, screenBounds, diameter);
         if (!touchPointerVisible || touchPointerFrame != next)
         {
-            try { composition.SetTouchPointer(point.X, point.Y, diameter, screenBounds); touchPointerCommits++; touchPointerError = null; }
+            try
+            {
+                composition.SetTouchPointer(point.X, point.Y, diameter, screenBounds);
+                touchPointerSubmittedQpcSeconds = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+                touchPointerCommits++;
+                touchPointerError = null;
+            }
             catch (InvalidOperationException failure) { touchPointerError = failure.Message; HideTouchPointer(); return; }
             touchPointerFrame = next;
         }
         touchPointerScreen = screen;
         if (!touchPointerVisible) { System.Windows.Forms.Cursor.Hide(); touchPointerVisible = true; }
     }
+
+    private void FlushPendingTouchPointerAfterScroll()
+    {
+        if (!touchPointerTimer.Enabled || touchPointerSubmittedQpcSeconds is not { } lastSubmission) return;
+        // An accepted scroll frame can wake the pointer before WM_TIMER runs.
+        // Keep the same submission interval when input or page frames are dense.
+        var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+        if ((now - lastSubmission) * 1000 < touchPointerTimer.Interval) return;
+        var previousCommits = touchPointerCommits;
+        UpdateTouchPointer();
+        if (touchPointerCommits != previousCommits) touchPointerScrollFrameCommits++;
+    }
+
     internal void HideTouchPointer()
     {
         touchPointerTimer.Stop();
@@ -61,7 +82,14 @@ internal sealed partial class WindowsWebKitView
         // Always restore the system cursor even if the composition device was lost.
         try { composition?.SetTouchPointer(0, 0, 0, Rectangle.Empty); }
         catch (InvalidOperationException failure) { touchPointerError = failure.Message; }
-        finally { System.Windows.Forms.Cursor.Show(); touchPointerVisible = false; touchPointerFrame = null; touchPointerScreen = null; }
+        finally
+        {
+            System.Windows.Forms.Cursor.Show();
+            touchPointerVisible = false;
+            touchPointerFrame = null;
+            touchPointerScreen = null;
+            touchPointerSubmittedQpcSeconds = null;
+        }
     }
     private sealed class TouchPointerWindow : System.Windows.Forms.NativeWindow
     {

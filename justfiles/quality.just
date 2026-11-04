@@ -158,18 +158,54 @@ test-windows-safari:
 
 # Source-built production host API, eight pages and 152 paired geometry cases.
 [windows]
-test-windows-webkit: build-windows-webkit-probe
-    & ./tests/DevDuo.WebKitProbe/RunAcceptance.ps1 -HostApi -RuntimeDirectory ./temp/build/windows-webkit-host/bin
+test-windows-webkit runtime_directory="./temp/build/windows-webkit-host/bin": build-windows-webkit-probe
+    & ./tests/DevDuo.WebKitProbe/RunAcceptance.ps1 -HostApi -RuntimeDirectory '{{runtime_directory}}'
 
 # Use mise --env windows-webkit exec -- just build-windows-webkit-runtime.
 [windows]
-build-windows-webkit-runtime:
-    & ./native/webkit/windows/BuildRuntime.ps1
+build-windows-webkit-runtime *args:
+    & ./native/webkit/windows/BuildRuntime.ps1 {{args}}
+
+# Headless native layer publication checks; requires the experimental runtime.
+[windows]
+test-windows-scrolling-layers *args:
+    & ./tests/DevDuo.WebKitProbe/ScrollingLayerChecks.ps1 {{args}}
+
+# Busy-page-main-thread native wheel and composed pixels; experimental runtime only.
+[windows]
+test-windows-async-scrolling: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/async-scrolling-tests -p:RestoreLockedMode=true -- --async-scrolling
+
+# Native contacts, default gestures and busy-page GPU frames; experimental runtime only.
+[windows]
+test-windows-native-touch: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/native-touch-tests -p:RestoreLockedMode=true -- --native-touch
+
+# Compare fresh native fixed-container observations with the upstream-rule export.
+[windows]
+test-windows-upstream-fixed-colors: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/upstream-fixed-tests -p:RestoreLockedMode=true -- --upstream-fixed-colors
+
+[windows]
+test-windows-fixed-color-transitions: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/upstream-fixed-tests -p:RestoreLockedMode=true -- --fixed-color-transitions
+
+[windows]
+test-windows-chrome-motion: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/motion-tests -p:RestoreLockedMode=true -- --chrome-motion
+
+[windows]
+test-windows-touch-performance: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/motion-tests -p:RestoreLockedMode=true -- --touch-performance
+
+[windows]
+test-windows-atomic-continuation: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/atomic-tests -p:RestoreLockedMode=true -- --atomic-continuation
 
 # Start RunAcceptance.ps1 -Hold first to serve the reviewed pages on loopback.
 [windows]
 probe-windows-app:
-    dotnet run --project tests/DevDuo.Windows.Tests -p:RestoreLockedMode=true -- --presented
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/presented-tests -p:RestoreLockedMode=true -- --presented
 
 lint:
     pnpm lint
@@ -214,3 +250,13 @@ test-windows-popups: prepare-debugging
 [windows]
 test-windows-ime: prepare-debugging
     dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/desktop-ime-tests -p:RestoreLockedMode=true -- --desktop-ime
+
+# Nested modal edges and retained shell materials at the current desktop DPI.
+[windows]
+test-windows-modal-sequence: prepare-debugging
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/modal-sequence-tests -p:RestoreLockedMode=true -- --modal-sequence
+
+# Real application restart and occupied-listener isolation, using private test preferences.
+[windows]
+test-windows-developer-restore: build-windows
+    dotnet run --project tests/DevDuo.Windows.Tests --artifacts-path temp/build/modal-sequence-tests -p:RestoreLockedMode=true -- --developer-restore

@@ -1,0 +1,786 @@
+--- a/Source/WebKit/Shared/UpdateInfo.h
++++ b/Source/WebKit/Shared/UpdateInfo.h
+@@ -82,6 +82,9 @@
+ #if PLATFORM(WIN)
+     HostFrameTiming hostTiming;
+     HostFrameEdges hostEdges;
++    uint64_t hostSharedTexture { 0 };
++    uint64_t hostAdapterLuid { 0 };
++    uint32_t hostSurfaceStatus { 0 };
+ #endif
+     // The size of the web view.
+     WebCore::IntSize viewSize;
+--- a/Source/WebKit/Shared/UpdateInfo.serialization.in
++++ b/Source/WebKit/Shared/UpdateInfo.serialization.in
+@@ -64,6 +64,9 @@
+ #if PLATFORM(WIN)
+     WebKit::HostFrameTiming hostTiming;
+     WebKit::HostFrameEdges hostEdges;
++    uint64_t hostSharedTexture;
++    uint64_t hostAdapterLuid;
++    uint32_t hostSurfaceStatus;
+ #endif
+     WebCore::IntSize viewSize;
+     float deviceScaleFactor;
+--- a/Source/WebKit/Shared/WebPageCreationParameters.h
++++ b/Source/WebKit/Shared/WebPageCreationParameters.h
+@@ -264,6 +264,9 @@
+ #endif
+ #if USE(GRAPHICS_LAYER_WC)
+     bool usesOffscreenRendering { false };
++#if PLATFORM(WIN)
++    bool hostFrameSurfaceEnabled { false };
++#endif
+ #endif
+     bool shouldScaleViewToFitDocument { false };
+ 
+--- a/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
++++ b/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
+@@ -176,6 +176,9 @@
+ #endif
+ #if USE(GRAPHICS_LAYER_WC)
+     bool usesOffscreenRendering;
++#if PLATFORM(WIN)
++    bool hostFrameSurfaceEnabled;
++#endif
+ #endif
+     bool shouldScaleViewToFitDocument;
+ 
+--- a/Source/WebKit/UIProcess/WebPageProxy.cpp
++++ b/Source/WebKit/UIProcess/WebPageProxy.cpp
+@@ -116,6 +116,9 @@
+ #include "NotificationPermissionRequest.h"
+ #include "NotificationPermissionRequestManager.h"
+ #include "PageClient.h"
++#if PLATFORM(WIN)
++#include "PageClientImpl.h"
++#endif
+ #include "PendingPostMessages.h"
+ #include "PendingSnapshotDrawing.h"
+ #include "PlatformPopupMenuData.h"
+@@ -15999,6 +16002,9 @@
+ #endif
+ #if USE(GRAPHICS_LAYER_WC)
+     parameters.usesOffscreenRendering = pageClient && pageClient->usesOffscreenRendering();
++#if PLATFORM(WIN)
++    parameters.hostFrameSurfaceEnabled = pageClient && GetPropW(static_cast<PageClientImpl&>(*pageClient).viewWidget(), L"DevDuoHostFrameSurface");
++#endif
+ #endif
+ 
+     for (auto& iterator : m_urlSchemeHandlersByScheme)
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
+@@ -128,6 +128,7 @@
+ #if PLATFORM(WIN)
+     HostFrameTiming hostTiming;
+     HostFrameEdges hostEdges;
++    bool hostFrameSurfaceEnabled { false };
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
+@@ -113,6 +113,7 @@
+ #if PLATFORM(WIN)
+     WebKit::HostFrameTiming hostTiming;
+     WebKit::HostFrameEdges hostEdges;
++    bool hostFrameSurfaceEnabled;
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
+@@ -54,7 +54,7 @@
+ #endif
+ 
+ #if USE(GRAPHICS_LAYER_WC)
+-    UpdateGeometryWC(uint64_t backingStoreStateID, WebCore::IntSize viewSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor)
++    UpdateGeometryWC(uint64_t backingStoreStateID, WebCore::IntSize viewSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor, bool hostFrameSurfaceEnabled)
+ #endif
+ 
+ #if PLATFORM(COCOA) || PLATFORM(GTK)
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
+@@ -63,7 +63,7 @@
+ #if USE(GRAPHICS_LAYER_TEXTURE_MAPPER)    
+     void updateGeometry(const WebCore::IntSize&, CompletionHandler<void()>&&) override { }
+ #endif
+-    void updateGeometryWC(uint64_t, WebCore::IntSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor) override;
++    void updateGeometryWC(uint64_t, WebCore::IntSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor, bool hostFrameSurfaceEnabled) override;
+     void setRootCompositingLayer(WebCore::Frame&, WebCore::GraphicsLayer*) override;
+     void addRootFrame(WebCore::FrameIdentifier) override;
+     void attachViewOverlayGraphicsLayer(WebCore::FrameIdentifier, WebCore::GraphicsLayer*) override;
+@@ -114,6 +114,7 @@
+     WebCore::IntRect m_scrollRect;
+     WebCore::IntSize m_scrollOffset;
+     CompletionHandler<void()> m_forceRepaintCompletionHandler;
++    bool m_hostFrameSurfaceEnabled { false };
+ };
+ 
+ } // namespace WebKit
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.h
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.h
+@@ -166,7 +166,7 @@
+     virtual void setIntrinsicDeviceScaleFactor(float) { }
+ #endif
+ #if USE(GRAPHICS_LAYER_WC)
+-    virtual void updateGeometryWC(uint64_t, WebCore::IntSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor) { };
++    virtual void updateGeometryWC(uint64_t, WebCore::IntSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor, bool hostFrameSurfaceEnabled) { };
+ #endif
+ 
+ #if USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER)
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -59,6 +59,9 @@
+     , m_layerFactory(*this)
+     , m_updateRenderingTimer(*this, &DrawingAreaWC::updateRendering)
+     , m_commitQueue(WorkQueue::create("DrawingAreaWC CommitQueue"_s))
++#if PLATFORM(WIN)
++    , m_hostFrameSurfaceEnabled(parameters.hostFrameSurfaceEnabled)
++#endif
+ {
+ }
+ 
+@@ -142,8 +145,9 @@
+     }
+ }
+ 
+-void DrawingAreaWC::updateGeometryWC(uint64_t backingStoreStateID, IntSize viewSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor)
+-{
++void DrawingAreaWC::updateGeometryWC(uint64_t backingStoreStateID, IntSize viewSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor, bool hostFrameSurfaceEnabled)
++{
++    m_hostFrameSurfaceEnabled = hostFrameSurfaceEnabled;
+     m_backingStoreStateID = backingStoreStateID;
+     m_webPage->setDeviceScaleFactor(deviceScaleFactor);
+     m_webPage->setIntrinsicDeviceScaleFactor(intrinsicDeviceScaleFactor);
+@@ -311,6 +315,7 @@
+ #if PLATFORM(WIN)
+         m_updateInfo.hostTiming = m_hostFrameTiming;
+         m_updateInfo.hostEdges = m_hostFrameEdges;
++        m_updateInfo.hostFrameSurfaceEnabled = m_hostFrameSurfaceEnabled;
+         m_updateInfo.hostTiming.commitSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+         updateRootLayerDeviceScaleFactor(rootLayer.layer);
+@@ -331,7 +336,13 @@
+                 m_remoteWCLayerTreeHostProxy->update(WTF::move(updateInfo), [this, weakThis = WTF::move(weakThis), stateID, logicalSize, backingScale, willCallDisplayDidRefresh](std::optional<UpdateInfo> updateInfo) {
+                     if (!weakThis)
+                         return;
+-                    if (updateInfo && stateID == m_backingStoreStateID) {
++                    if (updateInfo &&
++#if PLATFORM(WIN)
++                        (stateID == m_backingStoreStateID || updateInfo->hostSharedTexture || updateInfo->hostSurfaceStatus)
++#else
++                        stateID == m_backingStoreStateID
++#endif
++                    ) {
+                         ASSERT(willCallDisplayDidRefresh);
+ #if PLATFORM(WIN)
+                         // WCScene reads a device-pixel framebuffer. BackingStore
+@@ -344,7 +355,7 @@
+                         updateInfo->updateRects.clear();
+                         updateInfo->updateRects.append(updateInfo->updateRectBounds);
+ #endif
+-                        send(Messages::DrawingAreaProxy::Update(m_backingStoreStateID, WTF::move(*updateInfo)));
++                        send(Messages::DrawingAreaProxy::Update(stateID, WTF::move(*updateInfo)));
+                         return;
+                     }
+                     if (willCallDisplayDidRefresh)
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.h
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.h
+@@ -45,9 +45,20 @@
+     bool makeContextCurrent();
+     std::unique_ptr<WebCore::TextureMapper> createTextureMapper();
+     void swapBuffers();
++#if PLATFORM(WIN)
++    bool beginHostFrame(int width, int height);
++    uint64_t endHostFrame();
++    uint64_t hostFrameAdapterLuid() const;
++    uint32_t hostFrameStatus() const { return m_hostFrameStatus; }
++#endif
+ 
+ private:
+     const std::unique_ptr<WebCore::GLContext> m_glContext;
++#if PLATFORM(WIN)
++    struct HostSharedFrame;
++    std::unique_ptr<HostSharedFrame> m_hostSharedFrame;
++    uint32_t m_hostFrameStatus { 0 };
++#endif
+ };
+ 
+ } // namespace WebKit
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCSceneContext.cpp
+@@ -32,15 +32,135 @@
+ #include <WebCore/PlatformDisplay.h>
+ #include <WebCore/TextureMapper.h>
+ #include <wtf/TZoneMallocInlines.h>
++#if PLATFORM(WIN)
++#include <WebCore/TextureMapperGLHeaders.h>
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <EGL/eglext_angle.h>
++#include <d3d11.h>
++#include <dxgi.h>
++#include <wrl/client.h>
++#endif
+ 
+ namespace WebKit {
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(WCSceneContext);
+ 
++#if PLATFORM(WIN)
++struct WCSceneContext::HostSharedFrame {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(HostSharedFrame);
++public:
++    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
++    Microsoft::WRL::ComPtr<IDXGIKeyedMutex> mutex;
++    EGLDisplay display { EGL_NO_DISPLAY };
++    EGLSurface surface { EGL_NO_SURFACE };
++    EGLSurface previousDraw { EGL_NO_SURFACE }, previousRead { EGL_NO_SURFACE };
++    EGLContext context { EGL_NO_CONTEXT };
++    GLint previousFramebuffer { 0 }, previousViewport[4] { };
++    HANDLE handle { nullptr };
++    uint64_t adapterLuid { 0 };
++    int width { 0 }, height { 0 };
++    bool locked { false };
++    ~HostSharedFrame()
++    {
++        if (locked) mutex->ReleaseSync(0);
++        if (surface != EGL_NO_SURFACE) eglDestroySurface(display, surface);
++    }
++};
++
++#endif
++
+ WCSceneContext::WCSceneContext(uint64_t nativeWindow)
+     : m_glContext(WebCore::GLContext::create(WebCore::PlatformDisplay::sharedDisplay(), reinterpret_cast<GLNativeWindowType>(nativeWindow)))
+ {
+ }
++
++#if PLATFORM(WIN)
++
++bool WCSceneContext::beginHostFrame(int width, int height)
++{
++    auto fail = [&](HRESULT error) { m_hostFrameStatus = static_cast<uint32_t>(error); return false; };
++    m_hostFrameStatus = 0;
++    if (!m_hostSharedFrame || m_hostSharedFrame->width != width || m_hostSharedFrame->height != height) {
++        m_hostSharedFrame = nullptr;
++        auto frame = makeUnique<HostSharedFrame>();
++        frame->display = eglGetCurrentDisplay();
++        auto queryDisplay = reinterpret_cast<PFNEGLQUERYDISPLAYATTRIBEXTPROC>(eglGetProcAddress("eglQueryDisplayAttribEXT"));
++        auto queryDevice = reinterpret_cast<PFNEGLQUERYDEVICEATTRIBEXTPROC>(eglGetProcAddress("eglQueryDeviceAttribEXT"));
++        EGLAttrib eglDevice = 0, devicePointer = 0;
++        if (!queryDisplay || !queryDevice || !queryDisplay(frame->display, EGL_DEVICE_EXT, &eglDevice)
++            || !queryDevice(reinterpret_cast<EGLDeviceEXT>(eglDevice), EGL_D3D11_DEVICE_ANGLE, &devicePointer) || !devicePointer)
++            return fail(E_NOINTERFACE);
++        auto* device = reinterpret_cast<ID3D11Device*>(devicePointer);
++        D3D11_TEXTURE2D_DESC description { };
++        description.Width = width; description.Height = height;
++        description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
++        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
++        description.Usage = D3D11_USAGE_DEFAULT;
++        description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
++        description.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
++        auto result = device->CreateTexture2D(&description, nullptr, &frame->texture);
++        if (FAILED(result)) return fail(result);
++        result = frame->texture.As(&frame->mutex);
++        if (FAILED(result)) return fail(result);
++        Microsoft::WRL::ComPtr<IDXGIResource> resource;
++        result = frame->texture.As(&resource);
++        if (FAILED(result)) return fail(result);
++        result = resource->GetSharedHandle(&frame->handle);
++        if (FAILED(result)) return fail(result);
++        Microsoft::WRL::ComPtr<IDXGIDevice> dxgi;
++        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
++        DXGI_ADAPTER_DESC adapterDescription { };
++        if (FAILED(device->QueryInterface(IID_PPV_ARGS(&dxgi))) || FAILED(dxgi->GetAdapter(&adapter))
++            || FAILED(adapter->GetDesc(&adapterDescription))) return fail(E_FAIL);
++        frame->adapterLuid = (static_cast<uint64_t>(static_cast<uint32_t>(adapterDescription.AdapterLuid.HighPart)) << 32)
++            | adapterDescription.AdapterLuid.LowPart;
++        const EGLint attributes[] = { EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE };
++        frame->surface = eglCreatePbufferFromClientBuffer(frame->display, EGL_D3D_TEXTURE_ANGLE,
++            frame->texture.Get(), m_glContext->config(), attributes);
++        if (frame->surface == EGL_NO_SURFACE) return fail(E_NOTIMPL);
++        frame->width = width; frame->height = height;
++        m_hostSharedFrame = WTF::move(frame);
++    }
++    auto& frame = *m_hostSharedFrame;
++    auto result = frame.mutex->AcquireSync(0, 250);
++    if (result != S_OK) return fail(result == WAIT_TIMEOUT ? HRESULT_FROM_WIN32(WAIT_TIMEOUT) : E_FAIL);
++    frame.locked = true;
++    frame.previousDraw = eglGetCurrentSurface(EGL_DRAW);
++    frame.previousRead = eglGetCurrentSurface(EGL_READ);
++    frame.context = eglGetCurrentContext();
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &frame.previousFramebuffer);
++    glGetIntegerv(GL_VIEWPORT, frame.previousViewport);
++    if (!eglMakeCurrent(frame.display, frame.surface, frame.surface, frame.context)) {
++        frame.mutex->ReleaseSync(0); frame.locked = false;
++        return fail(E_FAIL);
++    }
++    glBindFramebuffer(GL_FRAMEBUFFER, 0);
++    glViewport(0, 0, width, height);
++    return true;
++}
++
++uint64_t WCSceneContext::endHostFrame()
++{
++    auto& frame = *m_hostSharedFrame;
++    // ANGLE requires client rendering to finish before handing the mutex to a
++    // different device. This waits on the GPU worker, never the host UI thread.
++    // Fence-driven pipelining can replace this wait after transport is verified.
++    glFinish();
++    eglMakeCurrent(frame.display, frame.previousDraw, frame.previousRead, frame.context);
++    glBindFramebuffer(GL_FRAMEBUFFER, frame.previousFramebuffer);
++    glViewport(frame.previousViewport[0], frame.previousViewport[1], frame.previousViewport[2], frame.previousViewport[3]);
++    auto result = frame.mutex->ReleaseSync(1);
++    frame.locked = false;
++    if (FAILED(result)) { m_hostFrameStatus = static_cast<uint32_t>(result); return 0; }
++    return reinterpret_cast<uintptr_t>(frame.handle);
++}
++
++uint64_t WCSceneContext::hostFrameAdapterLuid() const
++{
++    return m_hostSharedFrame ? m_hostSharedFrame->adapterLuid : 0;
++}
++#endif
+ 
+ WCSceneContext::~WCSceneContext() = default;
+ 
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
+@@ -258,13 +258,30 @@
+     RefPtr<WebCore::BitmapTexture> texture;
+     bool showFPS = true;
+     bool readPixel = false;
++#if PLATFORM(WIN)
++    bool hostFrameSurface = m_usesOffscreenRendering && !update.remoteContextHostedIdentifier && update.hostFrameSurfaceEnabled;
++    if (hostFrameSurface && !m_context->beginHostFrame(update.viewport.width(), update.viewport.height())) {
++        UpdateInfo failure;
++        failure.hostTiming = update.hostTiming; failure.hostEdges = update.hostEdges;
++        failure.hostSurfaceStatus = m_context->hostFrameStatus();
++        failure.viewSize = update.viewport;
++        failure.deviceScaleFactor = failure.updateScaleFactor = 1;
++        failure.updateRectBounds = WebCore::IntRect({ }, update.viewport);
++        failure.updateRects.append(failure.updateRectBounds);
++        return failure;
++    }
++#endif
+     RefPtr<WebCore::ShareableBitmap> bitmap;
+ 
+     if (update.remoteContextHostedIdentifier) {
+         showFPS = false;
+         texture = WebCore::BitmapTexturePool::singleton().acquireTexture(update.viewport, { WebCore::BitmapTexture::Flags::SupportsAlpha });
+         surface = texture.get();
+-    } else if (m_usesOffscreenRendering) {
++    } else if (m_usesOffscreenRendering
++#if PLATFORM(WIN)
++        && !hostFrameSurface
++#endif
++    ) {
+         readPixel = true;
+         texture = WebCore::BitmapTexturePool::singleton().acquireTexture(update.viewport, { WebCore::BitmapTexture::Flags::SupportsAlpha });
+         surface = texture.get();
+@@ -274,7 +291,14 @@
+ #if PLATFORM(WIN)
+     update.hostTiming.gpuStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+-    m_textureMapper->beginPainting(WebCore::TextureMapper::FlipY::No, surface);
++#if PLATFORM(WIN)
++    // A D3D texture is sampled top-down. The old offscreen path relied on
++    // glReadPixels' row order; sharing the default pbuffer needs a Y flip.
++    const auto flip = hostFrameSurface ? WebCore::TextureMapper::FlipY::Yes : WebCore::TextureMapper::FlipY::No;
++#else
++    const auto flip = WebCore::TextureMapper::FlipY::No;
++#endif
++    m_textureMapper->beginPainting(flip, surface);
+     rootLayer->paint(*m_textureMapper);
+     if (showFPS)
+         m_fpsCounter.updateFPSAndDisplay(*m_textureMapper);
+@@ -285,6 +309,22 @@
+     m_textureMapper->endPainting();
+ 
+     std::optional<UpdateInfo> result;
++#if PLATFORM(WIN)
++    if (hostFrameSurface) {
++        result.emplace();
++        result->hostSharedTexture = m_context->endHostFrame();
++        result->hostAdapterLuid = m_context->hostFrameAdapterLuid();
++        result->hostSurfaceStatus = m_context->hostFrameStatus();
++        result->hostTiming = update.hostTiming;
++        result->hostTiming.gpuEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++        result->hostEdges = update.hostEdges;
++        result->viewSize = update.viewport;
++        result->deviceScaleFactor = result->updateScaleFactor = 1;
++        result->updateRectBounds = WebCore::IntRect({ }, update.viewport);
++        result->updateRects.append(result->updateRectBounds);
++        return result;
++    }
++#endif
+     if (update.remoteContextHostedIdentifier)
+         WCRemoteFrameHostLayerManager::singleton().updateTexture(*update.remoteContextHostedIdentifier, m_webProcessIdentifier, WTF::move(texture));
+     else if (m_usesOffscreenRendering) {
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -115,6 +115,26 @@
+ WK_EXPORT unsigned WKViewGetHostAccessibilityAPIVersion(void);
+ WK_EXPORT void WKViewRequestHostAccessibilityTree(WKViewRef, unsigned long long requestID, const void* context, WKHostAccessibilityTreeCallback);
+ 
++typedef struct WKHostFrameFill {
++    float x, y, width, height;
++    unsigned color;
++} WKHostFrameFill;
++typedef struct WKHostFrameSurface {
++    unsigned long long sequence, frameID, documentEpoch, adapterLuid;
++    void* sharedTexture;
++    const void* pixels;
++    unsigned rowBytes, background;
++    int width, height;
++    unsigned flags, status, fillCount;
++    WKHostFrameFill fills[8];
++} WKHostFrameSurface;
++WK_EXPORT unsigned WKViewGetHostFrameSurfaceAPIVersion(void);
++WK_EXPORT void WKViewSetHostFrameSurfaceEnabled(WKViewRef, bool);
++WK_EXPORT bool WKViewAcquireHostFrameSurface(WKViewRef, WKHostFrameSurface* output);
++WK_EXPORT void WKViewAcknowledgeHostFrameSurface(WKViewRef, unsigned long long sequence, bool presented);
++WK_EXPORT void WKViewReplayHostFrameSurface(WKViewRef, bool resourcesLost);
++WK_EXPORT unsigned long long WKViewGetHostGDIUploadCount(WKViewRef);
++
+ // Frame presentation API v1: continuation state belongs to the painted frame.
+ typedef struct WKHostFrameEdges {
+     unsigned long long frameID;
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -31,6 +31,7 @@
+ #include "DrawingAreaProxy.h"
+ #if PLATFORM(WIN)
+ #include "UpdateInfo.h"
++#include "WKView.h"
+ #endif
+ #include <wtf/RefCounted.h>
+ #include <wtf/TZoneMallocInlines.h>
+@@ -55,6 +56,12 @@
+ #if PLATFORM(WIN)
+     const Vector<HostFrameTiming>& hostPaintTimings() const { return m_hostPaintTimings; }
+     const HostFrameEdges& hostPaintedEdges() const { return m_hostPaintedEdges; }
++    void setHostFrameSurfaceEnabled(bool);
++    bool hostFrameSurfaceEnabled() const { return m_hostFrameSurfaceEnabled; }
++    bool acquireHostFrameSurface(WKHostFrameSurface&);
++    void acknowledgeHostFrameSurface(uint64_t sequence, bool presented);
++    void replayHostFrameSurface(bool resourcesLost);
++    void notifyHostFrameSurface();
+ #endif
+     uint64_t hostUpdateCount() const { return m_hostUpdateCount; }
+     uint64_t hostAcceleratedTransitionCount() const { return m_hostAcceleratedTransitionCount; }
+@@ -82,7 +89,16 @@
+     void hostEdgeExpiryTimerFired();
+     double m_hostEdgeDeadlines[4] { };
+     Vector<HostFrameTiming> m_hostPaintTimings;
++    uint64_t m_hostSurfaceSequence { 0 }, m_hostAcquiredSequence { 0 };
++    uint64_t m_hostContentSequence { 0 }, m_hostTransferredContentSequence { 0 };
++    uint64_t m_hostSharedTexture { 0 }, m_hostAdapterLuid { 0 };
++    uint32_t m_hostSurfaceStatus { 0 };
++    WebCore::IntSize m_hostSurfaceSize;
++    float m_hostSurfaceScale { 1 };
++    bool m_hostReplayKeyZero { false };
++    bool m_hostAwaitingDisplayRefresh { false }, m_hostDiscardAfterAck { false }, m_hostSurfaceIsStale { false };
+ #endif
++    bool m_hostFrameSurfaceEnabled { false };
+     uint64_t m_currentBackingStoreStateID { 0 };
+     uint64_t m_hostUpdateCount { 0 };
+     uint64_t m_hostAcceleratedTransitionCount { 0 };
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -32,6 +32,9 @@
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+ #include "DrawingAreaMessages.h"
++#if PLATFORM(WIN)
++#include "PageClientImpl.h"
++#endif
+ #include "MessageSenderInlines.h"
+ #include "UpdateInfo.h"
+ #include "WebPageProxy.h"
+@@ -56,6 +59,10 @@
+     , m_hostEdgeExpiryTimer(RunLoop::mainSingleton(), "DrawingAreaProxyWC::HostEdgeExpiry"_s, this, &DrawingAreaProxyWC::hostEdgeExpiryTimerFired)
+ #endif
+ {
++#if PLATFORM(WIN)
++    if (auto client = webPageProxy.pageClient())
++        m_hostFrameSurfaceEnabled = GetPropW(static_cast<PageClientImpl&>(*client).viewWidget(), L"DevDuoHostFrameSurface");
++#endif
+ }
+ 
+ void DrawingAreaProxyWC::paint(PlatformPaintContextPtr context, const WebCore::IntRect& rect, WebCore::Region& unpaintedRegion)
+@@ -113,11 +120,24 @@
+     discardBackingStore();
+     m_currentBackingStoreStateID++;
+     if (page())
+-        send(Messages::DrawingArea::UpdateGeometryWC(m_currentBackingStoreStateID, size(), page()->deviceScaleFactor(), page()->intrinsicDeviceScaleFactor()));
++        send(Messages::DrawingArea::UpdateGeometryWC(m_currentBackingStoreStateID, size(), page()->deviceScaleFactor(), page()->intrinsicDeviceScaleFactor(), m_hostFrameSurfaceEnabled));
+ }
+ 
+ void DrawingAreaProxyWC::update(uint64_t backingStoreStateID, UpdateInfo&& updateInfo)
+ {
++#if PLATFORM(WIN)
++    const bool current = backingStoreStateID == m_currentBackingStoreStateID;
++    // A stale GPU frame still owns the producer's key. Drain it without
++    // presenting it; otherwise same-size geometry changes can deadlock reuse.
++    if (m_hostFrameSurfaceEnabled && (current || updateInfo.hostSharedTexture)) {
++        m_hostSurfaceIsStale = !current;
++        m_hostAwaitingDisplayRefresh = true;
++        if (current) ++m_hostUpdateCount;
++        else ++m_hostStaleUpdateCount;
++        incorporateUpdate(WTF::move(updateInfo));
++        return;
++    }
++#endif
+     if (backingStoreStateID == m_currentBackingStoreStateID) {
+         ++m_hostUpdateCount;
+         incorporateUpdate(WTF::move(updateInfo));
+@@ -139,7 +159,7 @@
+     if (updateInfo.updateRectBounds.isEmpty())
+         return;
+ 
+-    if (!m_backingStore)
++    if (!m_backingStore && !updateInfo.hostSharedTexture && !updateInfo.hostSurfaceStatus)
+         m_backingStore.emplace(updateInfo.viewSize, updateInfo.deviceScaleFactor);
+ 
+     RefPtr page = this->page();
+@@ -191,7 +211,23 @@
+     m_hostFrameTiming = updateInfo.hostTiming;
+     m_hostFrameTiming.receiveSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+-    m_backingStore->incorporateUpdate(WTF::move(updateInfo));
++#if PLATFORM(WIN)
++    m_hostSharedTexture = updateInfo.hostSharedTexture;
++    m_hostAdapterLuid = updateInfo.hostAdapterLuid;
++    m_hostSurfaceStatus = updateInfo.hostSurfaceStatus;
++    m_hostSurfaceSize = updateInfo.viewSize;
++    m_hostSurfaceScale = updateInfo.deviceScaleFactor;
++    ++m_hostContentSequence; ++m_hostSurfaceSequence;
++    m_hostReplayKeyZero = false;
++    if (!m_hostSharedTexture && !m_hostSurfaceStatus)
++#endif
++        m_backingStore->incorporateUpdate(WTF::move(updateInfo));
++#if PLATFORM(WIN)
++    if (m_hostFrameSurfaceEnabled) {
++        notifyHostFrameSurface();
++        return;
++    }
++#endif
+ 
+     page->setViewNeedsDisplay(damageRegion);
+ }
+@@ -210,19 +246,118 @@
+             changed = true;
+         } else if (expiry && (!deadline || expiry < deadline)) deadline = expiry;
+     }
+-    if (changed && page() && m_backingStore)
++    if (changed && m_hostFrameSurfaceEnabled) {
++        ++m_hostSurfaceSequence;
++        notifyHostFrameSurface();
++    } else if (changed && page() && m_backingStore)
+         page()->setViewNeedsDisplay(WebCore::Region(WebCore::IntRect({ }, m_backingStore->size())));
+     if (deadline) m_hostEdgeExpiryTimer.startOneShot(Seconds(deadline - now));
+ }
+ #endif
+ 
++#if PLATFORM(WIN)
++void DrawingAreaProxyWC::setHostFrameSurfaceEnabled(bool enabled)
++{
++    if (m_hostFrameSurfaceEnabled == enabled) return;
++    m_hostFrameSurfaceEnabled = enabled;
++    sizeDidChange();
++}
++void DrawingAreaProxyWC::notifyHostFrameSurface()
++{
++    if (page()) {
++        if (auto client = page()->pageClient())
++            PostMessageW(static_cast<PageClientImpl&>(*client).viewWidget(), WM_APP + 0x3e, 0, 0);
++    }
++}
++void DrawingAreaProxyWC::replayHostFrameSurface(bool resourcesLost)
++{
++    if (!m_hostFrameSurfaceEnabled || m_hostSurfaceSize.isEmpty()) return;
++    if (resourcesLost) {
++        m_hostReplayKeyZero = m_hostTransferredContentSequence == m_hostContentSequence;
++        m_hostTransferredContentSequence = 0;
++    }
++    ++m_hostSurfaceSequence;
++    notifyHostFrameSurface();
++}
++bool DrawingAreaProxyWC::acquireHostFrameSurface(WKHostFrameSurface& output)
++{
++    if (!m_hostFrameSurfaceEnabled || m_hostSurfaceSize.isEmpty() || m_hostAcquiredSequence == m_hostSurfaceSequence)
++        return false;
++    output = { };
++    output.sequence = m_hostSurfaceSequence;
++    output.frameID = m_hostEdges.frameID; output.documentEpoch = m_hostEdges.documentEpoch;
++    output.adapterLuid = m_hostAdapterLuid;
++    output.sharedTexture = reinterpret_cast<void*>(static_cast<uintptr_t>(m_hostSharedTexture));
++    output.status = m_hostSurfaceStatus;
++    if (m_hostSurfaceIsStale) output.flags |= 4;
++    auto scale = m_hostSurfaceScale;
++    auto size = WebCore::expandedIntSize(m_hostSurfaceSize * scale);
++    output.width = size.width(); output.height = size.height(); output.background = m_hostEdges.root;
++    if (m_hostContentSequence != m_hostTransferredContentSequence) {
++        output.flags |= 1;
++        if (m_hostReplayKeyZero) output.flags |= 2;
++        if (!m_hostSharedTexture && !m_hostSurfaceStatus) {
++            size_t rowBytes = 0;
++            if (!m_backingStore || !m_backingStore->hostBitmapPixels(output.pixels, rowBytes)) return false;
++            output.rowBytes = static_cast<unsigned>(rowBytes);
++        }
++    }
++    auto add = [&](float left, float top, float right, float bottom, uint32_t rgb) {
++        left = std::clamp<float>(std::floor(left * scale + .5f), 0, output.width);
++        top = std::clamp<float>(std::floor(top * scale + .5f), 0, output.height);
++        right = std::clamp<float>(std::floor(right * scale + .5f), 0, output.width);
++        bottom = std::clamp<float>(std::floor(bottom * scale + .5f), 0, output.height);
++        if (right > left && bottom > top && output.fillCount < 8)
++            output.fills[output.fillCount++] = { left, top, right - left, bottom - top, rgb };
++    };
++    const auto width = m_hostSurfaceSize.width(), height = m_hostSurfaceSize.height();
++    const auto& edge = m_hostEdges;
++    add(0, 0, width, edge.flowTop, edge.root);
++    add(0, edge.flowBottom, width, height, edge.root);
++    add(0, edge.flowTop, edge.flowLeft, edge.flowBottom, edge.root);
++    add(edge.flowRight, edge.flowTop, width, edge.flowBottom, edge.root);
++    const auto left = edge.insetLeft, right = width - edge.insetRight;
++    if (edge.colorMask & 1) add(left, 0, right, edge.insetTop, edge.top);
++    if (edge.colorMask & 4) add(left, height - edge.insetBottom, right, height, edge.bottom);
++    if (edge.colorMask & 2) add(right, 0, width, height, edge.right);
++    if (edge.colorMask & 8) add(0, 0, left, height, edge.left);
++    m_hostAcquiredSequence = m_hostSurfaceSequence;
++    m_hostFrameTiming.paintStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++    return true;
++}
++void DrawingAreaProxyWC::acknowledgeHostFrameSurface(uint64_t sequence, bool presented)
++{
++    if (sequence != m_hostSurfaceSequence) return;
++    m_hostTransferredContentSequence = m_hostContentSequence;
++    if (presented) {
++        m_hostPaintedEdges = m_hostEdges;
++        m_hostFrameTiming.paintEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++        if (m_hostPaintTimings.size() == 128) m_hostPaintTimings.removeAt(0);
++        m_hostPaintTimings.append(m_hostFrameTiming);
++    }
++    const bool refresh = std::exchange(m_hostAwaitingDisplayRefresh, false);
++    if (std::exchange(m_hostDiscardAfterAck, false)) discardBackingStore();
++    if (refresh) send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
++}
++#endif
++
+ void DrawingAreaProxyWC::discardBackingStore()
+ {
++#if PLATFORM(WIN)
++    if (m_hostFrameSurfaceEnabled && m_hostAwaitingDisplayRefresh) {
++        // Keep the leased raw store alive until the host drains it. WebCore
++        // may accept new geometry while its prior presentation is pending.
++        m_hostDiscardAfterAck = true;
++        return;
++    }
++#endif
+     m_backingStore = std::nullopt;
+ #if PLATFORM(WIN)
+     m_hostEdgeExpiryTimer.stop();
+     m_hostEdges = { };
+     m_hostPaintedEdges = { };
++    m_hostSharedTexture = 0; m_hostSurfaceStatus = 0;
++    m_hostSurfaceSize = { };
+     std::fill(std::begin(m_hostEdgeDeadlines), std::end(m_hostEdgeDeadlines), 0);
+ #endif
+ }
+--- a/Source/WebKit/UIProcess/BackingStore.h
++++ b/Source/WebKit/UIProcess/BackingStore.h
+@@ -68,6 +68,9 @@
+ 
+     void paint(PlatformPaintContextPtr, const WebCore::IntRect&);
+     void incorporateUpdate(UpdateInfo&&);
++#if PLATFORM(WIN) && USE(SKIA)
++    bool hostBitmapPixels(const void*&, size_t&) const;
++#endif
+ 
+ private:
+     void scroll(const WebCore::IntRect&, const WebCore::IntSize&);
+--- a/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp
++++ b/Source/WebKit/UIProcess/skia/BackingStoreSkia.cpp
+@@ -51,6 +51,16 @@
+ }
+ 
+ BackingStore::~BackingStore() = default;
++
++#if PLATFORM(WIN)
++bool BackingStore::hostBitmapPixels(const void*& pixels, size_t& rowBytes) const
++{
++    SkPixmap pixmap;
++    if (!m_surface->peekPixels(&pixmap)) return false;
++    pixels = pixmap.addr(); rowBytes = pixmap.rowBytes();
++    return true;
++}
++#endif
+ 
+ void BackingStore::paint(PlatformPaintContextPtr cr, const WebCore::IntRect& rect)
+ {
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -85,6 +85,37 @@
+ void WKViewSetUsesOffscreenRendering(WKViewRef viewRef, bool enabled)
+ {
+     toImpl(viewRef)->setUsesOffscreenRendering(enabled);
++}
++
++unsigned WKViewGetHostFrameSurfaceAPIVersion(void) { return 1; }
++void WKViewSetHostFrameSurfaceEnabled(WKViewRef viewRef, bool enabled)
++{
++    if (!viewRef) return;
++    auto* view = toImpl(viewRef);
++    SetPropW(view->window(), L"DevDuoHostFrameSurface", reinterpret_cast<HANDLE>(static_cast<uintptr_t>(enabled)));
++    if (view->drawingArea()) static_cast<DrawingAreaProxyWC*>(view->drawingArea())->setHostFrameSurfaceEnabled(enabled);
++}
++static DrawingAreaProxyWC* hostFrameDrawingArea(WKViewRef viewRef)
++{
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    return page && !page->isClosed() && page->drawingArea() ? static_cast<DrawingAreaProxyWC*>(page->drawingArea()) : nullptr;
++}
++bool WKViewAcquireHostFrameSurface(WKViewRef viewRef, WKHostFrameSurface* output)
++{
++    auto* area = hostFrameDrawingArea(viewRef);
++    return area && output && area->acquireHostFrameSurface(*output);
++}
++void WKViewAcknowledgeHostFrameSurface(WKViewRef viewRef, unsigned long long sequence, bool presented)
++{
++    if (auto* area = hostFrameDrawingArea(viewRef)) area->acknowledgeHostFrameSurface(sequence, presented);
++}
++void WKViewReplayHostFrameSurface(WKViewRef viewRef, bool resourcesLost)
++{
++    if (auto* area = hostFrameDrawingArea(viewRef)) area->replayHostFrameSurface(resourcesLost);
++}
++unsigned long long WKViewGetHostGDIUploadCount(WKViewRef viewRef)
++{
++    return viewRef ? reinterpret_cast<uintptr_t>(GetPropW(toImpl(viewRef)->window(), L"DevDuoHostGDIUploads")) : 0;
+ }
+ 
+ unsigned WKViewGetHostFramePresentationAPIVersion(void) { return 1; }
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -504,6 +504,10 @@
+     if (dirtyRect.isEmpty())
+         return;
+     m_page->endPrinting();
++#if USE(GRAPHICS_LAYER_WC)
++    if (m_page->drawingArea() && static_cast<DrawingAreaProxyWC*>(m_page->drawingArea())->hostFrameSurfaceEnabled())
++        return;
++#endif
+     if (m_page->drawingArea()) {
+         auto painter = [&](auto drawingArea) {
+             // FIXME: We should port WebKit1's rect coalescing logic here.
+@@ -545,6 +549,8 @@
+             SkPixmap pixmap;
+             if (surface->peekPixels(&pixmap)) {
+                 auto bitmapInfo = WebCore::BitmapInfo::createBottomUp({ pixmap.width(), pixmap.height() });
++                auto uploads = reinterpret_cast<uintptr_t>(GetPropW(m_window, L"DevDuoHostGDIUploads"));
++                SetPropW(m_window, L"DevDuoHostGDIUploads", reinterpret_cast<HANDLE>(uploads + 1));
+                 SetDIBitsToDevice(hdc, scaledRect.x(), scaledRect.y(), pixmap.width(), pixmap.height(), 0, 0, 0, pixmap.height(), pixmap.addr(), &bitmapInfo, DIB_RGB_COLORS);
+             }
+ #endif

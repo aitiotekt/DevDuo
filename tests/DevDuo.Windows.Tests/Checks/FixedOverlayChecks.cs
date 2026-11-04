@@ -197,7 +197,9 @@ internal sealed partial class WindowsChecks
             var expected = visible ? mixed : footer && edge == "bottom" ? new[] { 150, 80, 208 } : null;
             if (expected is null)
             {
-                if (status != "none" || rgb.ValueKind != JsonValueKind.Null) return false;
+                // API v2 preserves partial edge coverage as uncertainty. A short
+                // footer touching a side must still produce no whole-side fill.
+                if (status is not ("none" or "multiple-or-translucent") || rgb.ValueKind != JsonValueKind.Null) return false;
             }
             else if (status != "accepted" || rgb.ValueKind != JsonValueKind.Array ||
                 OverlayRgb(rgb).Where((value, index) => Math.Abs(value - expected[index]) > 1).Any()) return false;

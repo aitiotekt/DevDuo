@@ -9,15 +9,16 @@ public sealed partial class MainWindow
     private readonly ControlApiService controlApi;
     private bool controlApiChanging, controlApiClosed;
     private string? controlApiError;
+    private long controlApiRevision;
 
     private void WireControlApi()
     {
         panel.ControlApi.IsCheckedChanged += async (_, _) =>
         {
             if (applyingSettings || updatingDeveloperControls || controlApiChanging) return;
-            await ChangeControlApiAsync(panel.ControlApi.IsChecked == true, panel.ControlApi.IsChecked == true);
+            await ChangeControlApiAsync(panel.ControlApi.IsChecked == true, panel.ControlApi.IsChecked == true, true);
         };
-        panel.ApplyControlApi.Click += async (_, _) => await ChangeControlApiAsync(controlApi.IsRunning);
+        panel.ApplyControlApi.Click += async (_, _) => await ChangeControlApiAsync(host.ControlApiEnabled);
         panel.CopyControlApiAddress.Click += async (_, _) =>
         {
             if (controlApi.BaseUri is not { } address || Clipboard is not { } clipboard) return;
@@ -26,7 +27,7 @@ public sealed partial class MainWindow
         };
     }
 
-    private async Task ChangeControlApiAsync(bool enabled, bool saveConfiguration = true)
+    private async Task ChangeControlApiAsync(bool enabled, bool saveConfiguration = true, bool rememberIntent = false)
     {
         if (controlApiChanging || controlApiClosed) return;
         var port = host.ControlApiPort;
@@ -45,14 +46,21 @@ public sealed partial class MainWindow
         }
         host.ControlApiPort = port;
         host.ControlApiBearerToken = token;
+        if (saveConfiguration) preferences.AcceptListenerSettings(PreferenceStore.ControlListenerFields);
+        if (rememberIntent) host.ControlApiEnabled = enabled;
         QueueSave();
         controlApiChanging = true;
+        var revision = ++controlApiRevision;
         controlApiError = null;
         RefreshControlApi();
         try
         {
             await controlApi.StopAsync();
-            if (enabled && !controlApiClosed) await controlApi.StartAsync(port, token);
+            if (enabled && !controlApiClosed && revision == controlApiRevision)
+            {
+                await controlApi.StartAsync(port, token);
+                if (controlApiClosed || revision != controlApiRevision) await controlApi.StopAsync();
+            }
         }
         catch (Exception error) { controlApiError = error.Message; }
         finally
@@ -64,6 +72,7 @@ public sealed partial class MainWindow
 
     private async Task StopControlApiAsync()
     {
+        controlApiRevision++;
         await controlApi.StopAsync();
         controlApiError = null;
         if (!controlApiClosed) RefreshControlApi();
@@ -76,10 +85,10 @@ public sealed partial class MainWindow
         updatingDeveloperControls = true;
         try
         {
-            panel.ControlApi.IsChecked = controlApi.IsRunning || controlApiChanging;
+            panel.ControlApi.IsChecked = host.ControlApiEnabled;
             panel.ControlApi.IsEnabled = panel.ApplyControlApi.IsEnabled = !controlApiChanging;
             panel.ControlApiStatus.Text = controlApiError is { } error
-                ? language.Format("Developer.ServiceError", error)
+                ? language.Format(host.ControlApiEnabled && !controlApi.IsRunning ? "Developer.RestoreFailed" : "Developer.ServiceError", error)
                 : language.Text(controlApiChanging ? "Developer.Starting" : controlApi.IsRunning ? "Developer.Running" : "Developer.Stopped");
             panel.ControlApiAddress.Text = controlApi.BaseUri is { } address ? new Uri(address, "api/openapi").AbsoluteUri : "";
             panel.ControlApiAddress.IsVisible = controlApi.IsRunning;

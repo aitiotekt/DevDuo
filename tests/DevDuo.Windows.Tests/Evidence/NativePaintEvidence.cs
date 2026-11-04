@@ -6,7 +6,7 @@ using DevDuo;
 
 namespace DevDuo.Windows.Tests;
 
-// A one-shot diagnostic of WebKit's software painter, before DWM and host chrome.
+// A one-shot diagnostic of the retained page framebuffer, before host chrome.
 // These pixels are evidence only and are never supplied to the compositor.
 internal static class NativePaintEvidence
 {
@@ -28,6 +28,7 @@ internal static class NativePaintEvidence
 
     internal static Bitmap Capture(WindowsWebKitView browser, JsonElement state)
     {
+        if (browser.CapturePageFramebuffer() is { } framebuffer) return framebuffer;
         var frame = state.GetProperty("nativeWebViewFramePixels");
         var bitmap = new Bitmap(frame.GetProperty("width").GetInt32(), frame.GetProperty("height").GetInt32(), PixelFormat.Format32bppRgb);
         using (var graphics = Graphics.FromImage(bitmap))
@@ -44,6 +45,7 @@ internal static class NativePaintEvidence
     // WM_PRINTCLIENT, this can expose stale pixels retained by a resize/clip change.
     internal static Bitmap CaptureLiveRaster(WindowsWebKitView browser)
     {
+        if (browser.CapturePageFramebuffer() is { } framebuffer) return framebuffer;
         var bitmap = new Bitmap(browser.ClientSize.Width, browser.ClientSize.Height, PixelFormat.Format32bppRgb);
         var source = GetDC(browser.BrowserWindow);
         if (source == 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());

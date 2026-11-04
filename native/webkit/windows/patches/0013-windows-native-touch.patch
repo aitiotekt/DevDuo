@@ -1,0 +1,1607 @@
+diff --git a/Source/WTF/wtf/PlatformEnableWin.h b/Source/WTF/wtf/PlatformEnableWin.h
+--- a/Source/WTF/wtf/PlatformEnableWin.h
++++ b/Source/WTF/wtf/PlatformEnableWin.h
+@@ -39,6 +39,13 @@
+ 
+ /* --------- Windows port --------- */
+ 
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++#define ENABLE_COORDINATED_TOUCH_EVENTS 1
++#define ENABLE_TOUCH_EVENT_REGIONS 1
++#define ENABLE_TOUCH_ACTION_REGIONS 1
++#define ENABLE_KINETIC_SCROLLING 1
++#endif
++
+ 
+ #if !defined(ENABLE_GEOLOCATION)
+ #define ENABLE_GEOLOCATION 1
+diff --git a/Source/WebKit/Shared/WebWheelEvent.h b/Source/WebKit/Shared/WebWheelEvent.h
+--- a/Source/WebKit/Shared/WebWheelEvent.h
++++ b/Source/WebKit/Shared/WebWheelEvent.h
+@@ -57,11 +57,14 @@
+     WebCore::IntPoint globalPosition;
+     WebCore::FloatSize delta;
+     WebCore::FloatSize wheelTicks;
++#if PLATFORM(WIN)
++    bool hostTouchGesture { false };
++#endif
+     WebWheelEventGranularity granularity { WebWheelEventGranularity::ScrollByPageWheelEvent };
+ #if PLATFORM(COCOA)
+     bool directionInvertedFromDevice { false };
+ #endif
+-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+     WebEventPhase phase { WebEventPhase::None };
+     WebEventPhase momentumPhase { WebEventPhase::None };
+     bool hasPreciseScrollingDeltas { false };
+@@ -110,7 +113,7 @@
+     bool directionInvertedFromDevice() const { return false; }
+     MomentumEndType momentumEndType() const { return MomentumEndType::Unknown; }
+ #endif
+-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+     Phase phase() const { return m_data.phase; }
+     Phase momentumPhase() const { return m_data.momentumPhase; }
+     bool hasPreciseScrollingDeltas() const { return m_data.hasPreciseScrollingDeltas; }
+@@ -129,6 +132,9 @@
+     void setMomentumFastScrollMultiplier(float multiplier) { m_data.momentumFastScrollMultiplier = multiplier; }
+ #endif // PLATFORM(COCOA)
+ 
++#if PLATFORM(WIN)
++    bool isHostTouchGesture() const { return m_data.hostTouchGesture; }
++#endif
+     bool isMomentumEvent() const { return momentumPhase() != Phase::None && momentumPhase() != Phase::WillBegin; }
+ 
+     const WebWheelEventData& wheelData() const LIFETIME_BOUND { return m_data; }
+diff --git a/Source/WebKit/Shared/WebEvent.serialization.in b/Source/WebKit/Shared/WebEvent.serialization.in
+--- a/Source/WebKit/Shared/WebEvent.serialization.in
++++ b/Source/WebKit/Shared/WebEvent.serialization.in
+@@ -273,11 +273,14 @@
+     WebCore::IntPoint globalPosition;
+     WebCore::FloatSize delta;
+     WebCore::FloatSize wheelTicks;
++#if PLATFORM(WIN)
++    bool hostTouchGesture;
++#endif
+     WebKit::WebWheelEventGranularity granularity;
+ #if PLATFORM(COCOA)
+     bool directionInvertedFromDevice;
+ #endif
+-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+     WebKit::WebEventPhase phase;
+     WebKit::WebEventPhase momentumPhase;
+     bool hasPreciseScrollingDeltas;
+diff --git a/Source/WebKit/Shared/WebEventConversion.cpp b/Source/WebKit/Shared/WebEventConversion.cpp
+--- a/Source/WebKit/Shared/WebEventConversion.cpp
++++ b/Source/WebKit/Shared/WebEventConversion.cpp
+@@ -307,7 +307,7 @@
+         m_menuTypeForEvent = webEvent.menuTypeForEvent();
+ #elif PLATFORM(GTK)
+         m_isTouchEvent = webEvent.isTouchEvent();
+-#elif PLATFORM(WPE)
++#elif PLATFORM(WPE) || PLATFORM(WIN)
+         m_syntheticClickType = static_cast<WebCore::SyntheticClickType>(webEvent.syntheticClickType());
+ #endif
+ 
+@@ -369,7 +369,7 @@
+         m_phase = platform(webEvent.phase());
+         m_momentumPhase = platform(webEvent.momentumPhase());
+ #endif
+-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+         m_hasPreciseScrollingDeltas = webEvent.hasPreciseScrollingDeltas();
+ #endif
+ #if PLATFORM(COCOA)
+diff --git a/Source/WebKit/Shared/NativeWebWheelEvent.h b/Source/WebKit/Shared/NativeWebWheelEvent.h
+--- a/Source/WebKit/Shared/NativeWebWheelEvent.h
++++ b/Source/WebKit/Shared/NativeWebWheelEvent.h
+@@ -78,6 +78,7 @@
+     static Ref<NativeWebWheelEvent> create(struct wpe_input_axis_event*, float deviceScaleFactor, WebWheelEvent::Phase, WebWheelEvent::Phase momentumPhase);
+ #elif PLATFORM(WIN)
+     static Ref<NativeWebWheelEvent> create(HWND, UINT message, WPARAM, LPARAM, float deviceScaleFactor);
++    static Ref<NativeWebWheelEvent> createHostTouch(WebWheelEventInit&&);
+ #endif
+ 
+ #if USE(APPKIT)
+diff --git a/Source/WebKit/Shared/win/NativeWebWheelEventWin.cpp b/Source/WebKit/Shared/win/NativeWebWheelEventWin.cpp
+--- a/Source/WebKit/Shared/win/NativeWebWheelEventWin.cpp
++++ b/Source/WebKit/Shared/win/NativeWebWheelEventWin.cpp
+@@ -40,6 +40,11 @@
+         createNativeEvent(hwnd, message, wParam, lParam)));
+ }
+ 
++Ref<NativeWebWheelEvent> NativeWebWheelEvent::createHostTouch(WebWheelEventInit&& init)
++{
++    return adoptRef(*new NativeWebWheelEvent(WTF::move(init), MSG { }));
++}
++
+ NativeWebWheelEvent::NativeWebWheelEvent(WebWheelEventInit&& init, const MSG& nativeEvent)
+     : WebWheelEvent(WTF::move(init.event), WTF::move(init.wheel))
+     , m_nativeEvent(nativeEvent)
+diff --git a/Source/WebKit/Shared/NativeWebTouchEvent.h b/Source/WebKit/Shared/NativeWebTouchEvent.h
+--- a/Source/WebKit/Shared/NativeWebTouchEvent.h
++++ b/Source/WebKit/Shared/NativeWebTouchEvent.h
+@@ -79,6 +79,10 @@
+ #endif
+ #elif PLATFORM(WIN)
+     static Ref<NativeWebTouchEvent> create();
++    static Ref<NativeWebTouchEvent> createHostTouch(WebTouchEventInit&&, uint64_t contact);
++    uint64_t hostContact() const { return m_hostContact; }
++    uint8_t hostTouchActions() const { return m_hostTouchActions; }
++    void setHostTouchActions(uint8_t actions) { m_hostTouchActions = actions; }
+ #endif
+ 
+ private:
+@@ -112,6 +116,8 @@
+ #elif PLATFORM(WIN)
+     // IOS_FAMILY declares this above, alongside the WKTouchEvent helpers.
+     explicit NativeWebTouchEvent(WebTouchEventInit&&);
++    uint64_t m_hostContact { 0 };
++    uint8_t m_hostTouchActions { 0 };
+ #endif
+ };
+ 
+diff --git a/Source/WebKit/Shared/win/NativeWebTouchEventWin.cpp b/Source/WebKit/Shared/win/NativeWebTouchEventWin.cpp
+--- a/Source/WebKit/Shared/win/NativeWebTouchEventWin.cpp
++++ b/Source/WebKit/Shared/win/NativeWebTouchEventWin.cpp
+@@ -41,6 +41,13 @@
+     return adoptRef(*new NativeWebTouchEvent(WebEventFactory::createWebTouchEvent()));
+ }
+ 
++Ref<NativeWebTouchEvent> NativeWebTouchEvent::createHostTouch(WebTouchEventInit&& init, uint64_t contact)
++{
++    auto event = adoptRef(*new NativeWebTouchEvent(WTF::move(init)));
++    event->m_hostContact = contact;
++    return event;
++}
++
+ NativeWebTouchEvent::NativeWebTouchEvent(WebTouchEventInit&& init)
+     : WebTouchEvent(WTF::move(init.event), WTF::move(init.touch))
+ {
+diff --git a/Source/WebKit/WebProcess/WebPage/EventDispatcher.messages.in b/Source/WebKit/WebProcess/WebPage/EventDispatcher.messages.in
+--- a/Source/WebKit/WebProcess/WebPage/EventDispatcher.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/EventDispatcher.messages.in
+@@ -29,6 +29,9 @@
+ #if ENABLE(IOS_TOUCH_EVENTS)
+     TouchEvent(WebCore::PageIdentifier pageID, WebCore::FrameIdentifier frameID, Ref<WebKit::WebTouchEvent> event) -> (bool handled, struct std::optional<WebKit::RemoteWebTouchEvent> transformedEvent) MainThreadCallback
+ #endif
++#if PLATFORM(WIN) && ENABLE(COORDINATED_TOUCH_EVENTS)
++    HostTouchEvent(WebCore::PageIdentifier pageID, WebCore::FrameIdentifier frameID, Ref<WebKit::WebTouchEvent> event) -> (enum:uint32_t WebKit::WebEventType eventType, bool handled, uint8_t touchActions) AnyThread
++#endif
+ #if ENABLE(COORDINATED_TOUCH_EVENTS)
+     TouchEvent(WebCore::PageIdentifier pageID, WebCore::FrameIdentifier frameID, Ref<WebKit::WebTouchEvent> event) -> (enum:uint32_t WebKit::WebEventType eventType, bool handled) AnyThread
+ #endif
+diff --git a/Source/WebKit/WebProcess/WebPage/EventDispatcher.h b/Source/WebKit/WebProcess/WebPage/EventDispatcher.h
+--- a/Source/WebKit/WebProcess/WebPage/EventDispatcher.h
++++ b/Source/WebKit/WebProcess/WebPage/EventDispatcher.h
+@@ -126,6 +126,9 @@
+ #if ENABLE(IOS_TOUCH_EVENTS)
+     void touchEvent(WebCore::PageIdentifier, WebCore::FrameIdentifier, Ref<WebTouchEvent>&&, CompletionHandler<void(bool, std::optional<RemoteWebTouchEvent>)>&&);
+ #elif ENABLE(COORDINATED_TOUCH_EVENTS)
++#if PLATFORM(WIN)
++    void hostTouchEvent(WebCore::PageIdentifier, WebCore::FrameIdentifier, Ref<WebTouchEvent>&&, CompletionHandler<void(WebEventType, bool, uint8_t)>&&);
++#endif
+     void dispatchTouchEventViaMainThread(WebCore::PageIdentifier, Ref<WebTouchEvent>&&, CompletionHandler<void(WebEventType, bool)>&&);
+     void touchEvent(WebCore::PageIdentifier, WebCore::FrameIdentifier, Ref<WebTouchEvent>&&, CompletionHandler<void(WebEventType, bool)>&&);
+ #endif
+diff --git a/Source/WebCore/page/scrolling/ThreadedScrollingTree.h b/Source/WebCore/page/scrolling/ThreadedScrollingTree.h
+--- a/Source/WebCore/page/scrolling/ThreadedScrollingTree.h
++++ b/Source/WebCore/page/scrolling/ThreadedScrollingTree.h
+@@ -74,6 +74,9 @@
+     void removePendingScrollAnimationForNode(ScrollingNodeID) WTF_REQUIRES_LOCK(m_treeLock) final;
+ 
+ #if ENABLE(COORDINATED_TOUCH_EVENTS)
++#if PLATFORM(WIN)
++    virtual uint8_t hostTouchActionsForEvent(const PlatformTouchEvent&) { return 0; }
++#endif
+     virtual TrackingType eventTrackingTypeForTouchEvent(const PlatformTouchEvent&) { return TrackingType::NotTracking; }
+ #endif
+ 
+diff --git a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
+@@ -68,6 +68,9 @@
+     OptionSet<EventListenerRegionType> eventListenerRegionTypesForPoint(FloatPoint) const final;
+ #endif
+ #if ENABLE(COORDINATED_TOUCH_EVENTS)
++#if PLATFORM(WIN)
++    uint8_t hostTouchActionsForEvent(const PlatformTouchEvent&) final;
++#endif
+     TrackingType eventTrackingTypeForTouchEvent(const PlatformTouchEvent&) final;
+ 
+     struct TouchEventTracking {
+diff --git a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
+@@ -365,6 +365,22 @@
+     return layersAtPoint.last();
+ }
+ 
++#if PLATFORM(WIN)
++uint8_t ScrollingTreeCoordinated::hostTouchActionsForEvent(const PlatformTouchEvent& event)
++{
++    auto offset = mainFrameScrollOffset();
++    if (!offset || event.touchPoints().isEmpty())
++        return 0;
++    auto location = FloatPoint { event.touchPoints()[0].pos() };
++    location.move(*offset);
++    auto hit = findLayerOfEventRegionAtPoint(*this, location);
++    if (!hit)
++        return 0;
++    Locker locker { hit->first->lock() };
++    return hit->first->eventRegion().touchActionsForPoint(roundedIntPoint(hit->second)).toRaw();
++}
++#endif
++
+ static TrackingType mergeTrackingTypes(TrackingType a, TrackingType b)
+ {
+     if (static_cast<uintptr_t>(b) > static_cast<uintptr_t>(a))
+diff --git a/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp b/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
+--- a/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
++++ b/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
+@@ -27,6 +27,7 @@
+ #include "EventDispatcher.h"
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+ #include "HostFrameClockWin.h"
++#include <WebCore/HostTouchActionWin.h>
+ #include <WebCore/ScrollingTreeCoordinated.h>
+ #endif
+ 
+@@ -125,6 +126,10 @@
+ void EventDispatcher::internalWheelEvent(PageIdentifier pageID, const WebWheelEvent& wheelEvent, RectEdges<WebCore::RubberBandingBehavior> rubberBandableEdges, CompletionHandler<void(bool)>&& completionHandler)
+ {
+     auto processingSteps = OptionSet<WebCore::WheelEventProcessingSteps> { WheelEventProcessingSteps::SynchronousScrolling, WheelEventProcessingSteps::BlockingDOMEventDispatch };
++#if PLATFORM(WIN)
++    if (wheelEvent.isHostTouchGesture())
++        processingSteps.remove(WheelEventProcessingSteps::BlockingDOMEventDispatch);
++#endif
+ 
+     ensureOnMainRunLoop([pageID] {
+         if (RefPtr webPage = WebProcess::singleton().webPage(pageID)) {
+@@ -148,7 +153,13 @@
+ 
+         Locker locker { m_scrollingTreesLock };
+         RefPtr scrollingTree = m_scrollingTrees.get(pageID);
+-        if (!scrollingTree) {
++        if (!scrollingTree
++#if PLATFORM(WIN) && ENABLE(TOUCH_EVENTS)
++            || !hostScrollingTreeHasRoot(*scrollingTree)
++#endif
++        ) {
++            // A software/noncomposited document has no async target. Keep
++            // native synchronous scrolling and the caller's DOM-dispatch policy.
+             dispatchWheelEventViaMainThread(pageID, wheelEvent, processingSteps, WTF::move(completionHandler));
+             break;
+         }
+@@ -158,7 +169,12 @@
+         // scrolling tree can be notified.
+         scrollingTree->setClientAllowedMainFrameRubberBandableEdges(rubberBandableEdges);
+ 
++#if PLATFORM(WIN)
++        auto processingSteps = wheelEvent.isHostTouchGesture() ? OptionSet { WheelEventProcessingSteps::AsyncScrolling }
++            : scrollingTree->determineWheelEventProcessing(platformWheelEvent);
++#else
+         auto processingSteps = scrollingTree->determineWheelEventProcessing(platformWheelEvent);
++#endif
+         bool useMainThreadForScrolling = processingSteps.contains(WheelEventProcessingSteps::SynchronousScrolling);
+ 
+ #if !PLATFORM(COCOA)
+@@ -180,6 +196,11 @@
+ 
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+             downcast<ScrollingTreeCoordinated>(*scrollingTree).noteHostInput(wheelEvent->hostInputSequence(), wheelEvent->hostInputSeconds(), hostFrameClockSeconds());
++#endif
++#if PLATFORM(WIN) && ENABLE(TOUCH_EVENTS)
++            if (wheelEvent->isHostTouchGesture() && (platformWheelEvent.isGestureStart() || platformWheelEvent.isGestureCancel())) {
++                stopHostTouchScrolling(*scrollingTree, platformWheelEvent);
++            }
+ #endif
+             auto result = scrollingTree->handleWheelEvent(platformWheelEvent, processingSteps);
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+@@ -311,6 +332,35 @@
+     }
+ }
+ #elif ENABLE(COORDINATED_TOUCH_EVENTS)
++#if PLATFORM(WIN)
++void EventDispatcher::hostTouchEvent(PageIdentifier pageID, FrameIdentifier frameID, Ref<WebTouchEvent>&& event, CompletionHandler<void(WebEventType, bool, uint8_t)>&& completionHandler)
++{
++    RefPtr<ThreadedScrollingTree> tree;
++    {
++        Locker locker { m_scrollingTreesLock };
++        tree = m_scrollingTrees.get(pageID);
++    }
++    auto actions = tree && hostScrollingTreeHasRoot(*tree) ? tree->hostTouchActionsForEvent(platform(event)) : 0;
++    if (!actions) {
++        // A missing committed hit-test region is not permission to pan. Query
++        // actual WebCore style before granting the gesture, without page script.
++        RunLoop::mainSingleton().dispatch([this, protectedThis = Ref { *this }, pageID, frameID, event = WTF::move(event), completionHandler = WTF::move(completionHandler)] mutable {
++            RefPtr page = WebProcess::singleton().webPage(pageID);
++            auto actions = page ? page->hostTouchActionsForEvent(event) : 0;
++            // Missing committed regions cannot authorize an asynchronous
++            // reply. Dispatch ordinary WebCore touch on main and await its
++            // actual cancellation result, including noncomposited documents.
++            dispatchTouchEventViaMainThread(pageID, WTF::move(event), [actions, completionHandler = WTF::move(completionHandler)](WebEventType type, bool handled) mutable {
++                completionHandler(type, handled, actions);
++            });
++        });
++        return;
++    }
++    touchEvent(pageID, frameID, WTF::move(event), [actions, completionHandler = WTF::move(completionHandler)](WebEventType type, bool handled) mutable {
++        completionHandler(type, handled, actions);
++    });
++}
++#endif
+ void EventDispatcher::dispatchTouchEventViaMainThread(WebCore::PageIdentifier pageID, Ref<WebTouchEvent>&& touchEvent, CompletionHandler<void(WebEventType, bool)>&& completionHandler)
+ {
+     RunLoop::mainSingleton().dispatch([protectedThis = Ref { *this }, pageID, touchEvent = WTF::move(touchEvent), completionHandler = WTF::move(completionHandler)] mutable {
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.h b/Source/WebKit/WebProcess/WebPage/WebPage.h
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -1682,6 +1682,9 @@
+     std::expected<bool, WebCore::RemoteFrameGeometryTransformer> dispatchTouchEvent(WebCore::FrameIdentifier, const WebTouchEvent&);
+ #elif ENABLE(COORDINATED_TOUCH_EVENTS)
+     bool dispatchTouchEvent(Ref<WebTouchEvent>&&);
++#if PLATFORM(WIN)
++    uint8_t hostTouchActionsForEvent(const WebTouchEvent&) const;
++#endif
+ #endif
+ 
+     bool shouldUseCustomContentProviderForResponse(const WebCore::ResourceResponse&);
+@@ -2558,6 +2561,7 @@
+     WeakPtr<WebCore::Document, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionDocument;
+     WeakPtr<WebCore::Element, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionElement;
+     void setHostScrollIndicatorEnabled(bool);
++    void setHostTouchEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
+ public:
+     HostFrameTiming hostFrameTiming() const { return m_hostInputTiming; }
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.cpp b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -267,6 +267,9 @@
+ #include <WebCore/HistoryController.h>
+ #include <WebCore/HistoryItem.h>
+ #include <WebCore/HitTestResult.h>
++#if PLATFORM(WIN)
++#include <WebCore/HostTouchActionWin.h>
++#endif
+ #include <WebCore/ImageAnalysisQueue.h>
+ #include <WebCore/ImageBuffer.h>
+ #include <WebCore/ImageBufferParameters.h>
+@@ -953,6 +956,7 @@
+     m_page = page.copyRef();
+ #if PLATFORM(WIN)
+     WebCore::setHostScrollIndicatorEnabled(page, parameters.hostScrollIndicatorEnabled);
++    setHostTouchEnabled(parameters.hostTouchEnabled);
+ #endif
+     m_mainFrameOpenerURL = parameters.mainFrameOpenerURL;
+ 
+@@ -4730,14 +4734,33 @@
+         return;
+ 
+     CurrentEvent currentEvent(touchEvent);
++#if PLATFORM(WIN)
++    noteHostInput(touchEvent);
++#endif
+ 
+     bool handled = handleTouchEvent(localMainFrame->frameID(), touchEvent, m_page.get()).value_or(false);
++#if PLATFORM(WIN)
++    if (touchEvent.type() == WebEventType::TouchCancel) {
++        for (auto& point : touchEvent.touchPoints())
++            m_page->pointerCaptureController().touchWithIdentifierWasRemoved(mousePointerID + 1 + point.id());
++    }
++#endif
+ 
+     completionHandler(touchEvent.type(), handled);
+ }
+ #endif
+ 
+ #if ENABLE(COORDINATED_TOUCH_EVENTS)
++#if PLATFORM(WIN)
++uint8_t WebPage::hostTouchActionsForEvent(const WebTouchEvent& event) const
++{
++    RefPtr frame = localMainFrame();
++    if (!frame || !frame->view() || event.touchPoints().isEmpty())
++        return 0;
++    return WebCore::hostTouchActionsAtPoint(*frame, roundedIntPoint(event.touchPoints()[0].position()));
++}
++#endif
++
+ bool WebPage::dispatchTouchEvent(Ref<WebTouchEvent>&& event)
+ {
+     bool result = false;
+@@ -5429,6 +5452,19 @@
+     m_hostInputTiming.inputDispatchSeconds = hostFrameClockSeconds();
+ }
+ 
++void WebPage::setHostTouchEnabled(bool enabled)
++{
++#if ENABLE(TOUCH_EVENTS)
++    setShouldDispatchFakeMouseMoveEvents(!enabled);
++    if (RefPtr page = corePage()) {
++        // Coordinated touch must observe non-passive listeners before granting
++        // a default gesture, including dynamically installed window listeners.
++        page->settings().setAlwaysUseTouchEventRegions(true);
++        page->settings().setTouchEventDOMAttributesEnabled(enabled);
++    }
++#endif
++}
++
+ void WebPage::setHostScrollIndicatorEnabled(bool enabled)
+ {
+     WebCore::setHostScrollIndicatorEnabled(*m_page, enabled);
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.cpp b/Source/WebKit/UIProcess/WebPageProxy.cpp
+--- a/Source/WebKit/UIProcess/WebPageProxy.cpp
++++ b/Source/WebKit/UIProcess/WebPageProxy.cpp
+@@ -5816,12 +5816,19 @@
+ 
+     auto& queuedEvent = internals().touchEventQueue.first();
+     protect(legacyMainFrameProcess())->startResponsivenessTimer();
++#if PLATFORM(WIN)
++    sendWithAsyncReplyToProcessContainingFrame(frameID, Messages::EventDispatcher::HostTouchEvent(webPageIDInProcess(processContainingFrame(frameID)), frameID, queuedEvent.forwardedEvent.copyRef()), [this, protectedThis = Ref { *this }] (IPC::Connection* connection, WebKit::WebEventType eventType, bool handled, uint8_t touchActions) mutable {
++#else
+     sendWithAsyncReplyToProcessContainingFrame(frameID, Messages::EventDispatcher::TouchEvent(webPageIDInProcess(processContainingFrame(frameID)), frameID, queuedEvent.forwardedEvent.copyRef()), [this, protectedThis = Ref { *this }] (IPC::Connection* connection, WebKit::WebEventType eventType, bool handled) mutable {
++#endif
+         RefPtr pageClient = this->pageClient();
+         if (!pageClient)
+             return;
+ 
+         auto doneWithTouchEvents = [&](const QueuedTouchEvents& queuedEvents, bool handled) {
++#if PLATFORM(WIN)
++            SetForScope processingReply(internals().processingHostTouchReply, true);
++#endif
+             // Unlike the ENABLE(TOUCH_EVENTS) implementation, which defers the events received after the
+             // forwarded one, handleTouchEvent() replaces the forwarded touch move with the newer one and
+             // defers the replaced ones. So the deferred events are older and must be reported first.
+@@ -5843,6 +5850,11 @@
+         MESSAGE_CHECK_BASE(eventType == queuedEvents.forwardedEvent->type(), connection);
+         protect(legacyMainFrameProcess())->stopResponsivenessTimer();
+ 
++#if PLATFORM(WIN)
++        queuedEvents.forwardedEvent->setHostTouchActions(touchActions);
++        for (auto& event : queuedEvents.deferredTouchEvents)
++            event->setHostTouchActions(touchActions);
++#endif
+         doneWithTouchEvents(queuedEvents, handled);
+ 
+         if (!internals().touchEventQueue.isEmpty())
+@@ -5878,7 +5890,11 @@
+ 
+     internals().touchEventQueue.append(WTF::move(event));
+ 
+-    if (internals().touchEventQueue.size() == 1)
++    if (internals().touchEventQueue.size() == 1
++#if PLATFORM(WIN)
++        && !internals().processingHostTouchReply
++#endif
++    )
+         processNextQueuedTouchEvent();
+ }
+ #elif ENABLE(TOUCH_EVENTS)
+@@ -8411,6 +8427,17 @@
+ }
+ 
+ #if PLATFORM(WIN)
++void WebPageProxy::setHostTouchEnabled(bool enabled)
++{
++    m_hostTouchEnabled = enabled;
++#if ENABLE(COORDINATED_TOUCH_EVENTS)
++    // Keep the preference store consistent: later appearance/preferences IPC
++    // must not disable the event regions enabled in the WebProcess.
++    protect(m_preferences)->setAlwaysUseTouchEventRegions(true);
++#endif
++    if (hasRunningProcess()) send(Messages::WebPage::SetHostTouchEnabled(enabled));
++}
++
+ void WebPageProxy::setHostScrollIndicatorEnabled(bool enabled)
+ {
+     m_hostScrollIndicatorEnabled = enabled;
+@@ -15834,6 +15861,7 @@
+     parameters.isEditable = m_isEditable;
+ #if PLATFORM(WIN)
+     parameters.hostScrollIndicatorEnabled = m_hostScrollIndicatorEnabled;
++    parameters.hostTouchEnabled = m_hostTouchEnabled;
+ #endif
+     parameters.underlayColor = internals().underlayColor;
+     parameters.useFixedLayout = m_useFixedLayout;
+diff --git a/Source/WebKit/UIProcess/win/WebView.h b/Source/WebKit/UIProcess/win/WebView.h
+--- a/Source/WebKit/UIProcess/win/WebView.h
++++ b/Source/WebKit/UIProcess/win/WebView.h
+@@ -29,6 +29,8 @@
+ #include "APIObject.h"
+ #include "PageClientImpl.h"
+ #include "WKView.h"
++#include "NativeWebTouchEvent.h"
++#include "NativeWebWheelEvent.h"
+ #include "WebPageProxy.h"
+ #include <WebCore/COMPtr.h>
+ #include <WebCore/WindowMessageListener.h>
+@@ -83,6 +85,12 @@
+     DrawingAreaProxy* drawingArea() { return page() ? page()->drawingArea() : nullptr; }
+ 
+     void close();
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    void setHostTouchEnabled(bool);
++    void cancelHostTouch();
++    void doneWithHostTouchEvent(const NativeWebTouchEvent&, bool);
++    String hostTouchDiagnostics() const;
++#endif
+ 
+ private:
+     WebView(RECT, const API::PageConfiguration&, HWND parentWindow, bool hostFrameSurface);
+@@ -140,6 +148,24 @@
+     // WebCore::WindowMessageListener
+     virtual void windowReceivedMessage(HWND, UINT message, WPARAM, LPARAM);
+ 
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    bool onHostTouchMouseEvent(HWND, UINT, WPARAM, LPARAM);
++    void sendHostTouch(WebEventType, const WebEventData&, WebCore::DoublePoint, WebCore::DoublePoint);
++    void sendHostPan(const WebEventData&, WebCore::DoublePoint, WebCore::DoublePoint, WebCore::FloatSize, WebEventPhase);
++    struct HostTouchContact {
++        uint64_t identifier { 0 };
++        bool down { true }, moved { false }, panning { false }, prevented { false };
++        uint8_t actions { 0 };
++        WebCore::DoublePoint start, current, previous, global, globalStart;
++        WebEventData input, startInput;
++    };
++    std::optional<HostTouchContact> m_hostTouchContact, m_hostLastPan;
++    bool m_hostTouchEnabled { false };
++    int m_hostTouchDirection { 0 };
++    MonotonicTime m_hostTouchNotificationTime;
++    double m_hostPanBeginInputSeconds { 0 }, m_hostPanEndInputSeconds { 0 };
++    uint64_t m_hostContactGeneration { 0 }, m_hostTouchContacts { 0 }, m_hostTouchPans { 0 }, m_hostTouchPrevented { 0 }, m_hostTouchClicks { 0 };
++#endif
+     HWND m_window { nullptr };
+     uint64_t m_hostInputSequence { 0 };
+     HWND m_topLevelParentWindow { nullptr };
+diff --git a/Source/WebKit/UIProcess/win/WebView.cpp b/Source/WebKit/UIProcess/win/WebView.cpp
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -197,6 +197,17 @@
+     case WM_MENUCOMMAND:
+         lResult = onMenuCommand(hWnd, message, wParam, lParam, handled);
+         break;
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    case WM_CANCELMODE:
++        cancelHostTouch();
++        handled = false;
++        break;
++    case WM_CAPTURECHANGED:
++        if (m_hostTouchContact && m_hostTouchContact->down)
++            cancelHostTouch();
++        handled = false;
++        break;
++#endif
+     case WM_COMMAND:
+         SendMessage(GetParent(hWnd), message, wParam, lParam);
+         break;
+@@ -353,6 +364,12 @@
+ 
+ LRESULT WebView::onMouseEvent(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
+ {
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    if (m_hostTouchEnabled && onHostTouchMouseEvent(hWnd, message, wParam, lParam)) {
++        handled = true;
++        return 0;
++    }
++#endif
+     Ref mouseEvent = NativeWebMouseEvent::create(hWnd, message, wParam, lParam, m_wasActivatedByMouseEvent, m_page->intrinsicDeviceScaleFactor());
+     mouseEvent->setHostInputSequence(++m_hostInputSequence);
+     setWasActivatedByMouseEvent(false);
+@@ -650,6 +667,9 @@
+ 
+ LRESULT WebView::onKillFocusEvent(HWND, UINT, WPARAM, LPARAM lParam, bool& handled)
+ {
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    cancelHostTouch();
++#endif
+     m_page->activityStateDidChange(ActivityState::IsFocused);
+     handled = true;
+     return 0;
+@@ -847,6 +867,9 @@
+ 
+ void WebView::closeInternal()
+ {
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    cancelHostTouch();
++#endif
+     m_window = 0;
+     setParentWindow(0);
+     m_page->close();
+diff --git a/Source/WebKit/UIProcess/win/PageClientImpl.cpp b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+--- a/Source/WebKit/UIProcess/win/PageClientImpl.cpp
++++ b/Source/WebKit/UIProcess/win/PageClientImpl.cpp
+@@ -112,7 +112,9 @@
+ 
+ void PageClientImpl::PageClientImpl::processDidExit()
+ {
+-    notImplemented();
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    m_view.cancelHostTouch();
++#endif
+ }
+ 
+ void PageClientImpl::didRelaunchProcess()
+@@ -301,9 +303,11 @@
+     notImplemented();
+ }
+ 
+-void PageClientImpl::didCommitLoadForMainFrame(const String& /* mimeType */, bool /* useCustomContentProvider */ )
+-{
+-    notImplemented();
++void PageClientImpl::didCommitLoadForMainFrame(const String&, bool)
++{
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    m_view.cancelHostTouch();
++#endif
+ }
+ 
+ #if ENABLE(FULLSCREEN_API)
+@@ -355,7 +359,9 @@
+ #if ENABLE(TOUCH_EVENTS)
+ void PageClientImpl::doneWithTouchEvent(const WebTouchEvent& event, bool wasEventHandled)
+ {
+-    notImplemented();
++#if ENABLE(ASYNC_SCROLLING)
++    m_view.doneWithHostTouchEvent(static_cast<const NativeWebTouchEvent&>(event), wasEventHandled);
++#endif
+ }
+ #endif // ENABLE(TOUCH_EVENTS)
+ 
+diff --git a/Source/WebKit/PlatformWin.cmake b/Source/WebKit/PlatformWin.cmake
+--- a/Source/WebKit/PlatformWin.cmake
++++ b/Source/WebKit/PlatformWin.cmake
+@@ -63,6 +63,7 @@
+     UIProcess/win/WebProcessPoolWin.cpp
+     UIProcess/win/HostTextInputWin.cpp
+     UIProcess/win/WebView.cpp
++    UIProcess/win/WebViewHostTouch.cpp
+ 
+     WebProcess/GPU/media/win/VideoLayerRemoteWin.cpp
+ 
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -196,6 +196,11 @@
+ WK_EXPORT unsigned WKViewGetHostScrollFrameAPIVersion(void);
+ WK_EXPORT unsigned WKViewCopyHostScrollFrames(WKViewRef, WKHostScrollFrame* output, unsigned capacity);
+ 
++// Host single-contact API v1. Coordinates follow the existing native view map.
++WK_EXPORT unsigned WKViewGetHostTouchAPIVersion(void);
++WK_EXPORT bool WKViewSetHostTouchEnabled(WKViewRef, bool enabled);
++WK_EXPORT WKStringRef WKViewCopyHostTouchDiagnostics(WKViewRef);
++
+ // Read-only UI-thread counters; no paint, capture or IPC is requested.
+ WK_EXPORT bool WKViewGetHostRenderingStatistics(WKViewRef view, unsigned long long* updates,
+     unsigned long long* acceleratedTransitions, unsigned long long* staleUpdates);
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -530,6 +530,35 @@
+     return updated;
+ }
+ 
++unsigned WKViewGetHostTouchAPIVersion(void)
++{
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    return 1;
++#else
++    return 0;
++#endif
++}
++
++bool WKViewSetHostTouchEnabled(WKViewRef view, bool enabled)
++{
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    if (!view) return false;
++    toImpl(view)->setHostTouchEnabled(enabled);
++    return true;
++#else
++    return false;
++#endif
++}
++
++WKStringRef WKViewCopyHostTouchDiagnostics(WKViewRef view)
++{
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++    return view ? toAPILeakingRef(API::String::create(toImpl(view)->hostTouchDiagnostics())) : nullptr;
++#else
++    return nullptr;
++#endif
++}
++
+ unsigned WKViewGetHostAccessibilityAPIVersion(void) { return 2; }
+ 
+ void WKViewRequestHostAccessibilityTree(WKViewRef viewRef, unsigned long long requestID, const void* context, WKHostAccessibilityTreeCallback callback)
+diff --git a/Source/WebKit/Shared/NativeWebMouseEvent.h b/Source/WebKit/Shared/NativeWebMouseEvent.h
+--- a/Source/WebKit/Shared/NativeWebMouseEvent.h
++++ b/Source/WebKit/Shared/NativeWebMouseEvent.h
+@@ -90,6 +90,7 @@
+     static Ref<NativeWebMouseEvent> create(struct wpe_input_pointer_event*, float deviceScaleFactor, WebMouseEventSyntheticClickType = WebMouseEventSyntheticClickType::NoTap);
+ #elif PLATFORM(WIN)
+     static Ref<NativeWebMouseEvent> create(HWND, UINT message, WPARAM, LPARAM, bool, float deviceScaleFactor);
++    static Ref<NativeWebMouseEvent> createHostTouch(WebMouseEventInit&&);
+ #endif
+ 
+ #if USE(APPKIT)
+diff --git a/Source/WebKit/Shared/win/NativeWebMouseEventWin.cpp b/Source/WebKit/Shared/win/NativeWebMouseEventWin.cpp
+--- a/Source/WebKit/Shared/win/NativeWebMouseEventWin.cpp
++++ b/Source/WebKit/Shared/win/NativeWebMouseEventWin.cpp
+@@ -40,6 +40,11 @@
+         createNativeEvent(hwnd, message, wParam, lParam)));
+ }
+ 
++Ref<NativeWebMouseEvent> NativeWebMouseEvent::createHostTouch(WebMouseEventInit&& init)
++{
++    return adoptRef(*new NativeWebMouseEvent(WTF::move(init), MSG { }));
++}
++
+ NativeWebMouseEvent::NativeWebMouseEvent(WebMouseEventInit&& init, const MSG& nativeEvent)
+     : WebMouseEvent(WTF::move(init.event), WTF::move(init.mouse))
+     , m_nativeEvent(nativeEvent)
+diff --git a/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp b/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp
+new file mode 100644
+--- /dev/null
++++ b/Source/WebKit/UIProcess/win/WebViewHostTouch.cpp
+@@ -0,0 +1,247 @@
++#include "config.h"
++#include "WebView.h"
++
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++
++#include "NativeWebMouseEvent.h"
++#include "WebEventFactory.h"
++#include <WebCore/TouchAction.h>
++#include <cmath>
++#include <wtf/text/MakeString.h>
++
++namespace WebKit {
++using namespace WebCore;
++
++void WebView::setHostTouchEnabled(bool enabled)
++{
++    if (m_hostTouchEnabled == enabled)
++        return;
++    cancelHostTouch();
++    m_hostTouchEnabled = enabled;
++    m_page->setHostTouchEnabled(enabled);
++}
++
++void WebView::sendHostTouch(WebEventType type, const WebEventData& input, DoublePoint point, DoublePoint global)
++{
++    if (!m_hostTouchContact || m_page->isClosed() || !m_page->hasRunningProcess())
++        return;
++    auto state = WebPlatformTouchPoint::State::Moved;
++    switch (type) {
++    case WebEventType::TouchStart: state = WebPlatformTouchPoint::State::Pressed; break;
++    case WebEventType::TouchEnd: state = WebPlatformTouchPoint::State::Released; break;
++    case WebEventType::TouchCancel: state = WebPlatformTouchPoint::State::Cancelled; break;
++    default: break;
++    }
++    WebTouchEventInit init;
++    init.event = input;
++    init.event.type = type;
++    auto identifier = m_hostTouchContact->identifier;
++    init.touch.touchPoints.append(WebPlatformTouchPoint(static_cast<uint32_t>(identifier), state, global, point, DoubleSize(8, 8), 0, type == WebEventType::TouchEnd || type == WebEventType::TouchCancel ? 0 : 0.5));
++    m_page->handleTouchEvent(nullptr, NativeWebTouchEvent::createHostTouch(WTF::move(init), identifier));
++}
++
++void WebView::sendHostPan(const WebEventData& input, DoublePoint point, DoublePoint global, FloatSize delta, WebEventPhase phase)
++{
++    if (m_page->isClosed() || !m_page->hasRunningProcess())
++        return;
++    if (phase == WebEventPhase::Began)
++        m_hostPanBeginInputSeconds = input.hostInputSeconds;
++    if (phase == WebEventPhase::Ended)
++        m_hostPanEndInputSeconds = input.hostInputSeconds;
++    WebWheelEventInit init;
++    init.event = input;
++    init.event.type = WebEventType::Wheel;
++    init.wheel.position = roundedIntPoint(point);
++    init.wheel.globalPosition = roundedIntPoint(global);
++    init.wheel.delta = delta;
++    init.wheel.granularity = WebWheelEventGranularity::ScrollByPixelWheelEvent;
++    init.wheel.phase = phase;
++    init.wheel.hasPreciseScrollingDeltas = true;
++    init.wheel.hostTouchGesture = true;
++    if (phase == WebEventPhase::Changed && delta.height()) {
++        int direction = delta.height() < 0 ? 1 : -1;
++        auto now = MonotonicTime::now();
++        if (direction != m_hostTouchDirection || now - m_hostTouchNotificationTime >= 100_ms) {
++            m_hostTouchDirection = direction;
++            m_hostTouchNotificationTime = now;
++            PostMessageW(m_window, WM_APP + 63, static_cast<WPARAM>(direction), static_cast<LPARAM>(m_hostContactGeneration));
++        }
++    }
++    m_page->handleNativeWheelEvent(NativeWebWheelEvent::createHostTouch(WTF::move(init)));
++}
++
++void WebView::cancelHostTouch()
++{
++    if (m_hostTouchContact && !m_hostTouchContact->panning) {
++        auto contact = *m_hostTouchContact;
++        sendHostTouch(WebEventType::TouchCancel, contact.input, contact.current, contact.global);
++    }
++    if (m_hostLastPan) {
++        auto pan = *m_hostLastPan;
++        pan.input.timestamp = MonotonicTime::now();
++        pan.input.hostInputSeconds = hostFrameClockSeconds();
++        pan.input.hostInputSequence = ++m_hostInputSequence;
++        sendHostPan(pan.input, pan.start, pan.globalStart, { }, WebEventPhase::Cancelled);
++        m_hostLastPan.reset();
++    }
++    m_hostTouchContact.reset();
++    ++m_hostContactGeneration;
++    m_hostTouchDirection = 0;
++    if (m_window && GetCapture() == m_window)
++        ReleaseCapture();
++}
++
++bool WebView::onHostTouchMouseEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
++{
++    if (message == WM_MOUSELEAVE)
++        return true;
++    if (message != WM_LBUTTONDOWN && message != WM_LBUTTONDBLCLK && message != WM_LBUTTONUP && message != WM_MOUSEMOVE)
++        return true;
++    if (message == WM_MOUSEMOVE) {
++        if (!m_hostTouchContact || !m_hostTouchContact->down)
++            return true;
++        // Capture changes can leave a contact without its button-up message.
++        // A buttonless move ends it before any coordinate or scroll update.
++        if (!(wParam & MK_LBUTTON)) {
++            cancelHostTouch();
++            return true;
++        }
++    }
++    auto mouse = WebEventFactory::createWebMouseEvent(window, message, wParam, lParam, false, m_page->intrinsicDeviceScaleFactor());
++    // Windows also posts WM_MOUSEMOVE when the window changes under a stationary
++    // cursor. A single emulated contact has no changing pressure/tilt payload;
++    // identical coordinates must not wake page touch handlers or overwrite the
++    // last real movement timestamp.
++    if (message == WM_MOUSEMOVE && m_hostTouchContact && m_hostTouchContact->current == mouse.mouse.position)
++        return true;
++    mouse.event.hostInputSequence = ++m_hostInputSequence;
++    mouse.event.hostInputSeconds = hostFrameClockSeconds();
++    if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) {
++        cancelHostTouch();
++        m_hostTouchContact.emplace();
++        auto& contact = *m_hostTouchContact;
++        contact.identifier = ++m_hostContactGeneration;
++        contact.start = contact.current = contact.previous = mouse.mouse.position;
++        contact.global = contact.globalStart = mouse.mouse.globalPosition;
++        contact.input = contact.startInput = mouse.event;
++        ++m_hostTouchContacts;
++        SetFocus(window);
++        SetCapture(window);
++        sendHostTouch(WebEventType::TouchStart, mouse.event, mouse.mouse.position, mouse.mouse.globalPosition);
++        return true;
++    }
++    if (!m_hostTouchContact)
++        return true;
++    auto& contact = *m_hostTouchContact;
++    contact.input = mouse.event;
++    contact.current = mouse.mouse.position;
++    contact.global = mouse.mouse.globalPosition;
++    contact.moved |= std::hypot(contact.current.x() - contact.start.x(), contact.current.y() - contact.start.y()) >= 6;
++    if (message == WM_LBUTTONUP)
++        contact.down = false;
++    if (contact.panning) {
++        auto actions = OptionSet<TouchAction>::fromRaw(contact.actions);
++        bool unrestricted = actions.containsAny({ TouchAction::Auto, TouchAction::Manipulation });
++        FloatSize delta(unrestricted || actions.contains(TouchAction::PanX) ? contact.current.x() - contact.previous.x() : 0,
++            unrestricted || actions.contains(TouchAction::PanY) ? contact.current.y() - contact.previous.y() : 0);
++        contact.previous = contact.current;
++        if (!delta.isZero())
++            sendHostPan(mouse.event, contact.start, contact.globalStart, delta, WebEventPhase::Changed);
++        if (!contact.down) {
++            sendHostPan(mouse.event, contact.start, contact.globalStart, { }, WebEventPhase::Ended);
++            m_hostTouchContact.reset();
++        }
++    } else
++        sendHostTouch(contact.down ? WebEventType::TouchMove : WebEventType::TouchEnd, mouse.event, contact.current, contact.global);
++    if (message == WM_LBUTTONUP && GetCapture() == window)
++        ReleaseCapture();
++    return true;
++}
++
++void WebView::doneWithHostTouchEvent(const NativeWebTouchEvent& event, bool handled)
++{
++    if (!m_hostTouchEnabled || !m_hostTouchContact || event.hostContact() != m_hostTouchContact->identifier)
++        return;
++    auto& contact = *m_hostTouchContact;
++    if (contact.panning || event.type() == WebEventType::TouchCancel)
++        return;
++    if (event.type() == WebEventType::TouchStart)
++        contact.actions = event.hostTouchActions();
++    if (handled && !contact.prevented)
++        ++m_hostTouchPrevented;
++    contact.prevented |= handled;
++    if (event.type() == WebEventType::TouchMove && contact.moved && !contact.prevented) {
++        auto actions = OptionSet<TouchAction>::fromRaw(contact.actions);
++        bool unrestricted = actions.containsAny({ TouchAction::Auto, TouchAction::Manipulation });
++        FloatSize delta(unrestricted || actions.contains(TouchAction::PanX) ? contact.current.x() - contact.start.x() : 0,
++            unrestricted || actions.contains(TouchAction::PanY) ? contact.current.y() - contact.start.y() : 0);
++        if (actions.contains(TouchAction::None) || delta.isZero())
++            return;
++        contact.panning = true;
++        m_hostLastPan = contact;
++        ++m_hostTouchPans;
++        sendHostTouch(WebEventType::TouchCancel, contact.input, contact.current, contact.global);
++        // Preserve the actual contact baseline. Using the newest move here
++        // collapses the first accumulated delta's time span and inflates inertia.
++        sendHostPan(contact.startInput, contact.start, contact.globalStart, { }, WebEventPhase::Began);
++        sendHostPan(contact.input, contact.start, contact.globalStart, delta, WebEventPhase::Changed);
++        contact.previous = contact.current;
++        if (!contact.down) {
++            sendHostPan(contact.input, contact.start, contact.globalStart, { }, WebEventPhase::Ended);
++            m_hostTouchContact.reset();
++        }
++        return;
++    }
++    if (event.type() != WebEventType::TouchEnd)
++        return;
++    auto completed = contact;
++    m_hostTouchContact.reset();
++    if (m_page->isClosed() || !m_page->hasRunningProcess())
++        return;
++    auto pointerID = mousePointerID + 1 + static_cast<uint32_t>(completed.identifier);
++    if (completed.moved || completed.prevented) {
++        m_page->touchWithIdentifierWasRemoved(pointerID);
++        return;
++    }
++    // Touch dispatch generated pointer/touch events already. This is the native
++    // compatibility mouse activation used by desktop WebKit's touch ports.
++    for (auto type : { WebEventType::MouseMove, WebEventType::MouseDown, WebEventType::MouseUp }) {
++        WebMouseEventInit click;
++        click.event = completed.input;
++        click.event.type = type;
++        click.mouse.position = completed.current;
++        click.mouse.globalPosition = completed.global;
++        click.mouse.button = type == WebEventType::MouseMove ? WebMouseEventButton::None : WebMouseEventButton::Left;
++        click.mouse.buttons = type == WebEventType::MouseDown ? 1 : 0;
++        click.mouse.clickCount = 1;
++        click.mouse.canInitiateDrag = PlatformMouseEvent::CanInitiateDrag::No;
++        click.mouse.syntheticClickType = WebMouseEventSyntheticClickType::OneFingerTap;
++        click.mouse.pointerType = touchPointerEventType();
++        click.mouse.pointerId = mousePointerID + 1 + static_cast<uint32_t>(completed.identifier);
++        m_page->handleMouseEvent(NativeWebMouseEvent::createHostTouch(WTF::move(click)));
++    }
++    ++m_hostTouchClicks;
++    // Mouse packets are queued; keep suppression/capture state until their
++    // native acknowledgements, then release the completed pointer.
++    Ref page = *m_page;
++    page->doAfterProcessingAllPendingMouseEvents([page, pointerID] {
++        if (!page->isClosed() && page->hasRunningProcess())
++            page->touchWithIdentifierWasRemoved(pointerID);
++    });
++}
++
++String WebView::hostTouchDiagnostics() const
++{
++    return makeString("{\"enabled\":"_s, m_hostTouchEnabled ? "true"_s : "false"_s,
++        ",\"generation\":"_s, m_hostContactGeneration,
++        ",\"active\":"_s, m_hostTouchContact ? "true"_s : "false"_s,
++        ",\"panning\":"_s, m_hostTouchContact && m_hostTouchContact->panning ? "true"_s : "false"_s,
++        ",\"touchActions\":"_s, m_hostTouchContact ? m_hostTouchContact->actions : 0,
++        ",\"contacts\":"_s, m_hostTouchContacts, ",\"pans\":"_s, m_hostTouchPans,
++        ",\"lastPanBeginInputSeconds\":"_s, String::number(m_hostPanBeginInputSeconds),
++        ",\"lastPanEndInputSeconds\":"_s, String::number(m_hostPanEndInputSeconds),
++        ",\"prevented\":"_s, m_hostTouchPrevented, ",\"compatibilityClicks\":"_s, m_hostTouchClicks, '}');
++}
++
++} // namespace WebKit
++#endif
+diff --git a/Source/WebCore/dom/PointerEvent.h b/Source/WebCore/dom/PointerEvent.h
+--- a/Source/WebCore/dom/PointerEvent.h
++++ b/Source/WebCore/dom/PointerEvent.h
+@@ -41,7 +41,7 @@
+ #pragma clang diagnostic pop
+ #endif
+ 
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+ #include "PlatformTouchEvent.h"
+ #endif
+ 
+@@ -99,13 +99,13 @@
+     static Ref<PointerEvent> create(const AtomString& type, MouseButton, const MouseEvent&, PointerID, const String& pointerType, CanBubble, IsCancelable);
+     static Ref<PointerEvent> LEGACY_NODELETE create(const AtomString& type, PointerID, const String& pointerType, IsPrimary = IsPrimary::No);
+ 
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+     static Ref<PointerEvent> create(const PlatformTouchEvent&, const Vector<Ref<PointerEvent>>& coalescedEvents, const Vector<Ref<PointerEvent>>& predictedEvents, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&, const DoublePoint& touchDelta = { });
+     static Ref<PointerEvent> create(const PlatformTouchEvent&, const Vector<Ref<PointerEvent>>& coalescedEvents, const Vector<Ref<PointerEvent>>& predictedEvents, CanBubble, IsCancelable, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&& view, const DoublePoint& touchDelta = { });
+     static Ref<PointerEvent> create(const AtomString& type, const PlatformTouchEvent&, const Vector<Ref<PointerEvent>>& coalescedEvents, const Vector<Ref<PointerEvent>>& predictedEvents, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&, const DoublePoint& touchDelta = { });
+ #endif
+ 
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+     static unsigned pointerIdForTouchPoint(const PlatformTouchPoint&);
+ #endif
+ 
+@@ -194,7 +194,7 @@
+     PointerEvent();
+     PointerEvent(const AtomString&, Init&&, IsTrusted);
+     PointerEvent(const AtomString& type, PointerID, const String& pointerType, IsPrimary);
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+     PointerEvent(const AtomString& type, const PlatformTouchEvent&, const Vector<Ref<PointerEvent>>& coalescedEvents, const Vector<Ref<PointerEvent>>& predictedEvents, CanBubble canBubble, IsCancelable isCancelable, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&, const DoublePoint& touchDelta = { });
+ #endif
+ 
+diff --git a/Source/WebCore/page/PointerCaptureController.h b/Source/WebCore/page/PointerCaptureController.h
+--- a/Source/WebCore/page/PointerCaptureController.h
++++ b/Source/WebCore/page/PointerCaptureController.h
+@@ -64,7 +64,7 @@
+ 
+     RefPtr<PointerEvent> pointerEventForMouseEvent(const MouseEvent&, PointerID, const String& pointerType);
+ 
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+     void dispatchEventForTouchAtIndex(EventTarget&, const PlatformTouchEvent&, unsigned, bool isPrimary, WindowProxy&, const DoublePoint&);
+ #endif
+ 
+diff --git a/Source/WebCore/page/PointerCaptureController.cpp b/Source/WebCore/page/PointerCaptureController.cpp
+--- a/Source/WebCore/page/PointerCaptureController.cpp
++++ b/Source/WebCore/page/PointerCaptureController.cpp
+@@ -24,6 +24,7 @@
+ 
+ #include "config.h"
+ #include "PointerCaptureController.h"
++#include "DocumentView.h"
+ 
+ #include "Chrome.h"
+ #include "ChromeClient.h"
+@@ -267,7 +268,7 @@
+     }
+ }
+ 
+-#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK))
++#if ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+ void PointerCaptureController::dispatchOverOrOutEvent(const AtomString& type, EventTarget* target, const PlatformTouchEvent& event, unsigned index, bool isPrimary, WindowProxy& view, DoublePoint touchDelta)
+ {
+     dispatchEvent(PointerEvent::create(type, event, { }, { }, index, isPrimary, view, touchDelta), target);
+@@ -351,6 +352,15 @@
+     }
+ #endif
+ 
++#if PLATFORM(WIN)
++    if (pointerEvent->type() == eventNames().pointercancelEvent) {
++        auto point = roundedIntPoint(platformTouchEvent.touchPoints().at(index).pos());
++        if (RefPtr frame = page->localMainFrame(); frame && frame->view())
++            point = frame->view()->rootViewToContents(point);
++        cancelPointer(pointerEvent->pointerId(), point, pointerEvent.ptr());
++        return;
++    }
++#endif
+     dispatchEvent(pointerEvent, &target);
+ 
+     if (pointerEvent->type() != eventNames().pointerupEvent)
+@@ -393,7 +403,7 @@
+     capturingData->state = CapturingData::State::Finished;
+     capturingData->previousTarget = nullptr;
+ }
+-#endif // ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK))
++#endif // ENABLE(TOUCH_EVENTS) && (PLATFORM(IOS_FAMILY) || PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN))
+ 
+ #if PLATFORM(MAC)
+ 
+diff --git a/Source/WebCore/page/EventHandler.cpp b/Source/WebCore/page/EventHandler.cpp
+--- a/Source/WebCore/page/EventHandler.cpp
++++ b/Source/WebCore/page/EventHandler.cpp
+@@ -3680,7 +3680,10 @@
+ 
+ #if ENABLE(POINTER_LOCK)
+     if (frame->page()->pointerLockController().isLocked()) {
+-        protect(frame->page()->pointerLockController())->dispatchLockedWheelEvent(event);
++#if PLATFORM(WIN)
++        if (processingSteps.containsAny({ WheelEventProcessingSteps::BlockingDOMEventDispatch, WheelEventProcessingSteps::NonBlockingDOMEventDispatch }))
++#endif
++            protect(frame->page()->pointerLockController())->dispatchLockedWheelEvent(event);
+         return true;
+     }
+ #endif
+@@ -3741,7 +3744,21 @@
+         }
+ 
+         auto isCancelable = processingSteps.contains(WheelEventProcessingSteps::BlockingDOMEventDispatch) ? Event::IsCancelable::Yes : Event::IsCancelable::No;
+-        if (!element->dispatchWheelEvent(event, handling, isCancelable)) {
++        bool continueHandling;
++#if PLATFORM(WIN)
++        if (!processingSteps.containsAny({ WheelEventProcessingSteps::BlockingDOMEventDispatch, WheelEventProcessingSteps::NonBlockingDOMEventDispatch })) {
++            // Native touch may need synchronous scrolling without DOM wheel
++            // delivery. Reuse WebCore's full default/overflow chain with its
++            // internal platform payload; never dispatch that payload to script.
++            Ref payload = WheelEvent::create(event, element->document().windowProxy(), Event::IsCancelable::No);
++            defaultWheelEventHandler(element.get(), payload);
++            if (payload->defaultHandled())
++                handling.add(EventHandling::DefaultHandled);
++            continueHandling = !payload->defaultHandled();
++        } else
++#endif
++            continueHandling = element->dispatchWheelEvent(event, handling, isCancelable);
++        if (!continueHandling) {
+             m_isHandlingWheelEvent = false;
+             if (scrollableArea && scrollableArea->scrollShouldClearLatchedState()) {
+                 // Web developer is controlling scrolling, so don't attempt to latch.
+@@ -4202,6 +4219,11 @@
+     if (!frame->page() || !frame->page()->isVisible() || !frame->page()->focusController().isActive())
+         return;
+ 
++#if PLATFORM(WIN)
++    // A pending desktop hover timer may survive the switch to native touch.
++    if (!frame->page()->chrome().client().shouldDispatchFakeMouseMoveEvents())
++        return;
++#endif
+     auto modifiers = PlatformKeyboardEvent::currentStateOfModifierKeys();
+     PlatformMouseEvent fakeMouseMoveEvent(*m_lastKnownMousePosition, m_lastKnownMouseGlobalPosition, MouseButton::None, PlatformEvent::Type::MouseMoved, 0, modifiers, MonotonicTime::now(), 0, SyntheticClickType::NoTap, MouseEventInputSource::UserDriven);
+     mouseMoved(fakeMouseMoveEvent);
+@@ -5712,7 +5734,7 @@
+         if (!targetFrame)
+             continue;
+ 
+-#if PLATFORM(WPE) || PLATFORM(GTK)
++#if PLATFORM(WPE) || PLATFORM(GTK) || PLATFORM(WIN)
+         RefPtr<EventTarget> pointerTarget = touchTarget;
+ 
+         if (pointState != PlatformTouchPoint::TouchPressed) {
+@@ -5733,12 +5755,17 @@
+         page->pointerCaptureController().dispatchEventForTouchAtIndex(
+             *pointerTarget, event, index, !index, *document->windowProxy(), { 0, 0 });
+ 
++#if !PLATFORM(WIN)
+         // https://w3c.github.io/pointerevents/#suppressing-a-compatibility-mouse-event
+         // If pointerdown was canceled via preventDefault(), suppress compatibility mouse events
+         // by marking the touch event as handled. This propagates to the UIProcess via
+         // doneWithTouchEvent(wasEventHandled=true), preventing gesture-based mouse synthesis.
+         if (page->pointerCaptureController().preventsCompatibilityMouseEventsForIdentifier(PointerEvent::pointerIdForTouchPoint(point)))
+             swallowedEvent = true;
++#endif
++        // Windows tags compatibility mouse packets with this same pointer ID.
++        // Element's native dispatch suppresses those packets while preserving
++        // click. Pointer cancellation must not veto the default viewport pan.
+ #endif
+ 
+         // pagePoint should always be relative to the target elements containing frame.
+diff --git a/Source/WebCore/PlatformWin.cmake b/Source/WebCore/PlatformWin.cmake
+--- a/Source/WebCore/PlatformWin.cmake
++++ b/Source/WebCore/PlatformWin.cmake
+@@ -44,6 +44,10 @@
+     page/win/QuirkTableWin.cpp
+     page/win/ResourceUsageOverlayWin.cpp
+     page/win/ResourceUsageThreadWin.cpp
++
++    dom/glib/PointerEventGLib.cpp
++
++    platform/win/HostTouchActionWin.cpp
+ 
+     platform/Cursor.cpp
+     platform/LocalizedStrings.cpp
+@@ -134,6 +138,7 @@
+     platform/graphics/win/LocalWindowsContext.h
+     platform/graphics/win/SharedGDIObject.h
+ 
++    platform/win/HostTouchActionWin.h
+     platform/win/BString.h
+     platform/win/BitmapInfo.h
+     platform/win/COMPtr.h
+diff --git a/Source/WebCore/platform/win/HostTouchActionWin.h b/Source/WebCore/platform/win/HostTouchActionWin.h
+new file mode 100644
+--- /dev/null
++++ b/Source/WebCore/platform/win/HostTouchActionWin.h
+@@ -0,0 +1,19 @@
++#pragma once
++
++#include <cstdint>
++#include <wtf/text/WTFString.h>
++
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++namespace WebCore {
++class LocalFrame;
++class IntPoint;
++class ThreadedScrollingTree;
++class PlatformWheelEvent;
++
++// Keep native style conversion inside WebCore's DLL boundary.
++WEBCORE_EXPORT uint8_t hostTouchActionsAtPoint(LocalFrame&, const IntPoint& rootViewPoint);
++WEBCORE_EXPORT void stopHostTouchScrolling(ThreadedScrollingTree&, const PlatformWheelEvent&);
++WEBCORE_EXPORT bool hostScrollingTreeHasRoot(ThreadedScrollingTree&);
++WEBCORE_EXPORT String hostTouchStateForFrame(LocalFrame&);
++}
++#endif
+diff --git a/Source/WebCore/platform/win/HostTouchActionWin.cpp b/Source/WebCore/platform/win/HostTouchActionWin.cpp
+new file mode 100644
+--- /dev/null
++++ b/Source/WebCore/platform/win/HostTouchActionWin.cpp
+@@ -0,0 +1,99 @@
++#include "config.h"
++#include "HostTouchActionWin.h"
++
++#if ENABLE(TOUCH_EVENTS) && ENABLE(ASYNC_SCROLLING)
++#include "DocumentView.h"
++#include "AsyncScrollingCoordinator.h"
++#include "DocumentPage.h"
++#include "Page.h"
++#include "ScrollingTreeFrameScrollingNodeCoordinated.h"
++#include "ScrollingLayerWC.h"
++#include <wtf/text/TextStream.h>
++#include "ContainerNodeInlines.h"
++#include "Element.h"
++#include "LocalFrameInlines.h"
++#include "RenderLayer.h"
++#include "RenderLayerBacking.h"
++#include "RenderView.h"
++#include <wtf/text/MakeString.h>
++#include "EventHandler.h"
++#include "HitTestResult.h"
++#include "LocalFrame.h"
++#include "LocalFrameView.h"
++#include "RenderObject.h"
++#include "RenderObjectStyle.h"
++#include "StyleComputedStyle+GettersInlines.h"
++#include "StyleTouchAction.h"
++#include "ScrollingThread.h"
++#include "ScrollingTreeScrollingNode.h"
++#include "ThreadedScrollingTree.h"
++
++namespace WebCore {
++String hostTouchStateForFrame(LocalFrame& frame)
++{
++    auto describe = [](RenderObject* renderer) -> String {
++        if (!renderer)
++            return "missing"_s;
++        auto& style = renderer->style();
++        return makeString("touch="_s, Style::toPlatform(style.usedTouchAction()).toRaw(),
++            ", listeners="_s, style.eventListenerRegionTypes().toRaw());
++    };
++    RefPtr document = frame.document();
++    auto* view = document ? document->renderView() : nullptr;
++    auto* element = document && document->documentElement() ? document->documentElement()->renderer() : nullptr;
++    auto* layer = view ? view->layer() : nullptr;
++    auto* backing = layer ? layer->backing() : nullptr;
++    auto description = makeString("\nnative render style: view "_s, describe(view), "; element "_s, describe(element),
++        "; needs region "_s, backing && backing->needsEventRegionUpdate() ? "yes"_s : "no"_s,
++        "; maintains region "_s, backing && backing->maintainsEventRegion() ? "yes"_s : "no"_s, "\n"_s);
++    RefPtr coordinator = frame.page() ? dynamicDowncast<AsyncScrollingCoordinator>(frame.page()->scrollingCoordinator()) : nullptr;
++    RefPtr tree = coordinator ? coordinator->scrollingTree() : nullptr;
++    if (!tree)
++        return description;
++    Locker treeLocker { tree->treeLock() };
++    RefPtr root = tree->rootNode();
++    if (!root)
++        return description;
++    RefPtr mirrorRoot = static_cast<ScrollingTreeFrameScrollingNodeCoordinated*>(root.get())->rootContentsLayer();
++    TextStream stream;
++    stream << "WC hit-test mirror root, scroll " << tree->mainFrameScrollPosition() << "\n";
++    Vector<std::pair<Ref<ScrollingLayerWC>, unsigned>> pending;
++    if (mirrorRoot)
++        pending.append({ mirrorRoot.releaseNonNull(), 0 });
++    unsigned visited = 0;
++    while (!pending.isEmpty() && visited++ < 256) {
++        auto [current, depth] = pending.takeLast();
++        Locker layerLocker { current->lock() };
++        stream << "depth " << depth << " layer " << current->identifier() << " node " << current->scrollingNodeID()
++            << " position " << current->position() << " bounds " << current->bounds() << "\n";
++        for (auto& child : current->children())
++            pending.append({ child, depth + 1 });
++    }
++    return makeString(description, stream.release());
++}
++
++bool hostScrollingTreeHasRoot(ThreadedScrollingTree& tree)
++{
++    Locker locker { tree.treeLock() };
++    return !!tree.rootNode();
++}
++
++void stopHostTouchScrolling(ThreadedScrollingTree& tree, const PlatformWheelEvent& event)
++{
++    ASSERT(ScrollingThread::isCurrentThread());
++    tree.stopHostTouchScrolling(event);
++}
++
++uint8_t hostTouchActionsAtPoint(LocalFrame& frame, const IntPoint& rootViewPoint)
++{
++    RefPtr view = frame.view();
++    if (!view)
++        return 0;
++    auto point = view->rootViewToContents(rootViewPoint);
++    auto result = frame.eventHandler().hitTestResultAtPoint(point, { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::AllowChildFrameContent });
++    RefPtr node = result.innerNode();
++    CheckedPtr renderer = node ? node->renderer() : nullptr;
++    return renderer ? Style::toPlatform(renderer->style().usedTouchAction()).toRaw() : 0;
++}
++}
++#endif
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+@@ -278,6 +278,7 @@
+     RequestHostAccessibilityTree() -> (String tree)
+     HostAccessibilityAction(String document, uint64_t objectID, uint32_t action, String value) -> (bool success) Synchronous
+     SetHostScrollIndicatorEnabled(bool enabled)
++    SetHostTouchEnabled(bool enabled)
+     GetHostScrollIndicatorState() -> (uint32_t status, uint32_t flags, uint64_t epoch, uint64_t userSequence, double position, double range, double viewportHeight)
+     GetHostFixedContainerColorsV2() -> (uint32_t status, uint64_t epoch, uint32_t states, uint32_t reasons, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
+     GetHostFixedContainerColors() -> (uint32_t status, uint32_t states, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.h b/Source/WebKit/UIProcess/WebPageProxy.h
+--- a/Source/WebKit/UIProcess/WebPageProxy.h
++++ b/Source/WebKit/UIProcess/WebPageProxy.h
+@@ -1843,6 +1843,7 @@
+     void getContentsAsString(ContentAsStringIncludesChildFrames, CompletionHandler<void(const String&)>&&);
+ #if PLATFORM(WIN)
+     void setHostScrollIndicatorEnabled(bool);
++    void setHostTouchEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
+     void hostAccessibilityNotification(uint32_t, uint64_t);
+     void getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+@@ -4183,6 +4184,7 @@
+     bool m_isEditable { false };
+ #if PLATFORM(WIN)
+     bool m_hostScrollIndicatorEnabled { false };
++    bool m_hostTouchEnabled { false };
+ #endif
+ 
+ #if ENABLE(ACCESSIBILITY_LOCAL_FRAME)
+diff --git a/Source/WebKit/Shared/WebPageCreationParameters.h b/Source/WebKit/Shared/WebPageCreationParameters.h
+--- a/Source/WebKit/Shared/WebPageCreationParameters.h
++++ b/Source/WebKit/Shared/WebPageCreationParameters.h
+@@ -129,6 +129,7 @@
+     bool isEditable { false };
+ #if PLATFORM(WIN)
+     bool hostScrollIndicatorEnabled { false };
++    bool hostTouchEnabled { false };
+ #endif
+ 
+     WebCore::Color underlayColor { };
+diff --git a/Source/WebKit/Shared/WebPageCreationParameters.serialization.in b/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
+--- a/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
++++ b/Source/WebKit/Shared/WebPageCreationParameters.serialization.in
+@@ -40,6 +40,7 @@
+     bool isEditable;
+ #if PLATFORM(WIN)
+     bool hostScrollIndicatorEnabled;
++    bool hostTouchEnabled;
+ #endif
+ 
+     WebCore::Color underlayColor;
+diff --git a/Source/WebKit/UIProcess/WebPageProxyInternals.h b/Source/WebKit/UIProcess/WebPageProxyInternals.h
+--- a/Source/WebKit/UIProcess/WebPageProxyInternals.h
++++ b/Source/WebKit/UIProcess/WebPageProxyInternals.h
+@@ -407,6 +407,9 @@
+ 
+ #if ENABLE(TOUCH_EVENTS) && !ENABLE(IOS_TOUCH_EVENTS)
+     Deque<QueuedTouchEvents> touchEventQueue;
++#if PLATFORM(WIN) && ENABLE(COORDINATED_TOUCH_EVENTS)
++    bool processingHostTouchReply { false };
++#endif
+ #endif
+ 
+ #if ENABLE(WRITING_TOOLS)
+diff --git a/Source/WebCore/page/Navigator.cpp b/Source/WebCore/page/Navigator.cpp
+--- a/Source/WebCore/page/Navigator.cpp
++++ b/Source/WebCore/page/Navigator.cpp
+@@ -461,6 +461,9 @@
+         return 0;
+ 
+     return 5;
++#elif PLATFORM(WIN) && ENABLE(TOUCH_EVENTS)
++    RefPtr document = this->document();
++    return document && document->settings().touchEventDOMAttributesEnabled() ? 1 : 0;
+ #else
+     return 0;
+ #endif
+diff --git a/Source/WebKit/Shared/WebWheelEventCoalescer.cpp b/Source/WebKit/Shared/WebWheelEventCoalescer.cpp
+--- a/Source/WebKit/Shared/WebWheelEventCoalescer.cpp
++++ b/Source/WebKit/Shared/WebWheelEventCoalescer.cpp
+@@ -47,15 +47,19 @@
+         return false;
+     if (a.modifiers() != b.modifiers())
+         return false;
++#if PLATFORM(WIN)
++    if (a.isHostTouchGesture() != b.isHostTouchGesture())
++        return false;
++#endif
+     if (a.granularity() != b.granularity())
+         return false;
+-#if PLATFORM(COCOA)
++#if PLATFORM(COCOA) || PLATFORM(WIN)
+     if (a.phase() != b.phase())
+         return false;
+     if (a.momentumPhase() != b.momentumPhase())
+         return false;
+ #endif
+-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+     if (a.hasPreciseScrollingDeltas() != b.hasPreciseScrollingDeltas())
+         return false;
+ #endif
+@@ -81,6 +85,9 @@
+         .globalPosition = b.globalPosition(),
+         .delta = mergedDelta,
+         .wheelTicks = mergedWheelTicks,
++#if PLATFORM(WIN)
++        .hostTouchGesture = b.isHostTouchGesture(),
++#endif
+         .granularity = b.granularity(),
+         .directionInvertedFromDevice = b.directionInvertedFromDevice(),
+         .phase = b.phase(),
+@@ -93,12 +100,15 @@
+         .momentumEndType = b.momentumEndType(),
+         .inputSource = b.inputSource(),
+     };
+-#elif PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#elif PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(WIN)
+     auto wheelData = WebWheelEventData {
+         .position = b.position(),
+         .globalPosition = b.globalPosition(),
+         .delta = mergedDelta,
+         .wheelTicks = mergedWheelTicks,
++#if PLATFORM(WIN)
++        .hostTouchGesture = b.isHostTouchGesture(),
++#endif
+         .granularity = b.granularity(),
+         .phase = b.phase(),
+         .momentumPhase = b.momentumPhase(),
+@@ -110,6 +120,9 @@
+         .globalPosition = b.globalPosition(),
+         .delta = mergedDelta,
+         .wheelTicks = mergedWheelTicks,
++#if PLATFORM(WIN)
++        .hostTouchGesture = b.isHostTouchGesture(),
++#endif
+         .granularity = b.granularity(),
+     };
+ #endif
+@@ -122,6 +135,10 @@
+ 
+ bool WebWheelEventCoalescer::shouldDispatchEventNow(const WebWheelEvent& event) const
+ {
++#if PLATFORM(WIN)
++    if (event.isHostTouchGesture() && event.phase() != WebEventPhase::Changed)
++        return true;
++#endif
+ #if PLATFORM(GTK)
+     // Don't queue events representing a non-trivial scrolling phase to
+     // avoid having them trapped in the queue, potentially preventing a
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -52,6 +52,9 @@
+ #include <WebCore/DocumentView.h>
+ #include <WebCore/Page.h>
+ #include <WebCore/Settings.h>
++#if PLATFORM(WIN) && ENABLE(TOUCH_EVENTS)
++#include <WebCore/HostTouchActionWin.h>
++#endif
+ #include <cmath>
+ #include <algorithm>
+ #include <wtf/Borrow.h>
+@@ -111,6 +114,14 @@
+         state.append(coordinator->scrollingStateTreeAsText(debugScrollingStateTreeAsTextBehaviors), "\n"_s);
+         state.append(coordinator->scrollingTreeAsText(debugScrollingStateTreeAsTextBehaviors));
+     }
++#if ENABLE(TOUCH_EVENTS)
++    state.append("\ntouch event regions: "_s, settings.alwaysUseTouchEventRegions() ? "yes"_s : "no"_s,
++        "; touch DOM attributes: "_s, settings.touchEventDOMAttributesEnabled() ? "yes"_s : "no"_s, "\n"_s);
++    if (RefPtr frame = m_webPage->mainWebFrame().coreLocalFrame())
++        state.append(hostTouchStateForFrame(*frame));
++    for (auto& root : m_rootLayers)
++        state.append(root.layer->layerTreeAsText(LayerTreeAsTextOptions::IncludeEventRegion));
++#endif
+     completion(state.toString());
+ }
+ #endif
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h
+--- a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.h
+@@ -93,6 +93,9 @@
+     void setMasksToBounds(bool) override;
+     void setBackgroundColor(const WebCore::Color&) override;
+     void setOpacity(float) override;
++#if ENABLE(ASYNC_SCROLLING)
++    void setEventRegion(WebCore::EventRegion&&) override;
++#endif
+     void setContentsRect(const WebCore::FloatRect&) override;
+     void setContentsClippingRect(const WebCore::FloatRoundedRect&) override;
+     void setContentsRectClipsDescendants(bool) override;
+diff --git a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp
+--- a/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/GraphicsLayerWC.cpp
+@@ -359,6 +359,18 @@
+     noteLayerPropertyChanged(WCLayerChange::Background);
+ }
+ 
++#if ENABLE(ASYNC_SCROLLING)
++void GraphicsLayerWC::setEventRegion(EventRegion&& region)
++{
++    if (region == eventRegion())
++        return;
++    GraphicsLayer::setEventRegion(WTF::move(region));
++    // Region-only changes have no GPU pixel/property damage. They still need
++    // a commit so the scrolling thread sees current listener/touch-action data.
++    client().notifyFlushRequired(this);
++}
++#endif
++
+ void GraphicsLayerWC::setOpacity(float value)
+ {
+     if (value == opacity())
+diff --git a/Source/WebCore/rendering/RenderLayer.cpp b/Source/WebCore/rendering/RenderLayer.cpp
+--- a/Source/WebCore/rendering/RenderLayer.cpp
++++ b/Source/WebCore/rendering/RenderLayer.cpp
+@@ -6863,6 +6863,12 @@
+ 
+     compositingLayer->backing()->setNeedsEventRegionUpdate();
+     compositingLayer->setAncestorsHaveDescendantNeedingEventRegionUpdate();
++#if USE(GRAPHICS_LAYER_WC)
++    // WC must also schedule metadata-only style/listener changes, even when
++    // nothing needs repainting and no layer geometry changed.
++    if (reason == EventRegionInvalidationReason::Style || reason == EventRegionInvalidationReason::SettingDidChange)
++        renderer().page().scheduleRenderingUpdate(RenderingUpdateStep::EventRegionUpdate);
++#endif
+ 
+     if (reason == EventRegionInvalidationReason::NonCompositedFrame) {
+         auto& view = renderer().view();
+diff --git a/Source/WebCore/page/scrolling/ScrollingTree.h b/Source/WebCore/page/scrolling/ScrollingTree.h
+--- a/Source/WebCore/page/scrolling/ScrollingTree.h
++++ b/Source/WebCore/page/scrolling/ScrollingTree.h
+@@ -120,6 +120,9 @@
+     void setScrollAnimationInProgressForNode(std::optional<ScrollingNodeID>, bool);
+ 
+     WEBCORE_EXPORT bool LEGACY_NODELETE hasNodeWithActiveScrollAnimations();
++#if PLATFORM(WIN) && ENABLE(COORDINATED_TOUCH_EVENTS)
++    void stopHostTouchScrolling(const PlatformWheelEvent&);
++#endif
+ 
+     virtual void invalidate() { }
+     WEBCORE_EXPORT bool commitTreeState(std::unique_ptr<ScrollingStateTree>&&, std::optional<LayerHostingContextIdentifier> = std::nullopt);
+diff --git a/Source/WebCore/page/scrolling/ScrollingTree.cpp b/Source/WebCore/page/scrolling/ScrollingTree.cpp
+--- a/Source/WebCore/page/scrolling/ScrollingTree.cpp
++++ b/Source/WebCore/page/scrolling/ScrollingTree.cpp
+@@ -156,6 +156,31 @@
+     return processingSteps;
+ }
+ 
++#if PLATFORM(WIN) && ENABLE(COORDINATED_TOUCH_EVENTS)
++void ScrollingTree::stopHostTouchScrolling(const PlatformWheelEvent& event)
++{
++    Locker locker { m_treeLock };
++    RefPtr node = nodeForID(latchedNodeID());
++    if (!node && rootNode()) {
++        // A zero-delta Began does not latch a node. Cancel still has to stop
++        // inertia on the original hit chain, including nested scroll targets.
++        auto position = rootNode()->viewToContentsPoint(event.position(), mainFrameScrollPosition());
++        node = scrollingNodeForPoint(position);
++    }
++    while (node) {
++        if (RefPtr scrollingNode = dynamicDowncast<ScrollingTreeScrollingNode>(node))
++            scrollingNode->stopAnimatedScroll(AnimatedScrollType::User);
++        if (RefPtr proxy = dynamicDowncast<ScrollingTreeOverflowScrollProxyNode>(node)) {
++            if (RefPtr related = nodeForID(proxy->overflowScrollingNodeID())) {
++                node = WTF::move(related);
++                continue;
++            }
++        }
++        node = node->parent();
++    }
++}
++#endif
++
+ WheelEventHandlingResult ScrollingTree::handleWheelEvent(const PlatformWheelEvent& wheelEvent, OptionSet<WheelEventProcessingSteps> processingSteps)
+ {
+     LOG_WITH_STREAM(Scrolling, stream << "ScrollingTree " << this << " handleWheelEvent " << wheelEvent);
+diff --git a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
+--- a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
+@@ -66,7 +66,9 @@
+     const FloatPoint& boundsOrigin() const WTF_REQUIRES_LOCK(m_lock) { return m_boundsOrigin; }
+     const FloatPoint3D& anchorPoint() const WTF_REQUIRES_LOCK(m_lock) { return m_anchorPoint; }
+     const FloatSize& size() const WTF_REQUIRES_LOCK(m_lock) { return m_size; }
+-    FloatRect bounds() const WTF_REQUIRES_LOCK(m_lock) { return { m_boundsOrigin, m_size }; }
++    // Match CoordinatedPlatformLayer: hit-test bounds are local extents.
++    // The traversal applies boundsOrigin separately when entering children.
++    FloatRect bounds() const WTF_REQUIRES_LOCK(m_lock) { return { { }, m_size }; }
+     const TransformationMatrix& transform() const WTF_REQUIRES_LOCK(m_lock) { return m_transform; }
+     bool masksToBounds() const WTF_REQUIRES_LOCK(m_lock) { return m_masksToBounds; }
+     const EventRegion& eventRegion() const WTF_REQUIRES_LOCK(m_lock) { return m_eventRegion; }

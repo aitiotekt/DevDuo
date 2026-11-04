@@ -1,0 +1,289 @@
+diff --git a/Source/WebCore/page/LocalFrameView.h b/Source/WebCore/page/LocalFrameView.h
+--- a/Source/WebCore/page/LocalFrameView.h
++++ b/Source/WebCore/page/LocalFrameView.h
+@@ -379,7 +379,7 @@
+     // and adjusting for page scale.
+     LayoutPoint scrollPositionForFixedPosition() const;
+ 
+-    WEBCORE_EXPORT std::pair<FixedContainerEdges, WeakElementEdges> fixedContainerEdges(BoxSideSet) const;
++    WEBCORE_EXPORT std::pair<FixedContainerEdges, WeakElementEdges> fixedContainerEdges(BoxSideSet, bool hostSampling = false) const;
+     
+     // Static function can be called from another thread.
+     WEBCORE_EXPORT static LayoutPoint scrollPositionForFixedPosition(const LayoutRect& visibleContentRect, const LayoutSize& totalContentsSize, const LayoutPoint& scrollPosition, const LayoutPoint& scrollOrigin, float frameScaleFactor, bool fixedElementsLayoutRelativeToFrame, ScrollBehaviorForFixedElements, int headerHeight, int footerHeight);
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -2354,7 +2354,7 @@
+     return false;
+ }
+ 
+-std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerEdges(BoxSideSet sides) const
++std::pair<FixedContainerEdges, WeakElementEdges> LocalFrameView::fixedContainerEdges(BoxSideSet sides, bool hostSampling) const
+ {
+     WeakElementEdges containers;
+     FixedContainerEdges edges;
+@@ -2523,6 +2523,9 @@
+ 
+         if (!renderer.isFixedPositioned() && !renderer.isStickilyPositioned())
+             return NotFixedOrSticky;
++        // A transformed ancestor's fixed child is not attached to the viewport.
++        if (hostSampling && renderer.isFixedPositioned() && renderer.containingBlock() && !renderer.containingBlock()->isRenderView())
++            return NotFixedOrSticky;
+ 
+         auto lengthOnSide = compareWithViewportSize(side, renderer);
+         auto lengthOnAdjacentSide = compareWithViewportSize(adjacentSideInClockwiseOrder(side), renderer);
+@@ -2572,7 +2575,7 @@
+     };
+ 
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+-    auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents) -> FixedContainerResult {
++    auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents, float fraction = 0.5f) -> FixedContainerResult {
+         using enum HitTestRequest::Type;
+         static constexpr OptionSet commonHitTestOptions {
+             ReadOnly,
+@@ -2581,8 +2584,17 @@
+             ForFixedContainerSampling,
+         };
+ 
+-        HitTestResult result { midpointOnSide(side, fixedRect) };
++        auto point = midpointOnSide(side, fixedRect);
++        if (hostSampling) {
++            if (side == BoxSide::Top || side == BoxSide::Bottom)
++                point.setX(fixedRect.x() + fixedRect.width() * fraction);
++            else
++                point.setY(fixedRect.y() + fixedRect.height() * fraction);
++        }
++        HitTestResult result { point };
+         auto hitTestOptions = commonHitTestOptions;
++        if (hostSampling)
++            hitTestOptions.remove(IgnoreClipping);
+         if (ignoreCSSPointerEvents == IgnoreCSSPointerEvents::Yes)
+             hitTestOptions.add(IgnoreCSSPointerEventsProperty);
+ 
+@@ -2610,7 +2622,7 @@
+                 return std::nullopt;
+ 
+             auto backgroundColor = primaryBackgroundColorForRenderer(side, *backdropRenderer);
+-            if (!backgroundColor.isVisible())
++            if (!backgroundColor.isVisible() && !hostSampling)
+                 backgroundColor = page->pageExtendedBackgroundColor();
+ 
+             return { {
+@@ -2749,10 +2761,29 @@
+         if (result.retryHonoringPointerEvents)
+             result = findFixedContainer(side, IgnoreCSSPointerEvents::No);
+ 
++        bool consistentCoverage = true;
++        if (hostSampling) {
++            RefPtr<Element> candidate = result.container;
++            for (float fraction : { 0.05f, 0.25f, 0.5f, 0.75f, 0.95f }) {
++                auto pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::Yes, fraction);
++                if (pointResult.retryHonoringPointerEvents)
++                    pointResult = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
++                if (pointResult.container != result.container)
++                    consistentCoverage = false;
++                if (!candidate && pointResult.container)
++                    candidate = pointResult.container;
++            }
++            if (!result.container)
++                result.container = WTF::move(candidate);
++        }
+         if (!result.container)
+             continue;
+ 
+         containers.setAt(side, *result.container);
++        if (hostSampling && !consistentCoverage) {
++            edges.colors.setAt(side, PredominantColorType::Multiple);
++            continue;
++        }
+ 
+         if (result.foundBackdropFilter) {
+             edges.colors.setAt(side, PredominantColorType::Multiple);
+@@ -2760,7 +2791,7 @@
+         }
+ 
+         bool preferExistingColor = result.isDimmingLayer || result.isViewportSized || result.isSidebar;
+-        if (preferExistingColor && page->fixedContainerEdges().hasFixedEdge(side)) {
++        if (!hostSampling && preferExistingColor && page->fixedContainerEdges().hasFixedEdge(side)) {
+             edges.colors.setAt(side, page->fixedContainerEdges().colors.at(side));
+             continue;
+         }
+@@ -2774,7 +2805,7 @@
+             continue;
+         }
+ 
+-        if (page->lastFixedContainer(side) == result.container && page->fixedContainerEdges().hasFixedEdge(side)) {
++        if (!hostSampling && page->lastFixedContainer(side) == result.container && page->fixedContainerEdges().hasFixedEdge(side)) {
+             edges.colors.setAt(side, page->fixedContainerEdges().colors.at(side));
+             continue;
+         }
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.h b/Source/WebKit/UIProcess/WebPageProxy.h
+--- a/Source/WebKit/UIProcess/WebPageProxy.h
++++ b/Source/WebKit/UIProcess/WebPageProxy.h
+@@ -1845,6 +1845,7 @@
+     void setHostScrollIndicatorEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
+     void hostAccessibilityNotification(uint32_t, uint64_t);
++    void getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+     void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+ #endif
+ #if PLATFORM(COCOA)
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.h b/Source/WebKit/WebProcess/WebPage/WebPage.h
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -2555,6 +2555,7 @@
+     WeakPtr<WebCore::Element, WebCore::WeakPtrImplWithEventTargetData> m_hostCompositionElement;
+     void setHostScrollIndicatorEnabled(bool);
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
++    void getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+     void getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&&);
+ #endif
+ #if PLATFORM(COCOA)
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.messages.in
+@@ -278,6 +278,7 @@
+     HostAccessibilityAction(String document, uint64_t objectID, uint32_t action, String value) -> (bool success) Synchronous
+     SetHostScrollIndicatorEnabled(bool enabled)
+     GetHostScrollIndicatorState() -> (uint32_t status, uint32_t flags, uint64_t epoch, uint64_t userSequence, double position, double range, double viewportHeight)
++    GetHostFixedContainerColorsV2() -> (uint32_t status, uint64_t epoch, uint32_t states, uint32_t reasons, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
+     GetHostFixedContainerColors() -> (uint32_t status, uint32_t states, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left)
+ #endif
+ #if PLATFORM(COCOA)
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.cpp b/Source/WebKit/UIProcess/WebPageProxy.cpp
+--- a/Source/WebKit/UIProcess/WebPageProxy.cpp
++++ b/Source/WebKit/UIProcess/WebPageProxy.cpp
+@@ -8417,6 +8417,11 @@
+ {
+     sendWithAsyncReply(Messages::WebPage::GetHostScrollIndicatorState(), WTF::move(callback));
+ }
++void WebPageProxy::getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
++{
++    sendWithAsyncReply(Messages::WebPage::GetHostFixedContainerColorsV2(), WTF::move(callback));
++}
++
+ void WebPageProxy::getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
+ {
+     sendWithAsyncReply(Messages::WebPage::GetHostFixedContainerColors(), WTF::move(callback));
+diff --git a/Source/WebKit/WebProcess/WebPage/WebPage.cpp b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -5394,6 +5394,44 @@
+     callback(0, flags, state.documentEpoch,
+         state.userMotionSequence, state.position, state.range, state.viewportHeight);
+ }
++void WebPage::getHostFixedContainerColorsV2(CompletionHandler<void(uint32_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
++{
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr view = frame ? frame->view() : nullptr;
++    RefPtr document = frame ? frame->document() : nullptr;
++    if (!view || !document) {
++        callback(1, 0, 0xff, 0, 0, 0, 0, 0);
++        return;
++    }
++    view->updateLayoutAndStyleIfNeededRecursive();
++    auto [edges, elements] = view->fixedContainerEdges({ BoxSide::Top, BoxSide::Right, BoxSide::Bottom, BoxSide::Left }, true);
++    uint32_t states = 0, reasons = 0;
++    auto sample = [&](BoxSide side, unsigned index) -> uint32_t {
++        if (!elements.at(side))
++            return 0;
++        const auto& coverage = edges.colors.at(side);
++        if (std::holds_alternative<PredominantColorType>(coverage)
++            && std::get<PredominantColorType>(coverage) == PredominantColorType::Multiple) {
++            states |= 2u << (index * 2);
++            reasons |= 2u << (index * 4); // Inconsistent coverage.
++            return 0;
++        }
++        auto color = edges.predominantColor(side);
++        if (!color.isValid() || !color.isOpaque()) {
++            states |= 2u << (index * 2);
++            reasons |= 2u << (index * 4);
++            return 0;
++        }
++        states |= 1u << (index * 2);
++        reasons |= 4u << (index * 4); // Native background or fixed/sticky predominant color.
++        auto [r, g, b, a] = color.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
++        return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
++    };
++    auto top = sample(BoxSide::Top, 0), right = sample(BoxSide::Right, 1);
++    auto bottom = sample(BoxSide::Bottom, 2), left = sample(BoxSide::Left, 3);
++    callback(0, WebCore::hostScrollIndicatorState(*view).documentEpoch, states, reasons, top, right, bottom, left);
++}
++
+ void WebPage::getHostFixedContainerColors(CompletionHandler<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)>&& callback)
+ {
+     RefPtr frame = m_mainFrame->coreLocalFrame();
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.cpp b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -200,7 +200,17 @@
+ }
+ unsigned WKViewGetFixedContainerColorAPIVersion(void)
+ {
+-    return 1;
++    return 2;
++}
++
++void WKViewRequestFixedContainerColorsV2(WKViewRef viewRef, unsigned long long requestID, const void* context, WKFixedContainerColorCallbackV2 callback)
++{
++    if (!callback) return;
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    if (!page || page->isClosed()) { callback(requestID, 1, 0, 0xff, 0, 0, 0, 0, 0, context); return; }
++    page->getHostFixedContainerColorsV2([requestID, context, callback](uint32_t status, uint64_t epoch, uint32_t states, uint32_t reasons, uint32_t top, uint32_t right, uint32_t bottom, uint32_t left) {
++        callback(requestID, status, epoch, states, reasons, top, right, bottom, left, context);
++    });
+ }
+ 
+ void WKViewRequestFixedContainerColors(WKViewRef viewRef, unsigned long long requestID, const void* context, WKFixedContainerColorCallback callback)
+diff --git a/Source/WebKit/UIProcess/API/C/win/WKView.h b/Source/WebKit/UIProcess/API/C/win/WKView.h
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -95,6 +95,10 @@
+ typedef void (*WKHostScrollIndicatorCallback)(unsigned long long requestID, unsigned status, unsigned flags,
+     unsigned long long epoch, unsigned long long userSequence, double position, double range, double viewportHeight, const void* context);
+ WK_EXPORT void WKViewRequestHostScrollIndicatorState(WKViewRef, unsigned long long requestID, const void* context, WKHostScrollIndicatorCallback);
++typedef void (*WKFixedContainerColorCallbackV2)(unsigned long long requestID, unsigned status, unsigned long long documentEpoch, unsigned states, unsigned reasons, unsigned top, unsigned right, unsigned bottom, unsigned left, const void* context);
++// Two bits per side: 0 absent, 1 reliable RGB, 2 uncertain coverage/color, 3 unavailable.
++// Four reason bits per side: 0 absent, 1 current painted edge, 2 ambiguous paint/coverage, 3 snapshot unavailable, 4 native leaf/dimming color.
++WK_EXPORT void WKViewRequestFixedContainerColorsV2(WKViewRef, unsigned long long requestID, const void* context, WKFixedContainerColorCallbackV2);
+ WK_EXPORT unsigned WKViewGetFixedContainerColorAPIVersion(void);
+ WK_EXPORT void WKViewRequestFixedContainerColors(WKViewRef view, unsigned long long requestID,
+     const void* context, WKFixedContainerColorCallback callback);
+diff --git a/Source/WebCore/rendering/RenderLayer.cpp b/Source/WebCore/rendering/RenderLayer.cpp
+--- a/Source/WebCore/rendering/RenderLayer.cpp
++++ b/Source/WebCore/rendering/RenderLayer.cpp
+@@ -2705,11 +2705,18 @@
+ 
+ RenderLayer* RenderLayer::transparentPaintingAncestor(const LayerPaintingInfo& info)
+ {
+-    if (this == info.rootLayer || isComposited() || paintsIntoProvidedBacking())
++    // Flattened Windows snapshots have no compositor to apply ancestor opacity.
++    // Composited children must walk through their live backing boundaries here.
++#if PLATFORM(WIN)
++    bool flatten = info.paintBehavior.contains(PaintBehavior::FlattenCompositingLayers);
++#else
++    bool flatten = false;
++#endif
++    if (this == info.rootLayer || (!flatten && (isComposited() || paintsIntoProvidedBacking())))
+         return nullptr;
+     for (auto* ancestor = parent(); ancestor; ancestor = ancestor->parent()) {
+         if (ancestor->isStackingContext()) {
+-            if (ancestor->isComposited() || ancestor->paintsIntoProvidedBacking())
++            if (!flatten && (ancestor->isComposited() || ancestor->paintsIntoProvidedBacking()))
+                 return nullptr;
+             if (ancestor->isTransparent())
+                 return ancestor;
+diff --git a/Source/cmake/OptionsWin.cmake b/Source/cmake/OptionsWin.cmake
+--- a/Source/cmake/OptionsWin.cmake
++++ b/Source/cmake/OptionsWin.cmake
+@@ -187,3 +187,10 @@
+ set(PAL_LIBRARY_TYPE OBJECT)
+ set(WebCore_LIBRARY_TYPE SHARED)
+ set(WebCoreTestSupport_LIBRARY_TYPE OBJECT)
++
++# Keep a running host's DLLs intact while linking a separate validation runtime.
++if (DEVDUO_HOST_RUNTIME_OUTPUT_DIRECTORY)
++    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${DEVDUO_HOST_RUNTIME_OUTPUT_DIRECTORY}")
++    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
++    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
++endif ()

@@ -1,0 +1,1393 @@
+--- a/Source/WebCore/platform/graphics/wc/ScrollingSceneWC.h
++++ b/Source/WebCore/platform/graphics/wc/ScrollingSceneWC.h
+@@ -46,27 +46,46 @@
+     uint32_t changed { 0 };
+ };
+ 
++struct WCScrollInput {
++    uint64_t sequence { 0 };
++    double eventSeconds { 0 }, dispatchSeconds { 0 };
++};
++
++struct WCScrollUpdate {
++    uint64_t revision { 0 };
++    FloatPoint rootScrollPosition;
++    WCScrollInput input;
++    Vector<WCScrollLayerPosition> layers;
++};
++
+ // This scene contains geometry only. WebKit binds its publication callback to
+ // the GPU connection; scrolling never calls back into a main-thread layer.
+-class WEBCORE_EXPORT ScrollingSceneWC final : public ThreadSafeRefCounted<ScrollingSceneWC> {
++class WEBCORE_EXPORT ScrollingSceneWC final : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<ScrollingSceneWC> {
+     WTF_MAKE_TZONE_ALLOCATED_EXPORT(ScrollingSceneWC, WEBCORE_EXPORT);
+ public:
+-    using Publisher = std::function<void(uint64_t, Vector<WCScrollLayerPosition>&&)>;
++    using Publisher = std::function<void(WCScrollUpdate&&)>;
+     static Ref<ScrollingSceneWC> create() { return adoptRef(*new ScrollingSceneWC); }
+     void addLayer(ScrollingLayerWC&);
+     void removeLayer(PlatformLayerIdentifier);
+     void setPublisher(Publisher&&);
+-    void requestComposition();
++    void requestComposition(std::optional<FloatPoint> = std::nullopt, WCScrollInput = { });
++    void beginMainThreadUpdate();
++    uint64_t mainThreadUpdateRevision() const;
++    WCScrollUpdate commitMainThreadState(FloatPoint);
+     uint64_t revision() const;
+     bool isCompositionRequiredOrOngoing() const;
+     void didCompleteComposition(uint64_t);
+ private:
+     ScrollingSceneWC() = default;
++    Vector<Ref<ScrollingLayerWC>> layers() const;
+     Lock m_publicationLock;
+     mutable Lock m_lock;
+     HashMap<PlatformLayerIdentifier, ThreadSafeWeakPtr<ScrollingLayerWC>> m_layers WTF_GUARDED_BY_LOCK(m_lock);
+     Publisher m_publisher WTF_GUARDED_BY_LOCK(m_lock);
+     uint64_t m_revision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
++    uint64_t m_mainThreadRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
++    uint64_t m_rootScrollRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
++    FloatPoint m_rootScrollPosition WTF_GUARDED_BY_LOCK(m_lock);
+     uint64_t m_publishedRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 }, m_completedRevision WTF_GUARDED_BY_LOCK(m_lock) { 0 };
+ };
+ }
+--- a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.h
+@@ -56,8 +56,10 @@
+     void setBoundsOriginForScrolling(const FloatPoint&);
+     void setTopLeftPositionForScrolling(const FloatPoint&);
+     FloatPoint topLeftPositionForScrolling();
+-    std::optional<WCScrollLayerPosition> takePositionUpdate();
++    std::optional<WCScrollLayerPosition> takePositionUpdate(uint64_t revision = 0);
++    WCScrollLayerPosition committedPosition();
+     void requestComposition(CompositionReason) { m_scene->requestComposition(); }
++    void requestComposition(CompositionReason, FloatPoint rootPosition, WCScrollInput input) { m_scene->requestComposition(rootPosition, input); }
+     bool isCompositionRequiredOrOngoing() const { return m_scene->isCompositionRequiredOrOngoing(); }
+ 
+     const FloatPoint& position() const WTF_REQUIRES_LOCK(m_lock) { return m_position; }
+@@ -87,6 +89,7 @@
+     Vector<Ref<ScrollingLayerWC>> m_children WTF_GUARDED_BY_LOCK(m_lock);
+     ThreadSafeWeakPtr<ScrollingLayerWC> m_parent WTF_GUARDED_BY_LOCK(m_lock);
+     RefPtr<ScrollingLayerWC> m_mask WTF_GUARDED_BY_LOCK(m_lock);
++    uint64_t m_pendingMainRevision { 0 }, m_lastAsyncRevision { 0 };
+     std::optional<FloatPoint> m_pendingPosition WTF_GUARDED_BY_LOCK(m_lock), m_pendingBoundsOrigin WTF_GUARDED_BY_LOCK(m_lock);
+     std::optional<FloatPoint> m_scrollingPosition WTF_GUARDED_BY_LOCK(m_lock), m_scrollingBoundsOrigin WTF_GUARDED_BY_LOCK(m_lock);
+ };
+--- a/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
++++ b/Source/WebCore/platform/graphics/wc/ScrollingLayerWC.cpp
+@@ -48,10 +48,12 @@
+     for (auto& child : layer.children()) {
+         if (auto* scrolling = child->scrollingLayerWC()) children.append(*scrolling);
+     }
++    auto mainRevision = m_scene->mainThreadUpdateRevision();
+     Vector<Ref<ScrollingLayerWC>> oldChildren;
+     {
+         Locker locker { m_lock };
+         oldChildren = std::exchange(m_children, WTF::move(children));
++        m_pendingMainRevision = mainRevision;
+         m_pendingPosition = layer.position();
+         m_pendingBoundsOrigin = layer.boundsOrigin();
+         m_anchorPoint = layer.anchorPoint(); m_size = layer.size();
+@@ -87,12 +89,14 @@
+     Locker locker { m_lock };
+     return m_position - toFloatSize(m_anchorPoint.xy()) * m_size;
+ }
+-std::optional<WCScrollLayerPosition> ScrollingLayerWC::takePositionUpdate()
++std::optional<WCScrollLayerPosition> ScrollingLayerWC::takePositionUpdate(uint64_t revision)
+ {
+     Locker locker { m_lock };
+     WCScrollLayerPosition result { m_identifier };
+     // Match coordinated graphics: an asynchronous position takes priority over
+     // the main thread's older pending value. Do not add deltas twice.
++    if (m_scrollingPosition || m_scrollingBoundsOrigin) m_lastAsyncRevision = revision;
++    if (m_pendingMainRevision < m_lastAsyncRevision) m_pendingPosition = m_pendingBoundsOrigin = std::nullopt;
+     auto position = m_scrollingPosition ? std::exchange(m_scrollingPosition, std::nullopt) : m_pendingPosition;
+     auto origin = m_scrollingBoundsOrigin ? std::exchange(m_scrollingBoundsOrigin, std::nullopt) : m_pendingBoundsOrigin;
+     m_pendingPosition = m_pendingBoundsOrigin = std::nullopt;
+@@ -128,36 +132,85 @@
+     Locker locker { m_lock };
+     m_completedRevision = std::max(m_completedRevision, std::min(revision, m_publishedRevision));
+ }
+-void ScrollingSceneWC::requestComposition()
++WCScrollLayerPosition ScrollingLayerWC::committedPosition()
++{
++    Locker locker { m_lock };
++    return { m_identifier, m_position, m_boundsOrigin, 3 };
++}
++
++Vector<Ref<ScrollingLayerWC>> ScrollingSceneWC::layers() const
++{
++    Locker locker { m_lock };
++    Vector<Ref<ScrollingLayerWC>> result;
++    // Resolve strong references without dropping the last one under the registry
++    // lock: a layer destructor unregisters itself from this scene.
++    for (auto& entry : m_layers) {
++        if (RefPtr layer = entry.value.get()) result.append(layer.releaseNonNull());
++    }
++    return result;
++}
++
++void ScrollingSceneWC::beginMainThreadUpdate()
++{
++    Locker locker { m_lock };
++    m_mainThreadRevision = m_revision;
++}
++
++uint64_t ScrollingSceneWC::mainThreadUpdateRevision() const
++{
++    Locker locker { m_lock };
++    return m_mainThreadRevision;
++}
++
++WCScrollUpdate ScrollingSceneWC::commitMainThreadState(FloatPoint position)
+ {
+     Locker publicationLocker { m_publicationLock };
+-    Vector<Ref<ScrollingLayerWC>> layers;
+-    Publisher publish;
+-    uint64_t revision;
++    WCScrollUpdate update;
+     {
+         Locker locker { m_lock };
+-        // Retain resolved layers until after the registry lock is released.
+-        // Dropping the last reference under that lock would reenter removeLayer.
+-        Vector<PlatformLayerIdentifier> expired;
+-        for (auto& entry : m_layers) {
+-            if (RefPtr layer = entry.value.get()) layers.append(layer.releaseNonNull());
+-            else expired.append(entry.key);
++        update.revision = ++m_revision;
++        if (m_rootScrollRevision <= m_mainThreadRevision) m_rootScrollPosition = position;
++        update.rootScrollPosition = m_rootScrollPosition;
++        m_publishedRevision = update.revision;
++    }
++    for (auto& layer : layers()) {
++        layer->takePositionUpdate(update.revision);
++        // The normal scene must carry the current absolute positions, including
++        // asynchronous changes newer than the main thread's rendering snapshot.
++        update.layers.append(layer->committedPosition());
++    }
++    return update;
++}
++
++void ScrollingSceneWC::requestComposition(std::optional<FloatPoint> position, WCScrollInput input)
++{
++    Locker publicationLocker { m_publicationLock };
++    Publisher publish;
++    WCScrollUpdate update;
++    {
++        Locker locker { m_lock };
++        publish = m_publisher;
++        if (!publish) {
++            if (position) { m_rootScrollPosition = *position; m_rootScrollRevision = m_revision + 1; }
++            return;
+         }
+-        for (auto identifier : expired) m_layers.remove(identifier);
+-        publish = m_publisher;
+-        if (!publish) return;
+-        revision = ++m_revision;
+-    }
+-    Vector<WCScrollLayerPosition> updates;
+-    for (auto& layer : layers) {
+-        if (auto update = layer->takePositionUpdate()) updates.append(WTF::move(*update));
+-    }
+-    if (publish && !updates.isEmpty()) {
++        update.revision = ++m_revision;
++        if (position) {
++            m_rootScrollPosition = *position;
++            m_rootScrollRevision = update.revision;
++        }
++        update.rootScrollPosition = m_rootScrollPosition;
++        update.input = input;
++    }
++    for (auto& layer : layers()) {
++        if (auto row = layer->takePositionUpdate(update.revision)) update.layers.append(WTF::move(*row));
++    }
++    if (!update.layers.isEmpty()) {
+         {
+             Locker locker { m_lock };
+-            m_publishedRevision = revision;
++            m_publishedRevision = update.revision;
+         }
+-        publish(revision, WTF::move(updates));
++        publish(WTF::move(update));
+     }
+ }
+ ScrollingPlatformLayer* LayerRepresentation::platformLayerFromGraphicsLayer(GraphicsLayer& layer)
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.cpp
+@@ -93,7 +93,11 @@
+ 
+     if (ScrollingThread::isCurrentThread()) {
+         auto rootContentsLayer = static_cast<ScrollingTreeFrameScrollingNodeCoordinated*>(rootScrollingNode)->rootContentsLayer();
++#if USE(GRAPHICS_LAYER_WC)
++        rootContentsLayer->requestComposition(CompositionReason::AsyncScrolling, rootScrollingNode->currentScrollPosition(), m_hostInput);
++#else
+         rootContentsLayer->requestComposition(CompositionReason::AsyncScrolling);
++#endif
+     }
+ }
+ 
+--- a/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
++++ b/Source/WebCore/page/scrolling/coordinated/ScrollingTreeCoordinated.h
+@@ -30,6 +30,9 @@
+ #if ENABLE(ASYNC_SCROLLING) && (USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_WC))
+ 
+ #include "ThreadedScrollingTree.h"
++#if USE(GRAPHICS_LAYER_WC)
++#include "ScrollingSceneWC.h"
++#endif
+ 
+ namespace WebCore {
+ 
+@@ -38,9 +41,15 @@
+     static Ref<ScrollingTreeCoordinated> create(AsyncScrollingCoordinator&);
+ 
+     void didCompletePlatformRenderingUpdate();
++#if USE(GRAPHICS_LAYER_WC)
++    void noteHostInput(uint64_t sequence, double eventSeconds, double dispatchSeconds) { m_hostInput = { sequence, eventSeconds, dispatchSeconds }; }
++#endif
+ 
+ private:
+     explicit ScrollingTreeCoordinated(AsyncScrollingCoordinator&);
++#if USE(GRAPHICS_LAYER_WC)
++    WCScrollInput m_hostInput;
++#endif
+ 
+     bool isScrollingTreeCoordinated() const final { return true; }
+ 
+--- a/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
++++ b/Source/WebKit/WebProcess/WebPage/EventDispatcher.cpp
+@@ -25,6 +25,10 @@
+ 
+ #include "config.h"
+ #include "EventDispatcher.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include "HostFrameClockWin.h"
++#include <WebCore/ScrollingTreeCoordinated.h>
++#endif
+ 
+ #include "EventDispatcherMessages.h"
+ #include "MomentumEventDispatcher.h"
+@@ -174,7 +178,13 @@
+                 return;
+             }
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            downcast<ScrollingTreeCoordinated>(*scrollingTree).noteHostInput(wheelEvent->hostInputSequence(), wheelEvent->hostInputSeconds(), hostFrameClockSeconds());
++#endif
+             auto result = scrollingTree->handleWheelEvent(platformWheelEvent, processingSteps);
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            if (result.wasHandled) scrollingTree->serviceHostScrollInput();
++#endif
+ 
+             if (result.needsMainThreadProcessing()) {
+                 if (result.steps.contains(WheelEventProcessingSteps::SynchronousScrolling)) {
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
+@@ -30,6 +30,9 @@
+ #include "WCBackingStore.h"
+ #if PLATFORM(WIN)
+ #include "UpdateInfo.h"
++#if ENABLE(ASYNC_SCROLLING)
++#include <WebCore/ScrollingSceneWC.h>
++#endif
+ #endif
+ #include "WCContentBufferIdentifier.h"
+ #include <WebCore/GraphicsLayer.h>
+@@ -132,6 +135,12 @@
+     uint64_t hostPageProxyID { 0 }, hostBackingStateID { 0 };
+     WebCore::IntSize hostLogicalSize;
+     float hostBackingScale { 1 };
++#if ENABLE(ASYNC_SCROLLING)
++    uint64_t hostScrollRevision { 0 };
++    bool hostScrollingOnly { false };
++    WebCore::FloatPoint hostRootScrollPosition;
++    WebCore::IntSize hostDocumentSize;
++#endif
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
+@@ -23,6 +23,25 @@
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+ header: "WCUpdateInfo.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++[CustomHeader] struct WebCore::WCScrollInput {
++    uint64_t sequence;
++    double eventSeconds;
++    double dispatchSeconds;
++}
++[CustomHeader] struct WebCore::WCScrollLayerPosition {
++    WebCore::PlatformLayerIdentifier identifier;
++    WebCore::FloatPoint position;
++    WebCore::FloatPoint boundsOrigin;
++    uint32_t changed;
++}
++[CustomHeader] struct WebCore::WCScrollUpdate {
++    uint64_t revision;
++    WebCore::FloatPoint rootScrollPosition;
++    WebCore::WCScrollInput input;
++    Vector<WebCore::WCScrollLayerPosition> layers;
++}
++#endif
+ 
+ [CustomHeader] struct WebKit::WCTileUpdate {
+     WebCore::TextureMapperSparseBackingStore::TileIndex index;
+@@ -118,6 +137,12 @@
+     uint64_t hostBackingStateID;
+     WebCore::IntSize hostLogicalSize;
+     float hostBackingScale;
++#if ENABLE(ASYNC_SCROLLING)
++    uint64_t hostScrollRevision;
++    bool hostScrollingOnly;
++    WebCore::FloatPoint hostRootScrollPosition;
++    WebCore::IntSize hostDocumentSize;
++#endif
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/Shared/UpdateInfo.h
++++ b/Source/WebKit/Shared/UpdateInfo.h
+@@ -67,6 +67,8 @@
+ struct HostFrameTiming {
+     uint64_t frameID { 0 };
+     uint64_t inputSequence { 0 };
++    uint64_t sourceFrameID { 0 }, scrollRevision { 0 }, documentEpoch { 0 }, geometryEpoch { 0 };
++    double scrollX { 0 }, scrollY { 0 };
+     double inputEventSeconds { 0 };
+     double inputDispatchSeconds { 0 };
+     double renderStartSeconds { 0 };
+--- a/Source/WebKit/Shared/UpdateInfo.serialization.in
++++ b/Source/WebKit/Shared/UpdateInfo.serialization.in
+@@ -47,6 +47,12 @@
+ [CustomHeader] struct WebKit::HostFrameTiming {
+     uint64_t frameID;
+     uint64_t inputSequence;
++    uint64_t sourceFrameID;
++    uint64_t scrollRevision;
++    uint64_t documentEpoch;
++    uint64_t geometryEpoch;
++    double scrollX;
++    double scrollY;
+     double inputEventSeconds;
+     double inputDispatchSeconds;
+     double renderStartSeconds;
+--- a/Source/WebKit/WebProcess/GPU/graphics/wc/RemoteWCLayerTreeHostProxy.h
++++ b/Source/WebKit/WebProcess/GPU/graphics/wc/RemoteWCLayerTreeHostProxy.h
+@@ -34,6 +34,10 @@
+ #include "WCLayerTreeHostIdentifier.h"
+ #include <wtf/TZoneMalloc.h>
+ #include <wtf/WeakRef.h>
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include <WebCore/ScrollingSceneWC.h>
++#include <wtf/WorkQueue.h>
++#endif
+ 
+ namespace WebKit {
+ 
+@@ -50,6 +54,9 @@
+ 
+     void update(WCUpdateInfo&&, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&&);
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    void bindScrollingScene(WebCore::ScrollingSceneWC&, uint64_t documentEpoch, uint64_t backingStateID);
++#endif
+     WTF_ABSTRACT_THREAD_SAFE_REF_COUNTED_AND_CAN_MAKE_WEAK_PTR_IMPL;
+ 
+ private:
+@@ -68,6 +75,10 @@
+     WCLayerTreeHostIdentifier m_wcLayerTreeHostIdentifier { WCLayerTreeHostIdentifier::generate() };
+     WeakRef<WebPage> m_page;
+     bool m_usesOffscreenRendering { false };
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    ThreadSafeWeakPtr<WebCore::ScrollingSceneWC> m_scrollingScene;
++    Ref<WorkQueue> m_scrollReplies { WorkQueue::create("WCScrollingReplies"_s) };
++#endif
+ };
+ 
+ } // namespace WebKit
+--- a/Source/WebKit/WebProcess/GPU/graphics/wc/RemoteWCLayerTreeHostProxy.cpp
++++ b/Source/WebKit/WebProcess/GPU/graphics/wc/RemoteWCLayerTreeHostProxy.cpp
+@@ -89,8 +89,33 @@
+ 
+ void RemoteWCLayerTreeHostProxy::update(WCUpdateInfo&& updateInfo, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&& completionHandler)
+ {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    auto revision = updateInfo.hostScrollRevision;
++    sendWithAsyncReply(Messages::RemoteWCLayerTreeHost::Update(updateInfo),
++        [scene = m_scrollingScene, revision, completionHandler = WTF::move(completionHandler)](std::optional<UpdateInfo> result) mutable {
++            if (RefPtr liveScene = scene.get()) liveScene->didCompleteComposition(revision);
++            completionHandler(WTF::move(result));
++        });
++#else
+     sendWithAsyncReply(Messages::RemoteWCLayerTreeHost::Update(updateInfo), WTF::move(completionHandler));
++#endif
+ }
++
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void RemoteWCLayerTreeHostProxy::bindScrollingScene(WebCore::ScrollingSceneWC& scene, uint64_t epoch, uint64_t stateID)
++{
++    ASSERT(isMainRunLoop());
++    m_scrollingScene = scene;
++    Ref connection = ensureGPUProcessConnection().connection();
++    scene.setPublisher([connection = WTF::move(connection), destination = messageSenderDestinationID(), epoch, stateID,
++        weakScene = ThreadSafeWeakPtr { scene }, replies = m_scrollReplies.copyRef()](WebCore::WCScrollUpdate&& update) mutable {
++        connection->sendWithAsyncReplyOnDispatcher(Messages::RemoteWCLayerTreeHost::UpdateScroll(epoch, stateID, WTF::move(update)), replies.get(),
++            [weakScene](uint64_t completedRevision) {
++                if (RefPtr scene = weakScene.get()) scene->didCompleteComposition(completedRevision);
++            }, destination);
++    });
++}
++#endif
+ 
+ } // namespace WebKit
+ 
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -29,6 +29,11 @@
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+ #include "DrawingAreaProxyMessages.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include "EventDispatcher.h"
++#include <WebCore/ScrollingCoordinator.h>
++#include <wtf/text/StringBuilder.h>
++#endif
+ #include "GraphicsLayerWC.h"
+ #include "ImageBufferShareableBitmapBackend.h"
+ #include "MessageSenderInlines.h"
+@@ -44,9 +49,11 @@
+ #include <WebCore/ImageBuffer.h>
+ #include <WebCore/LocalFrame.h>
+ #include <WebCore/LocalFrameView.h>
++#include <WebCore/DocumentView.h>
+ #include <WebCore/Page.h>
+ #include <WebCore/Settings.h>
+ #include <cmath>
++#include <algorithm>
+ #include <wtf/Borrow.h>
+ #include <wtf/text/MakeString.h>
+ 
+@@ -67,9 +74,46 @@
+ 
+ DrawingAreaWC::~DrawingAreaWC()
+ {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    m_scrollingScene->setPublisher({ });
++    unregisterScrollingTree();
++#endif
+     while (auto layer = m_liveGraphicsLayers.removeHead())
+         layer->clearObserver();
+ }
++
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void DrawingAreaWC::registerScrollingTree()
++{
++    if (m_scrollingTreeRegistered) return;
++    WebProcess::singleton().eventDispatcher().addScrollingTreeForPage(m_webPage);
++    m_scrollingTreeRegistered = true;
++}
++void DrawingAreaWC::unregisterScrollingTree()
++{
++    if (!m_scrollingTreeRegistered) return;
++    WebProcess::singleton().eventDispatcher().removeScrollingTreeForPage(m_webPage);
++    m_scrollingTreeRegistered = false;
++}
++#endif
++
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void DrawingAreaWC::requestHostScrollingState(CompletionHandler<void(const String&)>&& completion)
++{
++    auto& settings = m_webPage->corePage()->settings();
++    StringBuilder state;
++    state.append("frame surface: "_s, m_hostFrameSurfaceEnabled ? "yes"_s : "no"_s,
++        "; registered: "_s, m_scrollingTreeRegistered ? "yes"_s : "no"_s,
++        "; coordinator enabled: "_s, settings.scrollingCoordinatorEnabled() ? "yes"_s : "no"_s,
++        "; async frame: "_s, settings.asyncFrameScrollingEnabled() ? "yes"_s : "no"_s,
++        "; async overflow: "_s, settings.asyncOverflowScrollingEnabled() ? "yes"_s : "no"_s, "\n"_s);
++    if (RefPtr coordinator = m_webPage->scrollingCoordinator()) {
++        state.append(coordinator->scrollingStateTreeAsText(debugScrollingStateTreeAsTextBehaviors), "\n"_s);
++        state.append(coordinator->scrollingTreeAsText(debugScrollingStateTreeAsTextBehaviors));
++    }
++    completion(state.toString());
++}
++#endif
+ 
+ GraphicsLayerFactory* DrawingAreaWC::graphicsLayerFactory()
+ {
+@@ -271,7 +315,14 @@
+ #if PLATFORM(WIN)
+     m_hostFrameTiming = webPage->hostFrameTiming();
+     m_hostFrameTiming.frameID = ++m_hostFrameID;
++#if ENABLE(ASYNC_SCROLLING)
++    m_hostFrameTiming.frameID *= 2; // Even main frames, odd independent scroll frames.
++#endif
++    m_hostFrameTiming.sourceFrameID = m_hostFrameTiming.frameID;
+     m_hostFrameTiming.renderStartSeconds = hostFrameClockSeconds();
++#endif
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    m_scrollingScene->beginMainThreadUpdate();
+ #endif
+     webPage->updateRendering();
+     webPage->flushPendingEditorStateUpdate();
+@@ -283,6 +334,12 @@
+     willStartRenderingUpdateDisplay();
+ #if PLATFORM(WIN)
+     m_hostFrameEdges = webPage->hostFrameEdges();
++    if (auto* frame = webPage->mainWebFrame().coreLocalFrame()) {
++        if (auto* frameView = frame->view()) {
++            m_hostFrameTiming.scrollX = frameView->scrollPosition().x();
++            m_hostFrameTiming.scrollY = frameView->scrollPosition().y();
++        }
++    }
+     m_hostFrameEdges.frameID = m_hostFrameTiming.frameID;
+     m_hostFrameTiming.renderEndSeconds = hostFrameClockSeconds();
+ #endif
+@@ -334,6 +391,26 @@
+         if (rootLayer.viewOverlayRootLayer)
+             rootLayer.viewOverlayRootLayer->flushCompositingState(visibleRect);
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++        if (isMainFrame && m_hostFrameSurfaceEnabled) {
++            auto* frameView = frame->coreLocalFrame() ? frame->coreLocalFrame()->view() : nullptr;
++            auto scrolling = m_scrollingScene->commitMainThreadState(frameView ? frameView->scrollPosition() : IntPoint { });
++            m_updateInfo.hostScrollRevision = scrolling.revision;
++            m_updateInfo.hostRootScrollPosition = scrolling.rootScrollPosition;
++            if (frameView) m_updateInfo.hostDocumentSize = frameView->contentsSize();
++            for (auto& position : scrolling.layers) {
++                auto found = std::ranges::find_if(m_updateInfo.changedLayers, [&](auto& layer) { return layer.id == position.identifier; });
++                if (found == m_updateInfo.changedLayers.end()) {
++                    WCLayerUpdateInfo row { .id = position.identifier };
++                    m_updateInfo.changedLayers.append(WTF::move(row));
++                    found = m_updateInfo.changedLayers.end() - 1;
++                }
++                found->changes.add(WCLayerChange::Position); found->changes.add(WCLayerChange::BoundsOrigin);
++                found->position = position.position; found->boundsOrigin = position.boundsOrigin;
++            }
++            m_remoteWCLayerTreeHostProxy->bindScrollingScene(m_scrollingScene, m_updateInfo.hostEdges.documentEpoch, m_backingStoreStateID);
++        }
++#endif
+         auto fence = m_webPage->ensureRemoteRenderingBackendProxy().flushImageBuffers();
+ 
+         m_commitQueue->dispatch([this, weakThis = WeakPtr(*this), stateID = m_backingStoreStateID, logicalSize = size, backingScale = m_webPage->intrinsicDeviceScaleFactor(), updateInfo = std::exchange(m_updateInfo, { }), fence = WTF::move(fence), willCallDisplayDidRefresh]() mutable {
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCScene.h
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCScene.h
+@@ -46,6 +46,11 @@
+ 
+ class WCSceneContext;
+ struct WCUpdateInfo;
++}
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++namespace WebCore { struct WCScrollUpdate; }
++#endif
++namespace WebKit {
+ 
+ class WCScene {
+     WTF_MAKE_TZONE_ALLOCATED(WCScene);
+@@ -54,6 +59,9 @@
+     ~WCScene();
+     void initialize(WCSceneContext&);
+     std::optional<UpdateInfo> update(WCUpdateInfo&&);
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    std::optional<UpdateInfo> updateScroll(uint64_t epoch, uint64_t stateID, WebCore::WCScrollUpdate&&);
++#endif
+ 
+ private:
+     struct Layer;
+@@ -64,6 +72,11 @@
+     std::unique_ptr<WebCore::TextureMapper> m_textureMapper;
+     WebCore::TextureMapperFPSCounter m_fpsCounter;
+     LayerMap m_layers;
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    std::unique_ptr<WCUpdateInfo> m_hostFrameState;
++    uint64_t m_scrollRevision { 0 };
++    WebCore::FloatPoint m_rootScrollPosition;
++#endif
+     bool m_usesOffscreenRendering;
+ };
+ 
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
+@@ -25,6 +25,8 @@
+ 
+ #include "config.h"
+ #include "WCScene.h"
++#include <algorithm>
++#include <cmath>
+ 
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+@@ -67,6 +69,9 @@
+         texmapLayer.setContentsLayer(nullptr);
+     }
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    uint64_t scrollRevision { 0 };
++#endif
+     WebCore::TextureMapperLayer texmapLayer;
+     std::unique_ptr<WebCore::TextureMapperSparseBackingStore> backingStore;
+     std::unique_ptr<WebCore::TextureMapperLayer> backdropLayer;
+@@ -101,6 +106,42 @@
+     if (!m_context->makeContextCurrent())
+         return std::nullopt;
+     m_textureMapper->releaseUnusedTexturesNow();
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    if (update.hostFrameSurfaceEnabled && !update.remoteContextHostedIdentifier) {
++        const bool newGeometry = !m_hostFrameState || update.hostEdges.documentEpoch != m_hostFrameState->hostEdges.documentEpoch
++            || update.hostBackingStateID != m_hostFrameState->hostBackingStateID;
++        if (newGeometry) {
++            m_scrollRevision = 0;
++            for (auto& layer : m_layers.values()) layer->scrollRevision = 0;
++        }
++        if (newGeometry || update.hostScrollRevision >= m_scrollRevision)
++            m_rootScrollPosition = update.hostRootScrollPosition;
++        m_scrollRevision = std::max(m_scrollRevision, update.hostScrollRevision);
++        if (!update.hostScrollingOnly) {
++            // Keep only immutable frame geometry/metadata, never paint handles.
++            if (!m_hostFrameState) m_hostFrameState = makeUniqueWithoutFastMallocCheck<WCUpdateInfo>();
++            auto& retained = *m_hostFrameState;
++            retained.viewport = update.viewport; retained.rootLayer = update.rootLayer;
++            retained.hostEdges = update.hostEdges; retained.hostTiming = update.hostTiming;
++            retained.hostFrameSurfaceEnabled = true;
++            retained.hostPageProxyID = update.hostPageProxyID; retained.hostBackingStateID = update.hostBackingStateID;
++            retained.hostLogicalSize = update.hostLogicalSize; retained.hostBackingScale = update.hostBackingScale;
++            retained.hostScrollRevision = update.hostScrollRevision; retained.hostDocumentSize = update.hostDocumentSize;
++            retained.hostRootScrollPosition = update.hostRootScrollPosition;
++            update.hostTiming.sourceFrameID = update.hostTiming.frameID;
++        }
++        // Recompute only the native document boundary from the real root scroll.
++        // Layout, contents size and fixed/sticky constraints stay engine-owned.
++        auto& edge = update.hostEdges;
++        auto width = update.hostLogicalSize.width() - edge.insetLeft - edge.insetRight;
++        auto height = update.hostLogicalSize.height() - edge.insetTop - edge.insetBottom;
++        edge.flowLeft = std::lround(edge.insetLeft - std::clamp<float>(m_rootScrollPosition.x(), 0, edge.insetLeft));
++        edge.flowTop = std::lround(edge.insetTop - std::clamp<float>(m_rootScrollPosition.y(), 0, edge.insetTop));
++        edge.flowRight = std::lround(edge.insetLeft + width + std::clamp<float>(update.hostDocumentSize.width() - m_rootScrollPosition.x() - width, 0, edge.insetRight));
++        edge.flowBottom = std::lround(edge.insetTop + height + std::clamp<float>(update.hostDocumentSize.height() - m_rootScrollPosition.y() - height, 0, edge.insetBottom));
++        update.hostTiming.scrollX = m_rootScrollPosition.x(); update.hostTiming.scrollY = m_rootScrollPosition.y();
++    }
++#endif
+ 
+     for (auto id : update.addedLayers) {
+         auto layer = makeUnique<Layer>();
+@@ -109,6 +150,7 @@
+ 
+     for (auto& layerUpdate : update.changedLayers) {
+         auto layer = m_layers.get(layerUpdate.id);
++        if (!layer) continue;
+         if (layerUpdate.changes & WCLayerChange::Children) {
+             layer->texmapLayer.setChildren(WTF::map(layerUpdate.children, [&](auto id) {
+                 return &m_layers.get(id)->texmapLayer;
+@@ -126,14 +168,24 @@
+                 replicaLayer = &m_layers.get(*layerUpdate.replicaLayer)->texmapLayer;
+             layer->texmapLayer.setReplicaLayer(replicaLayer);
+         }
+-        if (layerUpdate.changes & WCLayerChange::Position)
+-            layer->texmapLayer.setPosition(layerUpdate.position);
++        if ((layerUpdate.changes & WCLayerChange::Position)
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            && update.hostScrollRevision >= layer->scrollRevision
++#endif
++        ) layer->texmapLayer.setPosition(layerUpdate.position);
+         if (layerUpdate.changes & WCLayerChange::AnchorPoint)
+             layer->texmapLayer.setAnchorPoint(layerUpdate.anchorPoint);
+         if (layerUpdate.changes & WCLayerChange::Size)
+             layer->texmapLayer.setSize(layerUpdate.size);
+-        if (layerUpdate.changes & WCLayerChange::BoundsOrigin)
+-            layer->texmapLayer.setBoundsOrigin(layerUpdate.boundsOrigin);
++        if ((layerUpdate.changes & WCLayerChange::BoundsOrigin)
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++            && update.hostScrollRevision >= layer->scrollRevision
++#endif
++        ) layer->texmapLayer.setBoundsOrigin(layerUpdate.boundsOrigin);
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++        if (layerUpdate.changes.containsAny({ WCLayerChange::Position, WCLayerChange::BoundsOrigin }))
++            layer->scrollRevision = std::max(layer->scrollRevision, update.hostScrollRevision);
++#endif
+         if (layerUpdate.changes & WCLayerChange::Preserves3D)
+             layer->texmapLayer.setPreserves3D(layerUpdate.preserves3D);
+         if (layerUpdate.changes & WCLayerChange::ContentsRect)
+@@ -251,6 +303,7 @@
+     for (auto id : update.removedLayers)
+         m_layers.remove(id);
+ 
++    if (!update.rootLayer || !m_layers.contains(*update.rootLayer)) return std::nullopt;
+     auto rootLayer = &m_layers.get(*update.rootLayer)->texmapLayer;
+     rootLayer->applyAnimationsRecursively(MonotonicTime::now());
+ 
+@@ -348,6 +401,49 @@
+     return result;
+ }
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++std::optional<UpdateInfo> WCScene::updateScroll(uint64_t epoch, uint64_t stateID, WebCore::WCScrollUpdate&& scrolling)
++{
++    if (!m_hostFrameState || epoch != m_hostFrameState->hostEdges.documentEpoch
++        || stateID != m_hostFrameState->hostBackingStateID || scrolling.revision <= m_scrollRevision)
++        return std::nullopt;
++    auto& retained = *m_hostFrameState;
++    WCUpdateInfo update;
++    update.viewport = retained.viewport; update.rootLayer = retained.rootLayer;
++    update.hostFrameSurfaceEnabled = true; update.hostScrollingOnly = true;
++    update.hostPageProxyID = retained.hostPageProxyID; update.hostBackingStateID = stateID;
++    update.hostLogicalSize = retained.hostLogicalSize; update.hostBackingScale = retained.hostBackingScale;
++    update.hostDocumentSize = retained.hostDocumentSize; update.hostEdges = retained.hostEdges;
++    update.hostScrollRevision = scrolling.revision; update.hostRootScrollPosition = scrolling.rootScrollPosition;
++    // Distinct IDs and zero main-render stages avoid attributing a cached paint
++    // to each independently composed scroll frame.
++    update.hostTiming.frameID = scrolling.revision * 2 + 1;
++    update.hostTiming.sourceFrameID = retained.hostTiming.frameID;
++    update.hostTiming.scrollRevision = scrolling.revision;
++    update.hostTiming.inputSequence = scrolling.input.sequence;
++    update.hostTiming.inputEventSeconds = scrolling.input.eventSeconds;
++    update.hostTiming.inputDispatchSeconds = scrolling.input.dispatchSeconds;
++    update.hostTiming.commitSeconds = hostFrameClockSeconds();
++    update.hostEdges.frameID = update.hostTiming.frameID;
++    for (auto& position : scrolling.layers) {
++        if (!m_layers.contains(position.identifier)) continue;
++        WCLayerUpdateInfo row { .id = position.identifier };
++        if (position.changed & 1) row.changes.add(WCLayerChange::Position);
++        if (position.changed & 2) row.changes.add(WCLayerChange::BoundsOrigin);
++        row.position = position.position; row.boundsOrigin = position.boundsOrigin;
++        update.changedLayers.append(WTF::move(row));
++    }
++    if (update.changedLayers.isEmpty()) return std::nullopt;
++    auto result = this->update(WTF::move(update));
++    if (result) {
++        result->viewSize = retained.hostLogicalSize; result->deviceScaleFactor = retained.hostBackingScale;
++        result->updateRectBounds = WebCore::IntRect({ }, retained.hostLogicalSize);
++        result->updateRects.clear(); result->updateRects.append(result->updateRectBounds);
++    }
++    return result;
++}
++#endif
++
+ } // namespace WebKit
+ 
+ #endif // USE(GRAPHICS_LAYER_WC)
+--- a/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.h
++++ b/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.h
+@@ -36,6 +36,10 @@
+ #include <wtf/RefCounted.h>
+ #include <wtf/TZoneMalloc.h>
+ #include <wtf/WeakPtr.h>
++#include <wtf/Deque.h>
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include <WebCore/ScrollingSceneWC.h>
++#endif
+ 
+ namespace IPC {
+ class StreamConnectionWorkQueue;
+@@ -54,6 +58,9 @@
+     ~RemoteWCLayerTreeHost();
+     // message handlers
+     void update(WCUpdateInfo&&, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&&);
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    void updateScroll(uint64_t epoch, uint64_t stateID, WebCore::WCScrollUpdate&&, CompletionHandler<void(uint64_t)>&&);
++#endif
+ 
+     void ref() const final { RefCounted::ref(); }
+     void deref() const final { RefCounted::deref(); }
+@@ -62,8 +69,16 @@
+     RemoteWCLayerTreeHost(GPUConnectionToWebProcess&, WebKit::WCLayerTreeHostIdentifier, uint64_t nativeWindow, bool usesOffscreenRendering);
+ 
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+-    void publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&&, CompletionHandler<void(std::optional<UpdateInfo>)>&&);
++    void publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&&, CompletionHandler<void(bool)>&&);
++    void drainHostUpdates();
++    struct PendingSceneUpdate;
++    struct PendingScrollUpdate;
++    Deque<std::unique_ptr<PendingSceneUpdate>> m_pendingSceneUpdates;
++    std::unique_ptr<PendingScrollUpdate> m_pendingScrollUpdate;
++    bool m_hostFrameBusy { false };
++    uint64_t m_hostPageProxyID { 0 };
+ #endif
++    void dispatchUpdate(WCUpdateInfo&&, CompletionHandler<void(std::optional<UpdateInfo>)>&&);
+     // IPC::MessageReceiver
+     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+     // IPC::MessageSender
+@@ -75,6 +90,7 @@
+     WCLayerTreeHostIdentifier m_identifier;
+     RefPtr<WCSharedSceneContextHolder::Holder> m_sharedSceneContextHolder;
+     std::unique_ptr<WCScene> m_scene;
++    bool m_usesOffscreenRendering { false };
+ };
+ 
+ IPC::StreamConnectionWorkQueue& remoteGraphicsStreamWorkQueue();
+--- a/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.cpp
+@@ -25,6 +25,8 @@
+ 
+ #include "config.h"
+ #include "RemoteWCLayerTreeHost.h"
++#include <algorithm>
++#include <cmath>
+ 
+ #if USE(GRAPHICS_LAYER_WC)
+ 
+@@ -60,6 +62,24 @@
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteWCLayerTreeHost);
+ 
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++struct RemoteWCLayerTreeHost::PendingSceneUpdate {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(RemoteWCLayerTreeHost::PendingSceneUpdate);
++public:
++    WCUpdateInfo update;
++    CompletionHandler<void(std::optional<UpdateInfo>)> completion;
++};
++struct RemoteWCLayerTreeHost::PendingScrollUpdate {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(RemoteWCLayerTreeHost::PendingScrollUpdate);
++public:
++    uint64_t epoch, stateID;
++    WebCore::WCScrollUpdate update;
++    CompletionHandler<void(uint64_t)> completion;
++};
++#endif
++
++
++
+ Ref<RemoteWCLayerTreeHost> RemoteWCLayerTreeHost::create(GPUConnectionToWebProcess& connectionToWebProcess, WebKit::WCLayerTreeHostIdentifier identifier, uint64_t nativeWindow, bool usesOffscreenRendering)
+ {
+     return adoptRef(*new RemoteWCLayerTreeHost(connectionToWebProcess, identifier, nativeWindow, usesOffscreenRendering));
+@@ -70,6 +90,7 @@
+     , m_webProcessIdentifier(connectionToWebProcess.webProcessIdentifier())
+     , m_identifier(identifier)
+     , m_sharedSceneContextHolder(connectionToWebProcess.gpuProcess().sharedSceneContext().ensureHolderForWindow(nativeWindow))
++    , m_usesOffscreenRendering(usesOffscreenRendering)
+ {
+     m_connectionToWebProcess->messageReceiverMap().addMessageReceiver(Messages::RemoteWCLayerTreeHost::messageReceiverName(), m_identifier.toUInt64(), *this);
+     m_scene = makeUnique<WCScene>(m_webProcessIdentifier, usesOffscreenRendering);
+@@ -83,6 +104,10 @@
+ 
+ RemoteWCLayerTreeHost::~RemoteWCLayerTreeHost()
+ {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    for (auto& pending : m_pendingSceneUpdates) pending->completion(std::nullopt);
++    if (m_pendingScrollUpdate) m_pendingScrollUpdate->completion(0);
++#endif
+     ASSERT(m_connectionToWebProcess);
+     m_connectionToWebProcess->messageReceiverMap().removeMessageReceiver(Messages::RemoteWCLayerTreeHost::messageReceiverName(), m_identifier.toUInt64());
+     auto sceneContextHolder = m_connectionToWebProcess->gpuProcess().sharedSceneContext().removeHolder(m_sharedSceneContextHolder.releaseNonNull());
+@@ -104,7 +129,90 @@
+     return m_identifier.toUInt64();
+ }
+ 
+-void RemoteWCLayerTreeHost::update(WCUpdateInfo&& update, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&& completionHandler)
++void RemoteWCLayerTreeHost::update(WCUpdateInfo&& update, CompletionHandler<void(std::optional<UpdateInfo>)>&& completion)
++{
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    if (m_usesOffscreenRendering) {
++        if (update.hostFrameSurfaceEnabled && !update.remoteContextHostedIdentifier) m_hostPageProxyID = update.hostPageProxyID;
++        m_pendingSceneUpdates.append(makeUnique<PendingSceneUpdate>(PendingSceneUpdate { WTF::move(update), WTF::move(completion) }));
++        drainHostUpdates();
++        return;
++    }
++#endif
++    dispatchUpdate(WTF::move(update), WTF::move(completion));
++}
++
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++void RemoteWCLayerTreeHost::updateScroll(uint64_t epoch, uint64_t stateID, WebCore::WCScrollUpdate&& update, CompletionHandler<void(uint64_t)>&& completion)
++{
++    if (!m_usesOffscreenRendering || !update.revision || update.revision >= (1ull << 63)
++        || !std::isfinite(update.rootScrollPosition.x()) || !std::isfinite(update.rootScrollPosition.y())) {
++        completion(0);
++        return;
++    }
++    for (auto& layer : update.layers) {
++        if (!layer.changed || (layer.changed & ~3u) || !std::isfinite(layer.position.x()) || !std::isfinite(layer.position.y())
++            || !std::isfinite(layer.boundsOrigin.x()) || !std::isfinite(layer.boundsOrigin.y())) {
++            completion(0); return;
++        }
++    }
++    if (m_pendingScrollUpdate) {
++        auto& pending = *m_pendingScrollUpdate;
++        if (pending.epoch == epoch && pending.stateID == stateID) {
++            if (update.revision <= pending.update.revision) { completion(0); return; }
++            for (auto& old : pending.update.layers) {
++                auto newer = std::ranges::find_if(update.layers, [&](auto& row) { return row.identifier == old.identifier; });
++                if (newer == update.layers.end()) update.layers.append(WTF::move(old));
++                else {
++                    if (!(newer->changed & 1) && (old.changed & 1)) newer->position = old.position;
++                    if (!(newer->changed & 2) && (old.changed & 2)) newer->boundsOrigin = old.boundsOrigin;
++                    newer->changed |= old.changed;
++                }
++            }
++        }
++        pending.completion(0); // Superseded; never pre-acknowledge the new revision.
++    }
++    m_pendingScrollUpdate = makeUnique<PendingScrollUpdate>(PendingScrollUpdate { epoch, stateID, WTF::move(update), WTF::move(completion) });
++    drainHostUpdates();
++}
++
++void RemoteWCLayerTreeHost::drainHostUpdates()
++{
++    ASSERT(isMainRunLoop());
++    if (m_hostFrameBusy) return;
++    if (!m_pendingSceneUpdates.isEmpty()) {
++        m_hostFrameBusy = true;
++        auto pending = m_pendingSceneUpdates.takeFirst();
++        dispatchUpdate(WTF::move(pending->update),
++            [weakThis = WeakPtr { *this }, completion = WTF::move(pending->completion)](std::optional<UpdateInfo> result) mutable {
++                completion(WTF::move(result));
++                if (weakThis) { weakThis->m_hostFrameBusy = false; weakThis->drainHostUpdates(); }
++            });
++        return;
++    }
++    if (!m_pendingScrollUpdate) return;
++    m_hostFrameBusy = true;
++    auto pending = WTF::move(m_pendingScrollUpdate);
++    remoteGraphicsStreamWorkQueue().dispatch([scene = m_scene.get(), weakThis = WeakPtr { *this }, pending = WTF::move(pending)]() mutable {
++        auto revision = pending->update.revision;
++        auto result = scene->updateScroll(pending->epoch, pending->stateID, WTF::move(pending->update));
++        RunLoop::mainSingleton().dispatch([weakThis, result = WTF::move(result), revision, stateID = pending->stateID,
++            completion = WTF::move(pending->completion)]() mutable {
++            auto finish = [weakThis, revision, completion = WTF::move(completion)](bool) mutable {
++                completion(revision);
++                if (weakThis) { weakThis->m_hostFrameBusy = false; weakThis->drainHostUpdates(); }
++            };
++            if (!weakThis || !result) { finish(false); return; }
++            // The retained scene belongs to this page; resolve its owner without
++            // consulting or waking the Web process main thread.
++            auto pageProxyID = weakThis->m_hostPageProxyID;
++            weakThis->publishHostFrame(pageProxyID, stateID, WTF::move(*result), WTF::move(finish));
++        });
++    });
++}
++#endif
++
++void RemoteWCLayerTreeHost::dispatchUpdate(WCUpdateInfo&& update, CompletionHandler<void(std::optional<WebKit::UpdateInfo>)>&& completionHandler)
+ {
+     remoteGraphicsStreamWorkQueue().dispatch([scene = m_scene.get(), update = WTF::move(update), completionHandler = WTF::move(completionHandler)
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+@@ -130,7 +238,8 @@
+                 updateInfo->updateRectBounds = WebCore::IntRect { { }, logicalSize };
+                 updateInfo->updateRects.clear();
+                 updateInfo->updateRects.append(updateInfo->updateRectBounds);
+-                weakThis->publishHostFrame(pageProxyID, backingStateID, WTF::move(*updateInfo), WTF::move(completionHandler));
++                weakThis->publishHostFrame(pageProxyID, backingStateID, WTF::move(*updateInfo),
++                    [completionHandler = WTF::move(completionHandler)](bool) mutable { completionHandler(std::nullopt); });
+                 return;
+             }
+ #endif
+@@ -140,12 +249,12 @@
+ }
+ 
+ #if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
+-void RemoteWCLayerTreeHost::publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&& update, CompletionHandler<void(std::optional<UpdateInfo>)>&& completionHandler)
++void RemoteWCLayerTreeHost::publishHostFrame(uint64_t pageProxyID, uint64_t backingStateID, UpdateInfo&& update, CompletionHandler<void(bool)>&& completionHandler)
+ {
+     ASSERT(isMainRunLoop());
+     auto* connection = m_connectionToWebProcess ? m_connectionToWebProcess->gpuProcess().parentProcessConnection() : nullptr;
+     if (!connection || !pageProxyID) {
+-        completionHandler(std::nullopt);
++        completionHandler(false);
+         return;
+     }
+     // The reply is held by the UI process until it copies or rejects this lease.
+@@ -159,9 +268,7 @@
+                     if (holder->context) holder->context->discardHostFrame();
+                 });
+             }
+-            // Returning no bitmap releases DrawingAreaWC's normal rendering
+-            // backpressure after the UI lease completes, without double paint.
+-            completionHandler(std::nullopt);
++            completionHandler(presented);
+         }, 0);
+ }
+ #endif
+--- a/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.messages.in
++++ b/Source/WebKit/GPUProcess/graphics/wc/RemoteWCLayerTreeHost.messages.in
+@@ -28,6 +28,9 @@
+     ExceptionForEnabledBy
+ ]
+ messages -> RemoteWCLayerTreeHost {
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    UpdateScroll(uint64_t epoch, uint64_t stateID, struct WebCore::WCScrollUpdate update) -> (uint64_t completedRevision) Async
++#endif
+     Update(struct WebKit::WCUpdateInfo updateInfo) -> (std::optional<WebKit::UpdateInfo> updateInfo)
+ }
+ 
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -79,6 +79,7 @@
+         completionHandler(false);
+         return;
+     }
++    update.hostTiming.geometryEpoch = stateID;
+     m_hostGPUFrameCompletion = WTF::move(completionHandler);
+     m_hostSurfaceIsStale = stateID != m_currentBackingStoreStateID
+         || update.hostEdges.documentEpoch < m_hostEdges.documentEpoch;
+@@ -149,6 +150,7 @@
+ void DrawingAreaProxyWC::update(uint64_t backingStoreStateID, UpdateInfo&& updateInfo)
+ {
+ #if PLATFORM(WIN)
++    updateInfo.hostTiming.geometryEpoch = backingStoreStateID;
+     const bool current = backingStoreStateID == m_currentBackingStoreStateID;
+     // A stale GPU frame still owns the producer's key. Drain it without
+     // presenting it; otherwise same-size geometry changes can deadlock reuse.
+@@ -232,6 +234,7 @@
+     if (paintKey(oldEdges) != paintKey(nextEdges))
+         damageRegion.unite(WebCore::IntRect({ }, updateInfo.viewSize));
+     m_hostFrameTiming = updateInfo.hostTiming;
++    m_hostFrameTiming.documentEpoch = updateInfo.hostEdges.documentEpoch;
+     m_hostFrameTiming.receiveSeconds = hostFrameClockSeconds();
+ #endif
+ #if PLATFORM(WIN)
+@@ -313,6 +316,7 @@
+     output.sharedTexture = reinterpret_cast<void*>(static_cast<uintptr_t>(m_hostSharedTexture));
+     output.status = m_hostSurfaceStatus;
+     if (m_hostSurfaceIsStale) output.flags |= 4;
++    if (m_hostFrameTiming.scrollRevision) output.flags |= 8;
+     auto scale = m_hostSurfaceScale;
+     auto size = WebCore::expandedIntSize(m_hostSurfaceSize * scale);
+     output.width = size.width(); output.height = size.height(); output.background = m_hostEdges.root;
+@@ -345,18 +349,23 @@
+     if (edge.colorMask & 2) add(right, 0, width, height, edge.right);
+     if (edge.colorMask & 8) add(0, 0, left, height, edge.left);
+     m_hostAcquiredSequence = m_hostSurfaceSequence;
+-    m_hostFrameTiming.paintStartSeconds = hostFrameClockSeconds();
++    m_hostAcquiredContentSequence = m_hostContentSequence;
++    m_hostAcquiredTiming = m_hostFrameTiming;
++    m_hostAcquiredTiming.paintStartSeconds = hostFrameClockSeconds();
++    m_hostAcquiredEdges = m_hostEdges;
++    m_hostLeaseActive = true;
+     return true;
+ }
+ void DrawingAreaProxyWC::acknowledgeHostFrameSurface(uint64_t sequence, bool presented)
+ {
+-    if (sequence != m_hostSurfaceSequence) return;
+-    m_hostTransferredContentSequence = m_hostContentSequence;
++    if (!m_hostLeaseActive || sequence != m_hostAcquiredSequence) return;
++    m_hostLeaseActive = false;
++    m_hostTransferredContentSequence = m_hostAcquiredContentSequence;
+     if (presented) {
+-        m_hostPaintedEdges = m_hostEdges;
+-        m_hostFrameTiming.paintEndSeconds = hostFrameClockSeconds();
++        m_hostPaintedEdges = m_hostAcquiredEdges;
++        m_hostAcquiredTiming.paintEndSeconds = hostFrameClockSeconds();
+         if (m_hostPaintTimings.size() == 128) m_hostPaintTimings.removeAt(0);
+-        m_hostPaintTimings.append(m_hostFrameTiming);
++        m_hostPaintTimings.append(m_hostAcquiredTiming);
+     }
+ #if ENABLE(ASYNC_SCROLLING)
+     auto gpuCompletion = std::exchange(m_hostGPUFrameCompletion, { });
+@@ -367,6 +376,8 @@
+     if (gpuCompletion) gpuCompletion(presented);
+ #endif
+     if (refresh) send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
++    if (m_hostFrameSurfaceEnabled && !m_hostSurfaceSize.isEmpty() && m_hostSurfaceSequence != sequence)
++        notifyHostFrameSurface();
+ }
+ #endif
+ 
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -87,7 +87,10 @@
+     void discardBackingStore();
+ 
+ #if PLATFORM(WIN)
+-    HostFrameTiming m_hostFrameTiming;
++    HostFrameTiming m_hostFrameTiming, m_hostAcquiredTiming;
++    HostFrameEdges m_hostAcquiredEdges;
++    uint64_t m_hostAcquiredContentSequence { 0 };
++    bool m_hostLeaseActive { false };
+     HostFrameEdges m_hostEdges, m_hostPaintedEdges;
+     RunLoop::Timer m_hostEdgeExpiryTimer;
+     void hostEdgeExpiryTimerFired();
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -92,6 +92,8 @@
+     unsigned top, unsigned right, unsigned bottom, unsigned left, const void* context);
+ WK_EXPORT unsigned WKViewGetHostScrollIndicatorAPIVersion(void);
+ WK_EXPORT void WKViewSetHostScrollIndicatorEnabled(WKViewRef, bool enabled);
++// Flags: bits 0-6 describe the scrollbar, 7 async enabled, 8 drawing-area
++// support, 9 coordinator present, 10-15 upstream synchronous reasons, 16-31 width.
+ typedef void (*WKHostScrollIndicatorCallback)(unsigned long long requestID, unsigned status, unsigned flags,
+     unsigned long long epoch, unsigned long long userSequence, double position, double range, double viewportHeight, const void* context);
+ WK_EXPORT void WKViewRequestHostScrollIndicatorState(WKViewRef, unsigned long long requestID, const void* context, WKHostScrollIndicatorCallback);
+@@ -128,6 +130,8 @@
+     unsigned flags, status, fillCount;
+     WKHostFrameFill fills[8];
+ } WKHostFrameSurface;
++// Creates an offscreen frame-surface view before initializing its WebPage.
++WK_EXPORT WKViewRef WKViewCreateWithHostFrameSurface(RECT, WKPageConfigurationRef, HWND parentWindow);
+ WK_EXPORT unsigned WKViewGetHostFrameSurfaceAPIVersion(void);
+ WK_EXPORT void WKViewSetHostFrameSurfaceEnabled(WKViewRef, bool);
+ WK_EXPORT bool WKViewAcquireHostFrameSurface(WKViewRef, WKHostFrameSurface* output);
+@@ -179,6 +183,19 @@
+ WK_EXPORT unsigned WKViewGetHostFrameTimingAPIVersion(void);
+ WK_EXPORT unsigned WKViewCopyHostFrameTimings(WKViewRef, WKHostFrameTiming* output, unsigned capacity);
+ 
++// Scroll frame metadata API v1. Zero scrollRevision identifies a main frame.
++// Independent frames retain their source paint ID and have no main render cost.
++typedef struct WKHostScrollFrame {
++    unsigned long long frameID, sourceFrameID, documentEpoch, geometryEpoch, scrollRevision, inputSequence;
++    double scrollX, scrollY, inputEventSeconds, inputDispatchSeconds, commitSeconds;
++    double gpuStartSeconds, gpuEndSeconds, receiveSeconds, paintStartSeconds, paintEndSeconds;
++} WKHostScrollFrame;
++typedef void (*WKHostScrollingStateCallback)(unsigned long long requestID, WKStringRef state, const void* context);
++// Asynchronous read-only native state; callback owns the returned WKStringRef.
++WK_EXPORT void WKViewRequestHostScrollingState(WKViewRef, unsigned long long requestID, const void* context, WKHostScrollingStateCallback);
++WK_EXPORT unsigned WKViewGetHostScrollFrameAPIVersion(void);
++WK_EXPORT unsigned WKViewCopyHostScrollFrames(WKViewRef, WKHostScrollFrame* output, unsigned capacity);
++
+ // Read-only UI-thread counters; no paint, capture or IPC is requested.
+ WK_EXPORT bool WKViewGetHostRenderingStatistics(WKViewRef view, unsigned long long* updates,
+     unsigned long long* acceleratedTransitions, unsigned long long* staleUpdates);
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -29,6 +29,9 @@
+ 
+ #include "APIPageConfiguration.h"
+ #include "DrawingAreaProxyWC.h"
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++#include "DrawingAreaMessages.h"
++#endif
+ #include "ImageOptions.h"
+ #include "WKAPICast.h"
+ #include "WebPageProxy.h"
+@@ -55,6 +58,11 @@
+ WKViewRef WKViewCreate(RECT rect, WKPageConfigurationRef configurationRef, HWND parentWindow)
+ {
+     return toAPI(&WebView::create(rect, *toImpl(configurationRef), parentWindow).leakRef());
++}
++
++WKViewRef WKViewCreateWithHostFrameSurface(RECT rect, WKPageConfigurationRef configurationRef, HWND parentWindow)
++{
++    return toAPI(&WebView::create(rect, *toImpl(configurationRef), parentWindow, true).leakRef());
+ }
+ 
+ HWND WKViewGetWindow(WKViewRef viewRef)
+@@ -185,6 +193,39 @@
+         output[index].receiveSeconds = item.receiveSeconds;
+         output[index].paintStartSeconds = item.paintStartSeconds;
+         output[index].paintEndSeconds = item.paintEndSeconds;
++    }
++    return count;
++}
++
++void WKViewRequestHostScrollingState(WKViewRef viewRef, unsigned long long requestID, const void* context, WKHostScrollingStateCallback callback)
++{
++    if (!callback) return;
++#if ENABLE(ASYNC_SCROLLING)
++    auto* page = viewRef ? toImpl(viewRef)->page() : nullptr;
++    if (page && !page->isClosed() && page->hasRunningProcess() && page->drawingArea()) {
++        page->legacyMainFrameProcess().sendWithAsyncReply(Messages::DrawingArea::RequestHostScrollingState(),
++            [requestID, context, callback](const String& state) {
++                callback(requestID, toAPILeakingRef(API::String::create(state)), context);
++            }, page->drawingArea()->identifier().toUInt64());
++        return;
++    }
++#endif
++    callback(requestID, nullptr, context);
++}
++
++unsigned WKViewGetHostScrollFrameAPIVersion(void) { return 1; }
++unsigned WKViewCopyHostScrollFrames(WKViewRef viewRef, WKHostScrollFrame* output, unsigned capacity)
++{
++    if (!viewRef || !output || !capacity) return 0;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed() || !page->drawingArea()) return 0;
++    const auto& history = static_cast<DrawingAreaProxyWC*>(page->drawingArea())->hostPaintTimings();
++    auto count = std::min(capacity, static_cast<unsigned>(history.size()));
++    for (unsigned index = 0; index < count; ++index) {
++        auto& item = history[history.size() - count + index];
++        output[index] = { item.frameID, item.sourceFrameID, item.documentEpoch, item.geometryEpoch, item.scrollRevision, item.inputSequence,
++            item.scrollX, item.scrollY, item.inputEventSeconds, item.inputDispatchSeconds, item.commitSeconds,
++            item.gpuStartSeconds, item.gpuEndSeconds, item.receiveSeconds, item.paintStartSeconds, item.paintEndSeconds };
+     }
+     return count;
+ }
+--- a/Source/WebKit/Scripts/webkit/messages.py
++++ b/Source/WebKit/Scripts/webkit/messages.py
+@@ -1637,6 +1637,7 @@
+         'WebCore::ScriptTrackingPrivacyFlag': ['<WebCore/ScriptTrackingPrivacyCategory.h>'],
+         'WebCore::ScopedResourceLoaderIdentifier': ['<WebCore/ProcessQualified.h>', '<WebCore/ResourceLoaderIdentifier.h>'],
+         'WebCore::ScheduleLocationChangeResult': ['<WebCore/NavigationScheduler.h>'],
++        'WebCore::WCScrollUpdate': ['<WebCore/ScrollingSceneWC.h>'],
+         'WebCore::ScrollUpdate': ['<WebCore/ScrollingCoordinatorTypes.h>'],
+         'WebCore::ScrollRequestIdentifier': ['<WebCore/ScrollingCoordinatorTypes.h>'],
+         'WebCore::ScrollbarMode': ['<WebCore/ScrollTypes.h>'],
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
+@@ -52,6 +52,13 @@
+ 
+     // DrawingArea
+     WebCore::GraphicsLayerFactory* graphicsLayerFactory() override;
++#if PLATFORM(WIN) && ENABLE(ASYNC_SCROLLING)
++    bool supportsAsyncScrolling() const override { return m_hostFrameSurfaceEnabled; }
++    void registerScrollingTree() override;
++    void requestHostScrollingState(CompletionHandler<void(const String&)>&&) override;
++    void unregisterScrollingTree() override;
++    bool m_scrollingTreeRegistered { false };
++#endif
+     void setNeedsDisplay() override;
+     void setNeedsDisplayInRect(const WebCore::IntRect&) override;
+     void scroll(const WebCore::IntRect& scrollRect, const WebCore::IntSize& scrollDelta) override;
+--- a/Source/WebKit/UIProcess/win/WebView.h
++++ b/Source/WebKit/UIProcess/win/WebView.h
+@@ -47,9 +47,9 @@
+     : public API::ObjectImpl<API::Object::Type::View>
+     , WebCore::WindowMessageListener {
+ public:
+-    static Ref<WebView> create(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow)
++    static Ref<WebView> create(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow, bool hostFrameSurface = false)
+     {
+-        auto webView = adoptRef(*new WebView(rect, configuration, parentWindow));
++        auto webView = adoptRef(*new WebView(rect, configuration, parentWindow, hostFrameSurface));
+         webView->initialize();
+         return webView;
+     }
+@@ -85,7 +85,7 @@
+     void close();
+ 
+ private:
+-    WebView(RECT, const API::PageConfiguration&, HWND parentWindow);
++    WebView(RECT, const API::PageConfiguration&, HWND parentWindow, bool hostFrameSurface);
+ 
+     static bool registerWebViewWindowClass();
+     static LRESULT CALLBACK WebViewWndProc(HWND, UINT, WPARAM, LPARAM);
+--- a/Source/WebKit/UIProcess/win/WebView.cpp
++++ b/Source/WebKit/UIProcess/win/WebView.cpp
+@@ -236,14 +236,16 @@
+     return !!::RegisterClassEx(&wcex);
+ }
+ 
+-WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow)
++WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow, bool hostFrameSurface)
+     : m_pageClient(makeUniqueWithoutRefCountedCheck<PageClientImpl>(*this))
+ {
++    m_usesOffscreenRendering = hostFrameSurface;
+     registerWebViewWindowClass();
+ 
+     m_window = ::CreateWindowExW(0, kWebKit2WebViewWindowClassName, 0, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE,
+         rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, parentWindow ? parentWindow : HWND_MESSAGE, 0, instanceHandle(), this);
+     ASSERT(::IsWindow(m_window));
++    if (hostFrameSurface) SetPropW(m_window, L"DevDuoHostFrameSurface", reinterpret_cast<HANDLE>(1));
+     // We only check our window style, and not ::IsWindowVisible, because m_isVisible only tracks
+     // this window's visibility status, while ::IsWindowVisible takes our ancestors' visibility
+     // status into account. <http://webkit.org/b/54104>
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -280,6 +280,7 @@
+ #include <WebCore/LocalFrameInlines.h>
+ #include <WebCore/LocalFrameView.h>
+ #include <WebCore/HostScrollIndicator.h>
++#include <WebCore/ScrollingCoordinator.h>
+ #include <WebCore/Scrollbar.h>
+ #include <WebCore/FixedContainerEdges.h>
+ #include <WebCore/LocalizedStrings.h>
+@@ -5446,6 +5447,14 @@
+             | (static_cast<uint32_t>(std::clamp(scrollbar->width(), 0, 65535)) << 16);
+     }
+     if (state.nativeVisibilityHidden) flags |= 64u;
++#if ENABLE(ASYNC_SCROLLING)
++    if (m_useAsyncScrolling) flags |= 128u;
++    if (drawingArea() && drawingArea()->supportsAsyncScrolling()) flags |= 256u;
++    if (RefPtr coordinator = scrollingCoordinator()) {
++        flags |= 512u;
++        flags |= static_cast<uint32_t>(coordinator->synchronousScrollingReasons(view->scrollingNodeID()).toRaw()) << 10;
++    }
++#endif
+     callback(0, flags, state.documentEpoch,
+         state.userMotionSequence, state.position, state.range, state.viewportHeight);
+ }
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.h
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.h
+@@ -27,6 +27,7 @@
+ 
+ #include "CallbackID.h"
+ #include "DrawingAreaInfo.h"
++#include <wtf/text/WTFString.h>
+ #include "LayerTreeContext.h"
+ #include "MessageReceiver.h"
+ #include "WebPage.h"
+@@ -123,6 +124,9 @@
+     virtual void mainFrameScrollabilityChanged(bool) { }
+ 
+     virtual bool supportsAsyncScrolling() const { return false; }
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING)
++    virtual void requestHostScrollingState(CompletionHandler<void(const String&)>&& completion) { completion({ }); }
++#endif
+     virtual bool usesDelegatedPageScaling() const { return false; }
+     virtual WebCore::DelegatedScrollingMode delegatedScrollingMode() const;
+ 
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
+@@ -25,6 +25,9 @@
+     DispatchedTo=WebContent
+ ]
+ messages -> DrawingArea {
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC) && ENABLE(ASYNC_SCROLLING)
++    RequestHostScrollingState() -> (String state)
++#endif
+ #if USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER)
+     UpdateGeometry(WebCore::IntSize size) -> ()
+ #endif
+--- a/Source/WebCore/page/scrolling/ThreadedScrollingTree.h
++++ b/Source/WebCore/page/scrolling/ThreadedScrollingTree.h
+@@ -60,6 +60,9 @@
+     void invalidate() override;
+ 
+     void displayDidRefresh(PlatformDisplayID) override;
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    WEBCORE_EXPORT void serviceHostScrollInput();
++#endif
+ 
+     void LEGACY_NODELETE didScheduleRenderingUpdate();
+     void willStartRenderingUpdate();
+@@ -115,6 +118,10 @@
+     void didCommitTreeOnScrollingThread() WTF_REQUIRES_LOCK(m_treeLock);
+ 
+     void displayDidRefreshOnScrollingThread();
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    void hostScrollTick();
++    std::unique_ptr<RunLoop::Timer> m_hostScrollTimer;
++#endif
+     void waitForRenderingUpdateCompletionOrTimeout() WTF_REQUIRES_LOCK(m_treeLock);
+ 
+     bool LEGACY_NODELETE canUpdateLayersOnScrollingThread() const WTF_REQUIRES_LOCK(m_treeLock);
+--- a/Source/WebCore/page/scrolling/ThreadedScrollingTree.cpp
++++ b/Source/WebCore/page/scrolling/ThreadedScrollingTree.cpp
+@@ -148,6 +148,9 @@
+     
+     removeAllNodes();
+     m_delayedRenderingUpdateDetectionTimer = nullptr;
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++    m_hostScrollTimer = nullptr;
++#endif
+ 
+     // Since this can potentially be the last reference to the scrolling coordinator,
+     // we need to release it on the main thread since it has member variables (such as timers)
+@@ -576,6 +579,29 @@
+     }
+ }
+ 
++#if PLATFORM(WIN) && USE(GRAPHICS_LAYER_WC)
++void ThreadedScrollingTree::serviceHostScrollInput()
++{
++    ASSERT(ScrollingThread::isCurrentThread());
++    if (!m_hostScrollTimer)
++        m_hostScrollTimer = makeUnique<RunLoop::Timer>(RunLoop::currentSingleton(), "ThreadedScrollingTree::HostScrollTick"_s, this, &ThreadedScrollingTree::hostScrollTick);
++    if (!m_hostScrollTimer->isActive()) hostScrollTick();
++}
++void ThreadedScrollingTree::hostScrollTick()
++{
++    ASSERT(ScrollingThread::isCurrentThread());
++    displayDidRefreshOnScrollingThread();
++    {
++        Locker locker { m_treeLock };
++        if (!m_scrollingCoordinator) return;
++        if (canUpdateLayersOnScrollingThread() && m_state != SynchronizationState::InRenderingUpdate
++            && m_state != SynchronizationState::WaitingForRenderingUpdate)
++            applyLayerPositionsInternal();
++    }
++    if (hasRecentActivity()) m_hostScrollTimer->startOneShot(frameDuration());
++}
++#endif
++
+ void ThreadedScrollingTree::displayDidRefresh(PlatformDisplayID displayID)
+ {
+     bool scrollingThreadIsActive = hasRecentActivity();

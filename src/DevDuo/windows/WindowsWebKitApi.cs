@@ -12,6 +12,24 @@ internal static class WindowsWebKitApi
     private const string Library = "DevDuoWindowsWebKit";
     private static nint module;
     internal static double VerificationMilliseconds { get; private set; }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate uint CopyScrollFramesCallback(nint view, [Out] WindowsWebKitView.HostScrollFrame[] output, uint capacity);
+    internal static CopyScrollFramesCallback? CopyHostScrollFrames { get; private set; }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate nint CreateHostFrameViewCallback(Rect rectangle, nint configuration, nint parent);
+    internal static CreateHostFrameViewCallback? CreateHostFrameView { get; private set; }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void HostScrollingStateCallback(ulong request, nint state, nint context);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void RequestScrollingStateCallback(nint view, ulong request, nint context, HostScrollingStateCallback callback);
+    internal static RequestScrollingStateCallback? RequestHostScrollingState { get; private set; }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal delegate bool SetTouchEnabledCallback(nint view, [MarshalAs(UnmanagedType.I1)] bool enabled);
+    internal static SetTouchEnabledCallback? SetHostTouchEnabled { get; private set; }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate nint CopyTouchDiagnosticsCallback(nint view);
+    internal static CopyTouchDiagnosticsCallback? CopyHostTouchDiagnostics { get; private set; }
     internal static void Load()
     {
         if (module != 0) return;
@@ -25,17 +43,45 @@ internal static class WindowsWebKitApi
         var root = manifest.RootElement;
         if (!root.TryGetProperty("hostDesktopApiVersion", out var desktop) || desktop.GetInt32() != 1 ||
             root.GetProperty("hostViewportApiVersion").GetInt32() != 2 ||
+            !root.TryGetProperty("hostFrameTimingApiVersion", out var timing) || timing.GetInt32() != 2 ||
+            !root.TryGetProperty("hostFramePresentationApiVersion", out var presentation) || presentation.GetInt32() != 1 ||
+            !root.TryGetProperty("hostFrameSurfaceApiVersion", out var surfaces) || surfaces.GetInt32() != 1 ||
+            !root.TryGetProperty("hostAccessibilityApiVersion", out var accessibility) || accessibility.GetInt32() != 2 ||
             !root.TryGetProperty("contentPaintingVersion", out var painting) || painting.GetInt32() != 2 ||
             !root.TryGetProperty("contentColorApiVersion", out var contentColor) || contentColor.GetInt32() != 1 ||
             !root.TryGetProperty("hostAppearanceApiVersion", out var appearance) || appearance.GetInt32() != 1 ||
             !root.TryGetProperty("hostDeveloperApiVersion", out var developer) || developer.GetInt32() != 1 ||
-            !root.TryGetProperty("hostFixedContainerColorApiVersion", out var fixedContainer) || fixedContainer.GetInt32() != 1 ||
+            !root.TryGetProperty("hostFixedContainerColorApiVersion", out var fixedContainer) || fixedContainer.GetInt32() != 2 ||
             !root.TryGetProperty("hostScrollIndicatorApiVersion", out var scrollIndicator) || scrollIndicator.GetInt32() != 1)
-            throw new InvalidOperationException("Windows WebKit requires desktop v1, viewport v2, painting v2, content color v1, host appearance v1, host developer v1, fixed-container color v1 and scroll indicator v1. Rebuild the pinned runtime.");
+            throw new InvalidOperationException("Windows WebKit requires desktop v1, asynchronous accessibility v2, frame timing v2, frame presentation/surface v1, viewport v2, painting v2, content color v1, host appearance v1, host developer v1, fixed-container color v2 and scroll indicator v1. Rebuild the pinned runtime.");
         if (!SetDefaultDllDirectories(0x1000) || AddDllDirectory(directory) == 0)
             throw new InvalidOperationException("Cannot configure the Windows WebKit dependency search path.");
         var loaded = LoadLibraryExW(Path.Combine(directory, "WebKit2.dll"), 0, 0x1100);
         if (loaded == 0) throw new InvalidOperationException("Cannot load WebKit2.dll: " + Marshal.GetLastPInvokeError());
+        if (root.TryGetProperty("hostScrollFrameApiVersion", out var scrollFrames))
+        {
+            if (scrollFrames.GetInt32() != 1 ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewGetHostScrollFrameAPIVersion", out var versionExport) ||
+                Marshal.GetDelegateForFunctionPointer<VersionCallback>(versionExport)() != 1 ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewCopyHostScrollFrames", out var copyExport) ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewCreateWithHostFrameSurface", out var createExport) ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewRequestHostScrollingState", out var stateExport))
+                throw new InvalidOperationException("Scroll frame metadata API v1 is unavailable. Rebuild the pinned runtime.");
+            CopyHostScrollFrames = Marshal.GetDelegateForFunctionPointer<CopyScrollFramesCallback>(copyExport);
+            CreateHostFrameView = Marshal.GetDelegateForFunctionPointer<CreateHostFrameViewCallback>(createExport);
+            RequestHostScrollingState = Marshal.GetDelegateForFunctionPointer<RequestScrollingStateCallback>(stateExport);
+        }
+        if (root.TryGetProperty("hostTouchApiVersion", out var touch) && touch.GetInt32() != 0)
+        {
+            if (touch.GetInt32() != 1 ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewGetHostTouchAPIVersion", out var touchVersion) ||
+                Marshal.GetDelegateForFunctionPointer<VersionCallback>(touchVersion)() != 1 ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewSetHostTouchEnabled", out var touchSet) ||
+                !NativeLibrary.TryGetExport(loaded, "WKViewCopyHostTouchDiagnostics", out var touchCopy))
+                throw new InvalidOperationException("Native single-contact API v1 is unavailable. Rebuild the experimental runtime.");
+            SetHostTouchEnabled = Marshal.GetDelegateForFunctionPointer<SetTouchEnabledCallback>(touchSet);
+            CopyHostTouchDiagnostics = Marshal.GetDelegateForFunctionPointer<CopyTouchDiagnosticsCallback>(touchCopy);
+        }
         foreach (var method in typeof(WindowsWebKitApi).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static))
         {
             var import = method.GetCustomAttributes(typeof(DllImportAttribute), false).OfType<DllImportAttribute>().SingleOrDefault();
@@ -44,6 +90,14 @@ internal static class WindowsWebKitApi
         }
         var desktopVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostDesktopAPIVersion"));
         if (desktopVersion() != 1) throw new InvalidOperationException("Host desktop API v1 export missing.");
+        var accessibilityVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostAccessibilityAPIVersion"));
+        if (accessibilityVersion() != 2) throw new InvalidOperationException("Asynchronous accessibility API v2 export missing.");
+        var timingVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostFrameTimingAPIVersion"));
+        if (timingVersion() != 2) throw new InvalidOperationException("Frame timing API v2 export missing.");
+        var framePresentationVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostFramePresentationAPIVersion"));
+        if (framePresentationVersion() != 1) throw new InvalidOperationException("Frame presentation API v1 export missing.");
+        var surfaceVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostFrameSurfaceAPIVersion"));
+        if (surfaceVersion() != 1) throw new InvalidOperationException("Frame surface API v1 export missing.");
         var version = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetViewportHostAPIVersion"));
         if (version() != 2) throw new InvalidOperationException("Host viewport API v2 export missing.");
         var colorVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetContentColorAPIVersion"));
@@ -53,7 +107,7 @@ internal static class WindowsWebKitApi
         var developerVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostDeveloperAPIVersion"));
         if (developerVersion() != 1) throw new InvalidOperationException("Host developer API v1 export missing.");
         var fixedContainerVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetFixedContainerColorAPIVersion"));
-        if (fixedContainerVersion() != 1) throw new InvalidOperationException("Fixed-container color API v1 export missing.");
+        if (fixedContainerVersion() != 2) throw new InvalidOperationException("Fixed-container color API v2 export missing.");
         var scrollIndicatorVersion = Marshal.GetDelegateForFunctionPointer<VersionCallback>(NativeLibrary.GetExport(loaded, "WKViewGetHostScrollIndicatorAPIVersion"));
         if (scrollIndicatorVersion() != 1) throw new InvalidOperationException("Host scroll indicator API v1 export missing.");
         NativeLibrary.SetDllImportResolver(typeof(WindowsWebKitApi).Assembly,
@@ -77,6 +131,19 @@ internal static class WindowsWebKitApi
         for (var parent = new DirectoryInfo(AppContext.BaseDirectory); parent is not null; parent = parent.Parent)
         {
             if (!File.Exists(Path.Combine(parent.FullName, "devduo-metadata.toml"))) continue;
+            var selectionPath = Path.Combine(parent.FullName, "temp", "build", "windows-webkit-runtime.json");
+            if (File.Exists(selectionPath))
+            {
+                using var selection = JsonDocument.Parse(File.ReadAllText(selectionPath));
+                var selected = selection.RootElement;
+                if (!selected.TryGetProperty("schemaVersion", out var schema) || !schema.TryGetInt32(out var number) || number != 1 ||
+                    !selected.TryGetProperty("binDirectory", out var bin) || bin.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(bin.GetString()))
+                    throw new InvalidDataException("Invalid Windows WebKit runtime selection. Rebuild the pinned runtime.");
+                // Successful source builds select the checkout runtime explicitly.
+                // A stale selection must fail validation, never load an older DLL.
+                return Path.GetFullPath(Path.Combine(parent.FullName, bin.GetString()!));
+            }
             return Path.Combine(parent.FullName, "temp", "build", "windows-webkit-host", "bin");
         }
         throw new DirectoryNotFoundException("Windows WebKit is required. Build with mise --env windows-webkit exec -- just build-windows-webkit-runtime, or set DEVDUO_WEBKIT_RUNTIME to its absolute bin directory.");
@@ -138,6 +205,19 @@ internal static class WindowsWebKitApi
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern nint WKViewCopyHostTextInputDiagnostics(nint view);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetHostTextInputState(nint view, out uint error, out ulong editorId);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern nint WKViewCopyHostAccessibilityTree(nint view);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewCopyHostFrameTimings(nint view, [Out] WindowsWebKitView.HostFrameTiming[] output, uint capacity);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool WKViewCopyHostFrameEdges(nint view, out WindowsWebKitView.HostFrameEdges output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool WKViewGetHostFrameClock(out double nativeSeconds, out double qpcSeconds, out double uncertaintySeconds);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewSetHostFrameSurfaceEnabled(nint view, [MarshalAs(UnmanagedType.I1)] bool enabled);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool WKViewAcquireHostFrameSurface(nint view, out WindowsWebKitView.HostFrameSurface output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewAcknowledgeHostFrameSurface(nint view, ulong sequence, [MarshalAs(UnmanagedType.I1)] bool presented);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewReplayHostFrameSurface(nint view, [MarshalAs(UnmanagedType.I1)] bool resourcesLost);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern ulong WKViewGetHostGDIUploadCount(nint view);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void HostAccessibilityTreeCallback(ulong request, nint value, nint context);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewRequestHostAccessibilityTree(nint view, ulong request, nint context, HostAccessibilityTreeCallback callback);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool WKViewPerformHostAccessibilityAction(nint view, nint document, ulong objectId, uint action, nint value);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool WKViewSetHostDesktopGeometry(nint view, nint target, int degrees, int offsetX, int offsetY);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint WKViewGetViewportHostAPIVersion();
@@ -151,8 +231,8 @@ internal static class WindowsWebKitApi
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewSetHostScrollIndicatorEnabled(nint view, [MarshalAs(UnmanagedType.I1)] bool enabled);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void HostScrollIndicatorCallback(ulong request, uint status, uint flags, ulong epoch, ulong sequence, double position, double range, double viewportHeight, nint context);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewRequestHostScrollIndicatorState(nint view, ulong request, nint context, HostScrollIndicatorCallback callback);
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void FixedContainerColorCallback(ulong request, uint status, uint states, uint top, uint right, uint bottom, uint left, nint context);
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewRequestFixedContainerColors(nint view, ulong request, nint context, FixedContainerColorCallback callback);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void FixedContainerColorCallback(ulong request, uint status, ulong epoch, uint states, uint reasons, uint top, uint right, uint bottom, uint left, nint context);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKViewRequestFixedContainerColorsV2(nint view, ulong request, nint context, FixedContainerColorCallback callback);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKPageSetCustomUserAgent(nint page, nint userAgent);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKWebsiteDataStoreEnableDefaultNetworkProxySettings(nint store);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void WKWebsiteDataStoreDisableNetworkProxySettings(nint store);

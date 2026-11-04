@@ -1,0 +1,456 @@
+--- a/Source/WebKit/Shared/WebWheelEventCoalescer.cpp
++++ b/Source/WebKit/Shared/WebWheelEventCoalescer.cpp
+@@ -113,7 +113,11 @@
+         .granularity = b.granularity(),
+     };
+ #endif
+-    return WebWheelEvent::create({ WebEventType::Wheel, b.modifiers(), b.timestamp() }, WTF::move(wheelData));
++    auto event = WebWheelEvent::create({ WebEventType::Wheel, b.modifiers(), b.timestamp() }, WTF::move(wheelData));
++#if PLATFORM(WIN)
++    event->setHostInputSequence(b.hostInputSequence());
++#endif
++    return event;
+ }
+ 
+ bool WebWheelEventCoalescer::shouldDispatchEventNow(const WebWheelEvent& event) const
+--- a/Source/WebKit/Shared/UpdateInfo.h
++++ b/Source/WebKit/Shared/UpdateInfo.h
+@@ -40,6 +40,27 @@
+ namespace WebKit {
+ 
+ #if PLATFORM(WIN)
++struct HostFrameEdges {
++    uint64_t frameID { 0 };
++    uint64_t documentEpoch { 0 };
++    uint32_t states { 0 };
++    uint32_t reasons { 0 };
++    uint32_t colorMask { 0 };
++    uint32_t top { 0 };
++    uint32_t right { 0 };
++    uint32_t bottom { 0 };
++    uint32_t left { 0 };
++    uint32_t root { 0 };
++    float insetTop { 0 };
++    float insetRight { 0 };
++    float insetBottom { 0 };
++    float insetLeft { 0 };
++    int32_t flowLeft { 0 };
++    int32_t flowTop { 0 };
++    int32_t flowRight { 0 };
++    int32_t flowBottom { 0 };
++};
++
+ struct HostFrameTiming {
+     uint64_t frameID { 0 };
+     uint64_t inputSequence { 0 };
+@@ -60,6 +81,7 @@
+ struct UpdateInfo {
+ #if PLATFORM(WIN)
+     HostFrameTiming hostTiming;
++    HostFrameEdges hostEdges;
+ #endif
+     // The size of the web view.
+     WebCore::IntSize viewSize;
+--- a/Source/WebKit/Shared/UpdateInfo.serialization.in
++++ b/Source/WebKit/Shared/UpdateInfo.serialization.in
+@@ -23,6 +23,27 @@
+ #if !PLATFORM(WPE) && !PLATFORM(GTK) && (USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER))
+ 
+ #if PLATFORM(WIN)
++[CustomHeader] struct WebKit::HostFrameEdges {
++    uint64_t frameID;
++    uint64_t documentEpoch;
++    uint32_t states;
++    uint32_t reasons;
++    uint32_t colorMask;
++    uint32_t top;
++    uint32_t right;
++    uint32_t bottom;
++    uint32_t left;
++    uint32_t root;
++    float insetTop;
++    float insetRight;
++    float insetBottom;
++    float insetLeft;
++    int32_t flowLeft;
++    int32_t flowTop;
++    int32_t flowRight;
++    int32_t flowBottom;
++}
++
+ [CustomHeader] struct WebKit::HostFrameTiming {
+     uint64_t frameID;
+     uint64_t inputSequence;
+@@ -42,6 +63,7 @@
+ [RValue] struct WebKit::UpdateInfo {
+ #if PLATFORM(WIN)
+     WebKit::HostFrameTiming hostTiming;
++    WebKit::HostFrameEdges hostEdges;
+ #endif
+     WebCore::IntSize viewSize;
+     float deviceScaleFactor;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.h
+@@ -127,6 +127,7 @@
+ struct WCUpdateInfo {
+ #if PLATFORM(WIN)
+     HostFrameTiming hostTiming;
++    HostFrameEdges hostEdges;
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
++++ b/Source/WebKit/WebProcess/WebPage/wc/WCUpdateInfo.serialization.in
+@@ -112,6 +112,7 @@
+ struct WebKit::WCUpdateInfo {
+ #if PLATFORM(WIN)
+     WebKit::HostFrameTiming hostTiming;
++    WebKit::HostFrameEdges hostEdges;
+ #endif
+     WebCore::IntSize viewport;
+     Markable<WebCore::LayerHostingContextIdentifier> remoteContextHostedIdentifier;
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.h
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.h
+@@ -2561,6 +2561,7 @@
+     void getHostScrollIndicatorState(CompletionHandler<void(uint32_t, uint32_t, uint64_t, uint64_t, double, double, double)>&&);
+ public:
+     HostFrameTiming hostFrameTiming() const { return m_hostInputTiming; }
++    HostFrameEdges hostFrameEdges();
+ private:
+     void noteHostInput(const WebEvent&);
+     HostFrameTiming m_hostInputTiming;
+--- a/Source/WebKit/WebProcess/WebPage/WebPage.cpp
++++ b/Source/WebKit/WebProcess/WebPage/WebPage.cpp
+@@ -5379,6 +5379,47 @@
+ }
+ 
+ #if PLATFORM(WIN)
++HostFrameEdges WebPage::hostFrameEdges()
++{
++    HostFrameEdges result;
++    RefPtr frame = m_mainFrame->coreLocalFrame();
++    RefPtr view = frame ? frame->view() : nullptr;
++    RefPtr document = frame ? frame->document() : nullptr;
++    if (!view || !document)
++        return result;
++    // The caller has finalized layout for this very frame. Sampling only reads
++    // WebCore's fixed-container semantics and never changes the layout viewport.
++    getHostFixedContainerColorsV2([&](uint32_t status, uint64_t epoch, uint32_t states, uint32_t reasons,
++        uint32_t top, uint32_t right, uint32_t bottom, uint32_t left) {
++        result.documentEpoch = epoch;
++        result.states = status ? 0xff : states;
++        result.reasons = reasons;
++        result.top = top; result.right = right; result.bottom = bottom; result.left = left;
++    });
++    const auto& insets = corePage()->obscuredContentInsets();
++    result.insetTop = insets.top(); result.insetRight = insets.right();
++    result.insetBottom = insets.bottom(); result.insetLeft = insets.left();
++    auto position = view->scrollPosition();
++    auto extent = view->contentsSize();
++    const auto viewportWidth = size().width() - insets.left() - insets.right();
++    const auto viewportHeight = size().height() - insets.top() - insets.bottom();
++    result.flowLeft = std::lround(insets.left() - std::clamp<float>(position.x(), 0, insets.left()));
++    result.flowTop = std::lround(insets.top() - std::clamp<float>(position.y(), 0, insets.top()));
++    result.flowRight = std::lround(insets.left() + viewportWidth + std::clamp<float>(extent.width() - position.x() - viewportWidth, 0, insets.right()));
++    result.flowBottom = std::lround(insets.top() + viewportHeight + std::clamp<float>(extent.height() - position.y() - viewportHeight, 0, insets.bottom()));
++    // Match the opaque html/body fallback, independently of theme-color and
++    // fixed-container materials, without an observer round trip.
++    Color background = Color::white;
++    for (RefPtr<Element> element : std::array<RefPtr<Element>, 2> { document->documentElement(), document->body() }) {
++        if (!element || !element->computedStyle()) continue;
++        auto color = element->computedStyle()->visitedDependentUsedBackgroundColorApplyingColorFilter();
++        if (color.isOpaque()) { background = color; break; }
++    }
++    auto [r, g, b, a] = background.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
++    result.root = (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
++    return result;
++}
++
+ void WebPage::noteHostInput(const WebEvent& event)
+ {
+     // Coalesced events retain the last native input sequence, not a sample count.
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.h
+@@ -104,6 +104,7 @@
+     WCUpdateInfo m_updateInfo;
+ #if PLATFORM(WIN)
+     HostFrameTiming m_hostFrameTiming;
++    HostFrameEdges m_hostFrameEdges;
+     uint64_t m_hostFrameID { 0 };
+ #endif
+     Vector<RootLayerInfo, 1> m_rootLayers;
+--- a/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
++++ b/Source/WebKit/WebProcess/WebPage/wc/DrawingAreaWC.cpp
+@@ -274,6 +274,8 @@
+ 
+     willStartRenderingUpdateDisplay();
+ #if PLATFORM(WIN)
++    m_hostFrameEdges = webPage->hostFrameEdges();
++    m_hostFrameEdges.frameID = m_hostFrameTiming.frameID;
+     m_hostFrameTiming.renderEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+ 
+@@ -308,6 +310,7 @@
+         m_updateInfo.viewport = WebCore::expandedIntSize(viewport);
+ #if PLATFORM(WIN)
+         m_updateInfo.hostTiming = m_hostFrameTiming;
++        m_updateInfo.hostEdges = m_hostFrameEdges;
+         m_updateInfo.hostTiming.commitSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+         updateRootLayerDeviceScaleFactor(rootLayer.layer);
+@@ -408,6 +411,7 @@
+     UpdateInfo updateInfo;
+ #if PLATFORM(WIN)
+     updateInfo.hostTiming = m_hostFrameTiming;
++    updateInfo.hostEdges = m_hostFrameEdges;
+ #endif
+     updateInfo.viewSize = webPage->size();
+     updateInfo.deviceScaleFactor = deviceScaleFactor;
+--- a/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
++++ b/Source/WebKit/GPUProcess/graphics/wc/WCScene.cpp
+@@ -292,6 +292,7 @@
+             result.emplace();
+ #if PLATFORM(WIN)
+             result->hostTiming = update.hostTiming;
++            result->hostEdges = update.hostEdges;
+             result->hostTiming.gpuEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+             result->viewSize = update.viewport;
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.h
+@@ -54,6 +54,7 @@
+     void paint(PlatformPaintContextPtr, const WebCore::IntRect&, WebCore::Region& unpaintedRegion);
+ #if PLATFORM(WIN)
+     const Vector<HostFrameTiming>& hostPaintTimings() const { return m_hostPaintTimings; }
++    const HostFrameEdges& hostPaintedEdges() const { return m_hostPaintedEdges; }
+ #endif
+     uint64_t hostUpdateCount() const { return m_hostUpdateCount; }
+     uint64_t hostAcceleratedTransitionCount() const { return m_hostAcceleratedTransitionCount; }
+@@ -76,6 +77,10 @@
+ 
+ #if PLATFORM(WIN)
+     HostFrameTiming m_hostFrameTiming;
++    HostFrameEdges m_hostEdges, m_hostPaintedEdges;
++    RunLoop::Timer m_hostEdgeExpiryTimer;
++    void hostEdgeExpiryTimerFired();
++    double m_hostEdgeDeadlines[4] { };
+     Vector<HostFrameTiming> m_hostPaintTimings;
+ #endif
+     uint64_t m_currentBackingStoreStateID { 0 };
+--- a/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
++++ b/Source/WebKit/UIProcess/wc/DrawingAreaProxyWC.cpp
+@@ -36,6 +36,10 @@
+ #include "UpdateInfo.h"
+ #include "WebPageProxy.h"
+ #include <WebCore/Region.h>
++#if PLATFORM(WIN) && USE(SKIA)
++#include <skia/core/SkCanvas.h>
++#include <skia/core/SkPaint.h>
++#endif
+ 
+ namespace WebKit {
+ 
+@@ -48,6 +52,9 @@
+ 
+ DrawingAreaProxyWC::DrawingAreaProxyWC(WebPageProxy& webPageProxy, WebProcessProxy& webProcessProxy)
+     : DrawingAreaProxy(webPageProxy, webProcessProxy)
++#if PLATFORM(WIN)
++    , m_hostEdgeExpiryTimer(RunLoop::mainSingleton(), "DrawingAreaProxyWC::HostEdgeExpiry"_s, this, &DrawingAreaProxyWC::hostEdgeExpiryTimerFired)
++#endif
+ {
+ }
+ 
+@@ -61,6 +68,31 @@
+     m_hostFrameTiming.paintStartSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+     m_backingStore->paint(context, rect);
++#if PLATFORM(WIN) && USE(SKIA)
++    // All continuation is painted into the page's raster transaction, using
++    // submitted-frame geometry. The host never overlays a newer sampled color.
++    const auto width = m_backingStore->size().width(), height = m_backingStore->size().height();
++    SkPaint fill;
++    fill.setBlendMode(SkBlendMode::kSrc);
++    const auto paint = [&](float left, float top, float right, float bottom, uint32_t rgb) {
++        if (right <= left || bottom <= top) return;
++        fill.setColor(0xff000000u | rgb);
++        context->drawRect(SkRect::MakeLTRB(left, top, right, bottom), fill);
++    };
++    context->save();
++    context->clipRect(SkRect::MakeXYWH(rect.x(), rect.y(), rect.width(), rect.height()), SkClipOp::kIntersect, false);
++    paint(0, 0, width, m_hostEdges.flowTop, m_hostEdges.root);
++    paint(0, m_hostEdges.flowBottom, width, height, m_hostEdges.root);
++    paint(0, m_hostEdges.flowTop, m_hostEdges.flowLeft, m_hostEdges.flowBottom, m_hostEdges.root);
++    paint(m_hostEdges.flowRight, m_hostEdges.flowTop, width, m_hostEdges.flowBottom, m_hostEdges.root);
++    const auto left = m_hostEdges.insetLeft, right = width - m_hostEdges.insetRight;
++    if (m_hostEdges.colorMask & 1) paint(left, 0, right, m_hostEdges.insetTop, m_hostEdges.top);
++    if (m_hostEdges.colorMask & 4) paint(left, height - m_hostEdges.insetBottom, right, height, m_hostEdges.bottom);
++    if (m_hostEdges.colorMask & 2) paint(right, 0, width, height, m_hostEdges.right);
++    if (m_hostEdges.colorMask & 8) paint(0, 0, left, height, m_hostEdges.left);
++    context->restore();
++    m_hostPaintedEdges = m_hostEdges;
++#endif
+ #if PLATFORM(WIN)
+     m_hostFrameTiming.paintEndSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+     if (m_hostPaintTimings.size() == 128)
+@@ -122,6 +154,40 @@
+         damageRegion = WebCore::IntRect({ }, page->viewSize());
+ 
+ #if PLATFORM(WIN)
++    const auto oldEdges = m_hostEdges;
++    auto nextEdges = updateInfo.hostEdges;
++    const auto now = MonotonicTime::now().secondsSinceEpoch().value();
++    if (nextEdges.documentEpoch != oldEdges.documentEpoch)
++        std::fill(std::begin(m_hostEdgeDeadlines), std::end(m_hostEdgeDeadlines), 0);
++    uint32_t* nextColors[] = { &nextEdges.top, &nextEdges.right, &nextEdges.bottom, &nextEdges.left };
++    const uint32_t oldColors[] = { oldEdges.top, oldEdges.right, oldEdges.bottom, oldEdges.left };
++    for (unsigned side = 0; side < 4; ++side) {
++        const auto state = (nextEdges.states >> (side * 2)) & 3;
++        if (state == 1) {
++            nextEdges.colorMask |= 1u << side;
++            m_hostEdgeDeadlines[side] = 0;
++        } else if (state >= 2 && nextEdges.documentEpoch == oldEdges.documentEpoch && (oldEdges.colorMask & (1u << side))) {
++            if (!m_hostEdgeDeadlines[side]) m_hostEdgeDeadlines[side] = now + .6;
++            if (now < m_hostEdgeDeadlines[side]) {
++                nextEdges.colorMask |= 1u << side;
++                *nextColors[side] = oldColors[side];
++            }
++        } else m_hostEdgeDeadlines[side] = 0;
++    }
++    // Insets/flow/coverage can change outside bitmap damage. Repaint the native
++    // surface using the same retained page frame; do not force WebCore rendering.
++    m_hostEdges = nextEdges;
++    double deadline = 0;
++    for (auto value : m_hostEdgeDeadlines)
++        if (value > now && (!deadline || value < deadline)) deadline = value;
++    m_hostEdgeExpiryTimer.stop();
++    if (deadline) m_hostEdgeExpiryTimer.startOneShot(Seconds(deadline - now));
++    const auto paintKey = [](const HostFrameEdges& edge) {
++        return std::tuple { edge.documentEpoch, edge.colorMask, edge.top, edge.right, edge.bottom, edge.left, edge.root,
++            edge.insetTop, edge.insetRight, edge.insetBottom, edge.insetLeft, edge.flowLeft, edge.flowTop, edge.flowRight, edge.flowBottom };
++    };
++    if (paintKey(oldEdges) != paintKey(nextEdges))
++        damageRegion.unite(WebCore::IntRect({ }, updateInfo.viewSize));
+     m_hostFrameTiming = updateInfo.hostTiming;
+     m_hostFrameTiming.receiveSeconds = MonotonicTime::now().secondsSinceEpoch().value();
+ #endif
+@@ -130,9 +196,35 @@
+     page->setViewNeedsDisplay(damageRegion);
+ }
+ 
++#if PLATFORM(WIN)
++void DrawingAreaProxyWC::hostEdgeExpiryTimerFired()
++{
++    const auto now = MonotonicTime::now().secondsSinceEpoch().value();
++    bool changed = false;
++    double deadline = 0;
++    for (unsigned side = 0; side < 4; ++side) {
++        auto& expiry = m_hostEdgeDeadlines[side];
++        if (expiry && expiry <= now) {
++            m_hostEdges.colorMask &= ~(1u << side);
++            expiry = 0;
++            changed = true;
++        } else if (expiry && (!deadline || expiry < deadline)) deadline = expiry;
++    }
++    if (changed && page() && m_backingStore)
++        page()->setViewNeedsDisplay(WebCore::Region(WebCore::IntRect({ }, m_backingStore->size())));
++    if (deadline) m_hostEdgeExpiryTimer.startOneShot(Seconds(deadline - now));
++}
++#endif
++
+ void DrawingAreaProxyWC::discardBackingStore()
+ {
+     m_backingStore = std::nullopt;
++#if PLATFORM(WIN)
++    m_hostEdgeExpiryTimer.stop();
++    m_hostEdges = { };
++    m_hostPaintedEdges = { };
++    std::fill(std::begin(m_hostEdgeDeadlines), std::end(m_hostEdgeDeadlines), 0);
++#endif
+ }
+ 
+ } // namespace WebKit
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.h
+@@ -115,6 +115,32 @@
+ WK_EXPORT unsigned WKViewGetHostAccessibilityAPIVersion(void);
+ WK_EXPORT void WKViewRequestHostAccessibilityTree(WKViewRef, unsigned long long requestID, const void* context, WKHostAccessibilityTreeCallback);
+ 
++// Frame presentation API v1: continuation state belongs to the painted frame.
++typedef struct WKHostFrameEdges {
++    unsigned long long frameID;
++    unsigned long long documentEpoch;
++    unsigned states;
++    unsigned reasons;
++    unsigned colorMask;
++    unsigned top;
++    unsigned right;
++    unsigned bottom;
++    unsigned left;
++    unsigned root;
++    float insetTop;
++    float insetRight;
++    float insetBottom;
++    float insetLeft;
++    int flowLeft;
++    int flowTop;
++    int flowRight;
++    int flowBottom;
++} WKHostFrameEdges;
++WK_EXPORT unsigned WKViewGetHostFramePresentationAPIVersion(void);
++WK_EXPORT bool WKViewCopyHostFrameEdges(WKViewRef, WKHostFrameEdges* output);
++
++WK_EXPORT bool WKViewGetHostFrameClock(double* nativeSeconds, double* qpcSeconds, double* uncertaintySeconds);
++
+ // Frame timeline API v1: bounded native paint history, no IPC or repaint.
+ typedef struct WKHostFrameTiming {
+     unsigned long long frameID;
+--- a/Source/WebKit/UIProcess/API/C/win/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/win/WKView.cpp
+@@ -85,6 +85,47 @@
+ void WKViewSetUsesOffscreenRendering(WKViewRef viewRef, bool enabled)
+ {
+     toImpl(viewRef)->setUsesOffscreenRendering(enabled);
++}
++
++unsigned WKViewGetHostFramePresentationAPIVersion(void) { return 1; }
++
++bool WKViewCopyHostFrameEdges(WKViewRef viewRef, WKHostFrameEdges* output)
++{
++    if (!viewRef || !output) return false;
++    auto* page = toImpl(viewRef)->page();
++    if (!page || page->isClosed() || !page->drawingArea()) return false;
++    const auto& edges = static_cast<DrawingAreaProxyWC*>(page->drawingArea())->hostPaintedEdges();
++    output->frameID = edges.frameID;
++    output->documentEpoch = edges.documentEpoch;
++    output->states = edges.states;
++    output->reasons = edges.reasons;
++    output->colorMask = edges.colorMask;
++    output->top = edges.top;
++    output->right = edges.right;
++    output->bottom = edges.bottom;
++    output->left = edges.left;
++    output->root = edges.root;
++    output->insetTop = edges.insetTop;
++    output->insetRight = edges.insetRight;
++    output->insetBottom = edges.insetBottom;
++    output->insetLeft = edges.insetLeft;
++    output->flowLeft = edges.flowLeft;
++    output->flowTop = edges.flowTop;
++    output->flowRight = edges.flowRight;
++    output->flowBottom = edges.flowBottom;
++    return edges.frameID != 0;
++}
++
++bool WKViewGetHostFrameClock(double* nativeSeconds, double* qpcSeconds, double* uncertaintySeconds)
++{
++    if (!nativeSeconds || !qpcSeconds || !uncertaintySeconds) return false;
++    LARGE_INTEGER before, after, frequency;
++    if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&before)) return false;
++    *nativeSeconds = MonotonicTime::now().secondsSinceEpoch().value();
++    if (!QueryPerformanceCounter(&after)) return false;
++    *qpcSeconds = (before.QuadPart / 2.0 + after.QuadPart / 2.0) / frequency.QuadPart;
++    *uncertaintySeconds = static_cast<double>(after.QuadPart - before.QuadPart) / frequency.QuadPart;
++    return true;
+ }
+ 
+ unsigned WKViewGetHostFrameTimingAPIVersion(void) { return 1; }

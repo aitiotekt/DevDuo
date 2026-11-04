@@ -75,6 +75,13 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-presentation-insets` | 单独检查工具栏收起后新露出的未经修改颜色页源像素；会打开 Windows 窗口，与最终 DWM 验收分开 |
 | `just test-windows-presentation-rotations` | 检查八种姿态、弹窗关闭和快速旋转后的新文档动画帧；会打开 Windows 窗口，与完整固定遮罩历史分开 |
 | `just test-windows-fixed-overlay` | 原生弹窗遮罩视口 alpha、inset 颜色及几何保持检查；会打开 Windows 窗口，不代表完整 Safari 光学验收 |
+| `just test-windows-modal-sequence` | 单一 DPI 下嵌套弹窗交替、材质／前景局部更新及实际帧证据 |
+| `just test-windows-upstream-fixed-colors` | 原生 fixed/sticky 取色规则、图案底层、保留的上游导出及实际 inset 像素 |
+| `just test-windows-fixed-color-transitions` | inset 同步失效及原生滚轮外壳切换时的颜色连续性 |
+| `just test-windows-chrome-motion` | Closed／Open 横屏控件中间帧、实测端点及合成结构复用 |
+| `just test-windows-touch-performance` | 深层本地夹具的真实 OS 拖动与鼠标滚轮帧间隔；需要前台桌面 |
+| `just test-windows-atomic-continuation` | 当前 DPI、1:1／Fit 及确认过的合成／软件路径，比较动态页面与 inset；顶边来源像素和合成窗口证据分别记录 |
+| `just test-windows-developer-restore` | 真实应用重启、端口占用隔离及服务记忆恢复 |
 | `just test-windows-page-dialogs` | 真实 WebKit alert/confirm/prompt listener、本地化原生界面、系统键盘/UIA、DPI 及导航/销毁取消 |
 | `just test-windows-accessibility` | 实际 Windows UIA 页面名称、值、动作、旋转边界及过期文档拒绝；需要 desktop API v1 |
 | `just test-windows-popups` | 八种机身姿态下真实原生 select 锚点、鼠标／键盘选择及 Escape 关闭 |
@@ -83,6 +90,10 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-scroll-indicators` | 原生输入、淡出、CSS 抑制及屏幕外缘指示器像素与页面几何保持检查；会打开 Windows 窗口，不声明 Safari 精确线宽或淡出时长 |
 | `just test-windows-touch-pointer` | 当前 DPI 下的外壳旧位置像素恢复、快速移动合并及页面几何保持；会打开 Windows 窗口 |
 | `just test-windows-run-loop` | 在外部 Windows 消息泵和 WTF 自有循环下检查实际固定版本 WTF 定时器；需要已构建的原生运行时 |
+| `just test-windows-scrolling-layers` | 无窗口原生 WC 图层发布、合并及确认机制检查；需要实验异步运行时，不认证实际滚动呈现 |
+| `just test-windows-async-scrolling` | 当前 DPI 与 1:1／Fit 下的真实滚轮、页面主线程阻塞、fixed／延伸像素及 DOM 收敛，需要实验运行时 |
+| `just test-windows-native-touch` | 可信触点、原生手势规则、嵌套滚动及繁忙页面 GPU 呈现，需要实验原生触控运行时 |
+| `just test-windows-async-scrolling` | 实验原生滚轮、合成窗口像素及主线程繁忙期间的 fixed／延伸检查，保留阻塞监听器语义 |
 | `just test-debugging` | 真实回环 CDP HTTP/WebSocket 发现、token/Origin/生命周期检查，不证明原生页内注入 |
 | `just prepare-debugging` | 将锁定的 chii/chobitsu 离线资源复制到 `temp/build/debugging/`，已纳入应用 dev/build/package 命令 |
 | `just probe-windows-webkit` | 固定官方 WebKit 版本的独立实时延伸/文档边界诊断，会打开 Windows 窗口 |
