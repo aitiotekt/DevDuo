@@ -26,6 +26,7 @@ internal sealed partial class WindowsChecks
         Check(PresentationGetForegroundWindow() == owner, "Render stability requires the independent foreground window");
         var outsetOnly = Environment.GetEnvironmentVariable("DEVDUO_TEST_RENDER_STABILITY_OUTSET_ONLY") == "1";
         var failures = new List<string>();
+        if (!outsetOnly) await CheckSideChromeBackdropTransition(panel, owner);
         if (!outsetOnly && await CheckSideChromeSequence(panel, owner, "right") is { } rightFailure)
             failures.Add(rightFailure);
         Select(Settings.ThemeChoice, 1);
@@ -140,6 +141,46 @@ internal sealed partial class WindowsChecks
             var stableModal = modalPixels.SkipWhile(pixel => !pixel.extension.All(channel => Math.Abs(channel - 25) <= 3)).ToArray();
             var modalEdge = FixedExtension(State());
             Save("outset-authored-modal-continuation", JsonSerializer.SerializeToElement(new { modalPixels, modalColors, edge = modalEdge }));
+
+            var canvasViewportHeight = State().GetProperty("actualPageViewport").GetProperty("height").GetDouble();
+            foreach (var (mode, expectsGray, x) in new[]
+            {
+                ("show", true, 80), ("paint", false, 80), ("clear", true, 80),
+                ("lower-paint", false, 45), ("clear", true, 80),
+            })
+            {
+                var canvasCapture = new ComposedWindowSequence(owner, captureBounds, 1600);
+                await Task.WhenAny(canvasCapture.Ready, canvasCapture.Completed);
+                if (canvasCapture.Completed.IsCompleted) await canvasCapture.Completed;
+                var frameBefore = FixedExtension(State()).GetProperty("frameId").GetUInt64();
+                await Web.EvaluateResultAsync($"setModalCanvasPaint('{mode}');'{mode}'");
+                var canvasFrames = await canvasCapture.Completed;
+                var canvasState = await Wait(current =>
+                {
+                    var edge = FixedExtension(current);
+                    var accepted = edge.GetProperty("bottomStatus").GetString() == "accepted";
+                    var gray = edge.GetProperty("bottomRgb").GetRawText() == "[25,25,25]";
+                    return edge.GetProperty("frameId").GetUInt64() > frameBefore &&
+                        (expectsGray ? accepted && gray : !accepted && !gray);
+                }, $"The live pointer-through canvas mode '{mode}' respects its actual paint at the edge");
+                var canvasPixels = canvasFrames.TakeLast(5).Select(frame => new
+                {
+                    foreground = Rgb(frame, x, canvasViewportHeight - 2),
+                    extension = Rgb(frame, x, 665),
+                }).ToArray();
+                Save("outset-modal-canvas-" + mode, JsonSerializer.SerializeToElement(new
+                {
+                    edge = FixedExtension(canvasState),
+                    composedFrames = canvasFrames.Count,
+                    pageFrames = submissions.Where(frame => frame.Id > frameBefore).Select(frame => frame.Id).ToArray(),
+                    canvasPixels,
+                }));
+                Check(canvasPixels.Length >= 2 && canvasPixels.All(pixel => !Red(pixel.extension)) &&
+                    Red(canvasPixels[^1].foreground) != expectsGray &&
+                    canvasPixels[^1].extension.All(channel => Math.Abs(channel - 25) <= 3) == expectsGray,
+                    $"The window shows the expected foreground and bottom continuation for canvas mode '{mode}'");
+            }
+            await Web.EvaluateResultAsync("setModalCanvasPaint('hide');'hidden'");
 
             submissions.Clear();
             var coloredCapture = new ComposedWindowSequence(owner, captureBounds, 1150);
@@ -343,6 +384,131 @@ internal sealed partial class WindowsChecks
             Save("outset-uniform-sample-strip", JsonSerializer.SerializeToElement(new { uniformSamples, uniformFills }));
             Check(uniformFills.Contains(0x174e8du) && uniformSamples.Any(rgb => MarkerVisible(rgb, [23, 78, 141])),
                 "A painted background that reaches both ends continues beyond the viewport");
+        }
+        finally { browser.PageFrameSubmitted -= Submitted; }
+    }
+
+    private async Task CheckSideChromeBackdropTransition(WindowsWebViewPanel panel, nint owner)
+    {
+        Select(Settings.ThemeChoice, 1);
+        panel.ShowHtml(File.ReadAllText("tests/DevDuo.WebKitProbe/pages/chrome-side-backdrop.html"));
+        await WaitForScript("document.title", value => value == "Safari side chrome backdrop", "Side glass transition fixture");
+        await Task.Delay(700);
+        var browser = panel.Browser;
+        var bounds = browser.PresentationBounds!(browser.ClientRectangle);
+        var pixels = new PixelRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        var roles = browser.Chrome.Where(element => element.Kind is ChromeKind.Back or ChromeKind.Bookmarks or ChromeKind.TabGroup)
+            .ToDictionary(element => element.Kind.ToString(), element => Rectangle.Round(new RectangleF(
+                element.X + element.VisualX, element.Y + element.VisualY, element.VisualWidth, element.VisualHeight)));
+        Check(roles.Count == 3, "A fixed side backdrop transition presents three independent side controls");
+        var submitted = new List<object>();
+        void RecordSubmission(ulong id, bool asynchronous, WindowsComposition.Fill[] fills) =>
+            submitted.Add(new { time = System.Diagnostics.Stopwatch.GetTimestamp(), id, asynchronous,
+                fills = fills.Select(fill => new { fill.X, fill.Y, fill.Width, fill.Height, fill.Color }).ToArray() });
+        browser.PageFrameSubmitted += RecordSubmission;
+        List<ComposedWindowSequence.Frame> frames;
+        try
+        {
+            var capture = new ComposedWindowSequence(owner, pixels, 2750);
+            await Task.WhenAny(capture.Ready, capture.Completed);
+            if (capture.Completed.IsCompleted) await capture.Completed;
+            await Task.Delay(180);
+            await Web.EvaluateResultAsync("document.querySelector('#sheet').hidden=false;'shown'");
+            await Task.Delay(950);
+            await Web.EvaluateResultAsync("document.querySelector('#sheet').hidden=true;'closed'");
+            frames = await capture.Completed;
+        }
+        finally { browser.PageFrameSubmitted -= RecordSubmission; }
+        int Channel(ComposedWindowSequence.Frame frame, int x, int y) => frame.Bgra[(y * pixels.Width + x) * 4 + 1];
+        double Face(ComposedWindowSequence.Frame frame, Rectangle box)
+        {
+            var x = box.Left + box.Width / 2;
+            var y = box.Top + box.Height / 2;
+            return (Channel(frame, x - box.Width / 3, y) + Channel(frame, x + box.Width / 3, y)) / 2.0;
+        }
+        var samples = frames.Select(frame => new
+        {
+            time = frame.Time100Ns,
+            backdrop = Channel(frame, pixels.Width - 12, pixels.Height / 2),
+            buttons = roles.ToDictionary(role => role.Key, role =>
+            {
+                var box = role.Value;
+                var ink = Enumerable.Range(box.Left + box.Width / 4, box.Width / 2).Sum(i =>
+                    Enumerable.Range(box.Top + box.Height / 4, box.Height / 2).Count(j => Channel(frame, i, j) < 40));
+                return new { face = Face(frame, box), ink };
+            }),
+        }).ToArray();
+        var dark = samples.Where(frame => frame.backdrop < 40).ToArray();
+        var light = samples.Where(frame => frame.backdrop > 230).ToArray();
+        Save("render-stability-side-backdrop-switch", JsonSerializer.SerializeToElement(new { roles, samples, submitted,
+            qpcFrequency = System.Diagnostics.Stopwatch.Frequency }));
+        Check(dark.Length >= 4 && light.Length >= 4 && light[0].time < dark[0].time && light[^1].time > dark[^1].time,
+            "The actual right inset changes from light to gray and back while the window is captured");
+        foreach (var role in roles.Keys)
+        {
+            var settledDark = dark[^1].buttons[role].face;
+            var settledLight = light[^1].buttons[role].face;
+            var failures = dark.Where(frame => Math.Abs(frame.buttons[role].face - settledDark) > 12 || frame.buttons[role].ink == 0)
+                .Concat(light.Where(frame => Math.Abs(frame.buttons[role].face - settledLight) > 12 || frame.buttons[role].ink == 0)).ToArray();
+            foreach (var sample in failures.Take(3))
+                ComposedWindowSequence.Save(frames.First(frame => frame.Time100Ns == sample.time), pixels,
+                    Path.Combine(Program.Output, $"side-backdrop-{role}-{sample.time}.png"));
+            Check(failures.Length == 0,
+                $"{role} keeps its glyph and matching optics on every submitted light and dark side backdrop");
+        }
+
+        var textureCapture = new ComposedWindowSequence(owner, pixels, 2150);
+        await Task.WhenAny(textureCapture.Ready, textureCapture.Completed);
+        if (textureCapture.Completed.IsCompleted) await textureCapture.Completed;
+        await Web.EvaluateResultAsync("document.querySelector('main').style.cssText='width:100%;background:linear-gradient(to right,white calc(100% - 34px),#081cc8 0)';'textured'");
+        await Task.Delay(550);
+        await Web.EvaluateResultAsync("document.querySelector('main').removeAttribute('style');'restored'");
+        var textureFrames = await textureCapture.Completed;
+        var textureSamples = textureFrames.Select(frame => new
+        {
+            page = Channel(frame, roles["Back"].Left - 22, roles["Back"].Top + 24),
+            side = Channel(frame, pixels.Width - 12, pixels.Height / 2),
+            faces = roles.ToDictionary(role => role.Key, role => Enumerable.Range(role.Value.Left + 2, 3)
+                .Average(x => Channel(frame, x, role.Value.Top + role.Value.Height / 2))),
+        }).ToArray();
+        Save("render-stability-side-live-texture", JsonSerializer.SerializeToElement(textureSamples));
+        var textured = textureSamples.Where(frame => frame.page < 50).ToArray();
+        Check(textureSamples.Length >= 3 && textured.Length > 0 && textureSamples[0].page > 230 &&
+            textureSamples[^1].page > 230 && textureSamples.All(frame => frame.side > 230) && roles.Keys.All(role =>
+                textureSamples[0].faces[role] - textured[^1].faces[role] >= 2 &&
+                Math.Abs(textureSamples[0].faces[role] - textureSamples[^1].faces[role]) <= 1),
+            "The three glass surfaces sample changed page pixels while the actual side inset stays white");
+
+        WindowsComposition.Fill[]? retainedFills = null;
+        void Submitted(ulong _, bool __, WindowsComposition.Fill[] fills) => retainedFills = fills;
+        browser.PageFrameSubmitted += Submitted;
+        try
+        {
+            var fallbackCapture = new ComposedWindowSequence(owner, pixels, 1850);
+            await Task.WhenAny(fallbackCapture.Ready, fallbackCapture.Completed);
+            if (fallbackCapture.Completed.IsCompleted) await fallbackCapture.Completed;
+            await Web.EvaluateResultAsync("document.querySelector('main').style.cssText='width:calc(100% + 100px);background:#111820';'changed'");
+            var fallback = await Wait(state =>
+            {
+                var side = state.GetProperty("sideChromeColor");
+                var sampled = side.GetProperty("sampledRgb");
+                return sampled.ValueKind == JsonValueKind.Number && sampled.GetUInt32() == 0x111820 &&
+                    side.GetProperty("displayedRgb").GetUInt32() == 0x111820;
+            }, "The side material follows a native sample when ordinary flow reaches the inset");
+            var sampledFills = retainedFills;
+            Check(sampledFills is not null && !sampledFills.Any(fill => fill.X > pixels.Width / 2 && fill.Y <= 1 &&
+                fill.X + fill.Width >= pixels.Width - 1 && fill.Y + fill.Height >= pixels.Height - 1),
+                "The frame uses ordinary-flow side paint with no full-height side fill");
+            var fallbackFrames = await fallbackCapture.Completed;
+            var fallbackPixels = fallbackFrames.Select(frame => new
+            {
+                backdrop = Channel(frame, pixels.Width - 12, pixels.Height / 2),
+                faces = roles.ToDictionary(role => role.Key, role => Face(frame, role.Value)),
+            }).ToArray();
+            Check(fallbackPixels.Any(frame => frame.backdrop == 24 &&
+                roles.Keys.All(role => Math.Abs(frame.faces[role] - dark[^1].buttons[role].face) <= 12)),
+                "Ordinary-flow fallback produces the matching optics in the real window");
+            Save("render-stability-side-backdrop-fallback", JsonSerializer.SerializeToElement(new { fallback, sampledFills, fallbackPixels }));
         }
         finally { browser.PageFrameSubmitted -= Submitted; }
     }

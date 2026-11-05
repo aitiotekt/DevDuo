@@ -47,6 +47,7 @@
     width: 40px; height: 40px; background: #174e8d33; }
   .modal-pass-through-decoration { position: absolute; bottom: 0; left: 10%;
     width: 20px; height: 12px; background: linear-gradient(#b9181b, #eb2a2c); }
+  .modal-canvas-cover { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
 </style>
 <aside></aside>
 <div class="modal-host">
@@ -57,6 +58,7 @@
 </div>
 <div class="modal-pass-through" aria-hidden="true"><div class="modal-pass-through-widget"></div>
   <div class="modal-pass-through-decoration" hidden></div></div>
+<div class="modal-canvas-cover" hidden aria-hidden="true"></div>
 <main></main>
 <div class="fixed-marker direct-marker"></div>
 <div class="portal"><div class="portal-flow"></div><div class="fixed-marker portal-marker"></div>
@@ -66,6 +68,26 @@
 <!-- Keep a rendered child so the paint-free fixed box qualifies for native edge hits. -->
 <div class="viewport-cover" aria-hidden="true"><span></span></div>
 <script>
+  const canvasCover = document.querySelector('.modal-canvas-cover');
+  const canvasRoot = canvasCover.attachShadow({mode: 'open'});
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  canvasRoot.append(overlayCanvas);
+  window.setModalCanvasPaint = mode => {
+    if (mode === 'show') {
+      overlayCanvas.width = innerWidth;
+      overlayCanvas.height = innerHeight;
+      canvasCover.hidden = false;
+    }
+    const context = overlayCanvas.getContext('2d');
+    context.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    if (mode === 'paint') {
+      context.fillStyle = '#eb2a2c';
+      context.fillRect(48, overlayCanvas.height - 5, 76, 5);
+    }
+    document.querySelector('.modal-pass-through-decoration').hidden = mode !== 'lower-paint';
+    if (mode === 'hide') canvasCover.hidden = true;
+  };
   const footer = document.querySelector('footer');
   let previousScroll = scrollY;
   addEventListener('scroll', () => {

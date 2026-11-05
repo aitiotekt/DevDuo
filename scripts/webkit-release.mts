@@ -16,6 +16,7 @@ import { dryRun, repositoryName } from "./lib/release-github.mts";
 import { run, temporary } from "./lib/release-process.mts";
 import {
   preflightPublishedWebKit,
+  publishedWebKitAvailable,
   publishWebKitOutput,
   stageRuntime,
   validateRuntimeRelease,
@@ -85,6 +86,14 @@ function packageRuntime(): void {
   });
 }
 function fetchRuntime(): string {
+  const local = process.env.DEVDUO_WEBKIT_RELEASE_DIRECTORY;
+  if (local) {
+    const unpacked = join(repoRoot, "temp/build/windows-webkit-release-input");
+    rmSync(unpacked, { recursive: true, force: true });
+    zip("Unpack", unpacked, join(local, names.asset));
+    validateRuntimeRelease(unpacked);
+    return unpacked;
+  }
   const cache = join(
     repoRoot,
     "temp/cache/windows-webkit/releases",
@@ -145,7 +154,12 @@ function bundleRuntime(): void {
   });
 }
 function publish(): void {
-  const plan = webkitPlan(process.env.GITHUB_REF ?? "", sourceSha());
+  const plan = webkitPlan(
+    process.env.GITHUB_REF ?? "",
+    sourceSha(),
+    metadata,
+    process.env.WEBKIT_APPLICATION_RELEASE === "true",
+  );
   if (dryRun(process.env.RELEASE_DRY_RUN ?? ""))
     throw new Error("Dry-run mode cannot publish a WebKit release.");
   publishWebKitOutput(output, plan.prerelease);
@@ -159,12 +173,22 @@ function publish(): void {
 try {
   const command = process.argv[2];
   if (command === "plan") {
-    const plan = webkitPlan(process.env.GITHUB_REF ?? "", sourceSha());
+    const plan = webkitPlan(
+      process.env.GITHUB_REF ?? "",
+      sourceSha(),
+      metadata,
+      process.env.WEBKIT_APPLICATION_RELEASE === "true",
+    );
     const mode = dryRun(process.env.RELEASE_DRY_RUN ?? "");
+    const required = !publishedWebKitAvailable();
     if (process.env.GITHUB_OUTPUT)
-      for (const [key, value] of Object.entries({ ...plan, dry_run: mode }))
+      for (const [key, value] of Object.entries({
+        ...plan,
+        dry_run: mode,
+        required,
+      }))
         appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
-    console.log(JSON.stringify({ ...plan, dry_run: mode }, null, 2));
+    console.log(JSON.stringify({ ...plan, dry_run: mode, required }, null, 2));
   } else if (command === "preflight") {
     preflightPublishedWebKit();
     console.log(`${names.tag} is published with ${names.asset}.`);

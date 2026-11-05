@@ -11,8 +11,10 @@
     transform: translateZ(0);
   }
   main.dark { background: #111820; }
+  #sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, .9); }
 </style>
 <main></main>
+<div id="sheet" hidden></div>
 <script>
   const main = document.querySelector('main');
   addEventListener('scroll', () => main.classList.toggle('dark', scrollY > 420));

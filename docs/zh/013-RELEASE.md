@@ -20,7 +20,7 @@ DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Window
 | Checks：原生矩阵 | metadata 启用的 macOS/Windows 编译应用、原生 bridge 和原生测试工具，macOS 另执行 AppKit 几何断言 | 各 30 分钟；不进行交互式浏览器验收、不用私人截图、不下载引擎、不编译 WebKit 源码 |
 | 文档推送 / 手动 | `main`/`release` 相关路径构建部署输入；仅 `main` 部署 | 构建 30 分钟、部署 15 分钟；PR 文档已由 Checks 覆盖 |
 | 应用 Release | 可复用 Checks 通过后才打包、签名 | macOS 120 分钟、Windows 60 分钟、组装/发布各 30 分钟 |
-| 手动 WebKit 发布 | 持久自托管 Windows runner 增量编译完整引擎 | 编译步骤 22 小时、完整任务 23 小时；托管计划/发布任务不编译 WebKit |
+| WebKit 发布（手动或应用依赖） | 持久自托管 Windows runner 增量编译完整引擎 | 编译步骤 22 小时、完整任务 23 小时；托管计划/发布任务不编译 WebKit |
 
 仅**完整 PR 差异确认纯文档**时可跳过原生矩阵。比较范围未知时执行完整检查。每次 `main` 推送仍编译原生目标，因为前一次代码推送可能在通过前被取消。应用发布复用验证时始终强制原生编译。Checks 取消同 ref 的过时运行；文档也取消过时部署。全部任务检出不可变的触发 SHA，关闭 checkout 凭据持久化。只读 PR 任务不使用引擎 runner、签名环境或发布凭据。
 
@@ -42,7 +42,7 @@ macOS 官方应用发行包必须通过 Developer ID 签名、Apple 公证并附
 
 `devduo-metadata.toml` 的 `[webkit]` 统一管理独立的引擎版本、tag/产物前缀、Windows 目标、DLL 标识、上游 revision、手动发布分支和 runner 标签。当前 ABI 保留上游 `WebKit2.dll` 名称，ZIP 名称按 `<asset_prefix>-<version>-win-x64.zip` 派生。应用版本变化不会提升引擎版本。`runtime.lock.json` 继续固定官方诊断归档，并须与 metadata 的上游 revision 一致；更新上游时还须审查原生绑定及其要求的能力。
 
-`.github/workflows/webkit-release.yml` **仅接受 `workflow_dispatch`**，并限定 metadata 配置的分支。计划在托管 runner 执行，编译使用配置标签对应的自托管 Windows/x64 runner。工作流文件须先进入默认分支，才能手动触发。现有基础设施配置已将原生 Windows 服务 runner 直接注册到本仓库，并使用持久工作目录。Metadata 选择其默认 `["self-hosted", "Windows", "X64"]` 标签，不依赖私人机器标签，也无需再次注册 runner。本仓库可用且匹配全部标签的 runner 均可接收任务；以后增加 runner 时，可通过 IaC 管理的能力标签收紧 `runner_labels`。[GitHub 默认标签匹配说明](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow#using-default-labels-to-route-jobs)。
+`.github/workflows/webkit-release.yml` 支持在 metadata 分支手动 `workflow_dispatch`，也支持应用发布通过 `workflow_call` 调用。可复用调用使用应用的同一提交，接受配置的应用发布分支或 metadata 对应的精确版本 tag，并与手动运行共用引擎发布并发锁。计划在托管 runner 执行，编译使用配置标签对应的自托管 Windows/x64 runner。工作流文件须先进入默认分支，才能手动触发。现有基础设施配置已将原生 Windows 服务 runner 直接注册到本仓库，并使用持久工作目录。Metadata 选择其默认 `["self-hosted", "Windows", "X64"]` 标签，不依赖私人机器标签，也无需再次注册 runner。本仓库可用且匹配全部标签的 runner 均可接收任务；以后增加 runner 时，可通过 IaC 管理的能力标签收紧 `runner_labels`。[GitHub 默认标签匹配说明](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow#using-default-labels-to-route-jobs)。
 
 自托管 Windows runner 的部署与工作目录由 **aitiotekt-infra** 管理，使用较短的真实路径，并向 LocalSystem 提供构建工具。Windows/Git 长路径设置仍须启用；`CMAKE_OBJECT_PATH_MAX` 不能扩大编译器自身的路径支持。迁移时保留原工作区和缓存。
 
@@ -51,8 +51,8 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 发布顺序：
 
 1. 设置新的 `[webkit].version`，保留预期源码 revision/补丁。审查并将这些输入合并到配置分支。
-2. 手动以 `dry-run=true` 准备产物而不发布，再以 `dry-run=false` 正式发布。已有版本 ZIP 通过校验后，与配套文件一起复用，跳过引擎工具安装和原生编译；否则构建并打包运行时，保留导出、声明和源码记录。托管发布器在 tag 缺失时于包的源码提交创建 tag，Release 不存在时创建草稿，只上传缺失资产，并以 `latest=false` 发布。已有资产不替换也不比较。
-3. Windows 应用打包下载精确版本资产，解压后放入 `DevDuo/webkit/`。同版本的下载缓存直接复用，不查找 `latest`，不自动编译引擎。
+2. 运行应用 Release 工作流，或手动运行 **WebKit runtime release**。对应公开、非草稿 Release 已含非空且上传完成的 ZIP 时跳过引擎构建；版本不存在、仍为草稿或缺少资产时执行持久增量构建。API 查询失败直接终止，不视为版本缺失。`dry-run=true` 仅生成 Actions artifact；正式运行会在 Windows 打包前发布引擎。已有版本 ZIP 通过校验后，与配套文件一起复用，跳过引擎工具安装和原生编译；否则构建并打包运行时，保留导出、声明和源码记录。托管发布器在 tag 缺失时于包的源码提交创建 tag，Release 不存在时创建草稿，只上传缺失资产，并以 `latest=false` 发布。已有资产不替换也不比较。
+3. Windows 应用打包下载精确版本资产，校验后解压到 `DevDuo/webkit/`。同版本下载缓存复用前也会校验。不查询 `latest`；应用演练在引擎尚未发布时直接使用本次 artifact，不创建引擎 tag 或公开 Release。
 
 使用 `mise exec -- just test-webkit-release-tools` 测试工具。`package-webkit-release` 复用或创建版本包，`publish-webkit-release` 发布该包。`just release-preflight` 只要求 Release 已公开并含该版本资产。流水线不比较归档、文件、源码或构建哈希；`SHA256SUMS`、运行时清单和构建来源记录作为供下载者使用的输出保留。ZIP 解压兼容旧 Windows 反斜杠路径，新包统一使用标准 `/` 路径。
 
@@ -70,7 +70,7 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 | 精确的 `vX.Y.Z[-alpha.N/-beta.N]` tag | 与包版本一致 | 检查并发布；正式版需要审批 |
 | 其他分支或不匹配的 tag | 任意 | 在访问签名凭据前拒绝 |
 
-推送到 `release` 或 `v*` tag 继续触发**自动正式发布**。手动触发默认 `dry-run=true`，仍执行验证、签名公证、组装、来源证明和 Actions 产物上传，但跳过创建 tag 和公开 Release；手动正式发布须明确设置 `dry-run=false`。演练选项不会抑制另一次推送触发的发布。手动触发使用所选 ref 及其 `github.sha`，所有任务检出该触发提交。平台构建前，计划阶段要求 metadata 的 WebKit 版本已发布且含资产。macOS 签名任务在构建前检查六个环境输入及 SDK；检查存在性不代表证书或 Apple 凭据有效。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
+推送到 `release` 或 `v*` tag 继续触发**自动正式发布**。手动触发默认 `dry-run=true`，仍执行验证、签名公证、组装、来源证明和 Actions 产物上传，但跳过创建 tag 和公开 Release；手动正式发布须明确设置 `dry-run=false`。演练选项不会抑制另一次推送触发的发布。手动触发使用所选 ref 及其 `github.sha`，所有任务检出该触发提交。验证和适用的稳定版审批完成后，Windows 依赖任务通过可复用引擎工作流准备 metadata 指定的 WebKit 版本。Windows 打包等待其成功，macOS 打包可独立继续。演练在需要时将未公开引擎 artifact 传递给 Windows；公开引擎下载与 artifact 输入均保留运行时版本及能力校验。macOS 签名任务在构建前检查六个环境输入及 SDK；检查存在性不代表证书或 Apple 凭据有效。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
 
 正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 

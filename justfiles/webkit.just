@@ -1,4 +1,4 @@
-# Engine publication is independent from the application release workflow.
+# Engine tooling supports standalone and application-dependent publication.
 test-webkit-release-tools:
     node --test scripts/__tests__/webkit-release.test.mts scripts/__tests__/webkit-source.test.mts
 

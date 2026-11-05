@@ -29,20 +29,32 @@ export type RuntimeRelease = {
   sourceSha: string;
 };
 
-// The application release downloads this asset by tag; fail before signing when
-// it has not been published yet.
+export function publishedWebKitAvailable(
+  root = repoRoot,
+  execute: Runner = run,
+): boolean {
+  const metadata = loadMetadata(root),
+    names = webkitNames(metadata);
+  const release = findRelease(repositoryName(metadata), names.tag, execute);
+  return (
+    !!release &&
+    !release.draft &&
+    release.assets.some(
+      (asset) =>
+        asset.name === names.asset &&
+        asset.state === "uploaded" &&
+        asset.size > 0,
+    )
+  );
+}
+
 export function preflightPublishedWebKit(
   root = repoRoot,
   execute: Runner = run,
 ): void {
   const metadata = loadMetadata(root),
     names = webkitNames(metadata);
-  const release = findRelease(repositoryName(metadata), names.tag, execute);
-  if (
-    !release ||
-    release.draft ||
-    !release.assets.some((asset) => asset.name === names.asset)
-  )
+  if (!publishedWebKitAvailable(root, execute))
     throw new Error(
       `Publish ${names.tag} with ${names.asset} before releasing the application.`,
     );
@@ -87,8 +99,14 @@ export function webkitPlan(
   ref: string,
   sha: string,
   metadata = loadMetadata(),
+  applicationRelease = false,
 ) {
-  if (ref !== `refs/heads/${metadata.webkit.releaseBranch}`)
+  const allowed = applicationRelease
+    ? ref === `refs/heads/${metadata.release.branch}` ||
+      ref ===
+        `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`
+    : ref === `refs/heads/${metadata.webkit.releaseBranch}`;
+  if (!allowed)
     throw new Error(
       "WebKit publication runs from its configured release branch.",
     );

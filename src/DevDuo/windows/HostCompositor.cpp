@@ -2,12 +2,15 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <climits>
 #include <d2d1_1.h>
+#include <d2d1effects.h>
 #include <d3d11.h>
 #include <dcomp.h>
 #include <dwmapi.h>
 #include <dwrite.h>
 #include <memory>
+#include <span>
 #include <source_location>
 #include <stdexcept>
 #include <string>
@@ -90,6 +93,18 @@ enum Kind { Top,
 
 bool hasGlass(int kind) { return kind <= TabGroup || kind == CompactAddress; }
 int glassRole(int kind) { return kind == CompactAddress ? Address : kind; }
+bool hasSideMaterial(int kind) { return kind == Back || kind == Bookmarks || kind == TabGroup; }
+
+D2D1_MATRIX_5X4_F backdropCorrection(DDMaterial material)
+{
+    const float s = material.saturation, gain = material.brightness * material.contrast;
+    const float r = .2126f * (1 - s), g = .7152f * (1 - s), b = .0722f * (1 - s);
+    const float offset = material.brightness * .5f * (1 - material.contrast);
+    return {
+        (r + s) * gain, r * gain, r * gain, 0, g * gain, (g + s) * gain, g * gain, 0,
+        b * gain, b * gain, (b + s) * gain, 0, 0, 0, 0, 1, offset, offset, offset, 0
+    };
+}
 
 // Role-dependent artistic optics; the page and foreground are separate inputs.
 DDMaterial materialForRole(int kind, bool dark, DDMaterial material)
@@ -134,7 +149,7 @@ DDMaterial materialForRole(int kind, bool dark, DDMaterial material)
 DDMaterial materialFor(const DDChrome& frame, DDMaterial material)
 {
     const bool dark = frame.foreground == 0xffffff;
-    if (material.sideTint <= 0xffffff && (frame.kind == Back || frame.kind == Bookmarks || frame.kind == TabGroup))
+    if (material.sideTint <= 0xffffff && hasSideMaterial(frame.kind))
         material.tint = material.sideTint;
     if (frame.kind != Address && frame.kind != CompactAddress)
         return materialForRole(frame.kind, dark, material);
@@ -192,6 +207,8 @@ public:
     ComPtr<ID2D1Device> drawing;
     ComPtr<IDWriteFactory> textFactory;
     ComPtr<IDCompositionSurface> boundary, decorations;
+    ComPtr<IDCompositionSurface> sideBackdrop;
+    ComPtr<ID2D1Effect> sideBlur, sideCorrection;
     ComPtr<IDCompositionSurface> indicatorSurface;
     ComPtr<IDCompositionVisual2> indicatorVisual;
     ComPtr<IDCompositionSurface> pointerSurface;
@@ -209,6 +226,7 @@ public:
         ComPtr<IDCompositionColorMatrixEffect> correction;
         ComPtr<IDCompositionVisual3> opacity;
         ComPtr<IDCompositionRectangleClip> clip;
+        bool usesSideBackdrop = false;
     };
     BaseVisuals base;
     std::array<GlassNode, TabGroup + 1> glassNodes;
@@ -216,7 +234,10 @@ public:
     ComPtr<IDCompositionGaussianBlurEffect> shadowEffect;
     ComPtr<IDCompositionSurface> foregroundSurface, shadowSurface;
     std::vector<DDFill> previousFills;
+    std::array<DDFill, 16> pageFills;
+    size_t pageFillCount = 0;
     DDMaterial previousMaterial { };
+    unsigned appliedSideTint = UINT_MAX;
     bool sceneReady = false;
     bool sceneUpdateIncomplete = false;
     unsigned long long structureUpdates = 0, materialUpdates = 0, boundaryUpdates = 0, foregroundUpdates = 0;
@@ -385,6 +406,7 @@ public:
         shadowVisual.Reset(); decorationVisual.Reset(); foregroundVisual.Reset();
         shadowEffect.Reset(); foregroundSurface.Reset(); shadowSurface.Reset();
         decorations.Reset();
+        sideBackdrop.Reset(); sideBlur.Reset(); sideCorrection.Reset();
         indicatorSurface.Reset();
         indicatorVisual.Reset();
         pointerVisual.Reset();
@@ -398,6 +420,8 @@ public:
         page.Reset();
         pageSurface.Reset();
         pageSurfaceWidth = pageSurfaceHeight = 0;
+        pageFillCount = 0;
+        appliedSideTint = UINT_MAX;
         sharedPageTexture.Reset();
         rawPageTexture.Reset(); finalPageTexture.Reset();
         presentedPageTexture.Reset();
@@ -480,6 +504,88 @@ public:
         rawPageWidth = w; rawPageHeight = h;
         finalPageWidth = std::max(1, width); finalPageHeight = std::max(1, height);
     }
+    DDMaterial materialWithPageSide(DDMaterial material, const std::vector<Item>& scene, std::span<const DDFill> fills) const
+    {
+        if (material.sideTint > 0xffffff) return material;
+
+        // Work in the page's unrotated scene coordinates, shared by fills
+        // and glass bounds. The last fill affecting a button wins its pixels.
+        for (auto it = fills.rbegin(); it != fills.rend(); ++it) {
+            const auto& fill = *it;
+            const auto right = fill.x + fill.width;
+            const auto bottom = fill.y + fill.height;
+            bool touchesButtons = false;
+            bool coversButtons = true;
+            for (const auto& item : scene) {
+                const auto& f = item.frame;
+                if (!hasSideMaterial(f.kind) || f.visualWidth <= 0 || f.visualHeight <= 0) continue;
+                const auto left = f.x + f.visualX, top = f.y + f.visualY;
+                const auto endX = left + f.visualWidth, endY = top + f.visualHeight;
+                touchesButtons |= left < right && endX > fill.x && top < bottom && endY > fill.y;
+                coversButtons &= fill.x <= left && right >= endX && fill.y <= top && bottom >= endY;
+            }
+            if (!touchesButtons) continue;
+            // Allow a single raster pixel at the scene edge for independent
+            // HWND and WebKit scale rounding. Button coverage is still exact.
+            if (coversButtons && fill.y <= 1 && bottom >= height - 1 && fill.width < width / 2.f
+                && (fill.x <= 1 || right >= width - 1))
+                material.sideTint = fill.color & 0xffffff;
+            return material;
+        }
+        return material;
+    }
+    void updateSideBackdrop(DDMaterial material, bool redraw)
+    {
+        bool useSideBackdrop = false;
+        auto oldSurface = sideBackdrop;
+        if (material.sideTint <= 0xffffff && finalPageBitmap && finalPageWidth == width && finalPageHeight == height) {
+            D2D1_RECT_F bounds { static_cast<float>(width), static_cast<float>(height), 0, 0 };
+            for (const auto& item : items) {
+                const auto& f = item.frame;
+                if (!hasSideMaterial(f.kind) || f.visualWidth <= 0 || f.visualHeight <= 0) continue;
+                const auto x = f.x + f.visualX, y = f.y + f.visualY;
+                bounds.left = std::min(bounds.left, x); bounds.top = std::min(bounds.top, y);
+                bounds.right = std::max(bounds.right, x + f.visualWidth); bounds.bottom = std::max(bounds.bottom, y + f.visualHeight);
+            }
+            bounds.left = std::max(0.f, std::floor(bounds.left));
+            bounds.top = std::max(0.f, std::floor(bounds.top));
+            bounds.right = std::min(static_cast<float>(width), std::ceil(bounds.right));
+            bounds.bottom = std::min(static_cast<float>(height), std::ceil(bounds.bottom));
+            useSideBackdrop = bounds.left < bounds.right && bounds.top < bounds.bottom;
+            if (useSideBackdrop && (redraw || !sideBackdrop)) {
+                // Use one filtered sample of this frame for every side clip.
+                // Draw only the union's bounds. The effect samples the full
+                // page around them and clamps at the outer framebuffer edge.
+                paintSurface(sideBackdrop, [&](ID2D1DeviceContext* context) {
+                    if (!sideBlur) {
+                        check(context->CreateEffect(CLSID_D2D1GaussianBlur, &sideBlur));
+                        check(sideBlur->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD));
+                        check(context->CreateEffect(CLSID_D2D1ColorMatrix, &sideCorrection));
+                        check(sideCorrection->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED));
+                        check(sideCorrection->SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, TRUE));
+                        sideCorrection->SetInputEffect(0, sideBlur.Get());
+                    }
+                    sideBlur->SetInput(0, finalPageBitmap.Get());
+                    check(sideBlur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, material.blur * material.scale));
+                    check(sideCorrection->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, backdropCorrection(material)));
+                    const auto origin = D2D1::Point2F(bounds.left, bounds.top);
+                    context->DrawImage(sideCorrection.Get(), &origin, &bounds, D2D1_INTERPOLATION_MODE_LINEAR);
+                });
+            }
+        }
+        if (!useSideBackdrop && sideBackdrop) {
+            sideBackdrop.Reset();
+            sideBlur->SetInput(0, nullptr);
+        }
+        for (auto kind : { Back, Bookmarks, TabGroup }) {
+            auto& node = glassNodes[kind];
+            if (!node.visual || (node.usesSideBackdrop == useSideBackdrop && (!useSideBackdrop || oldSurface.Get() == sideBackdrop.Get())))
+                continue;
+            check(node.opacity->SetEffect(useSideBackdrop ? nullptr : node.correction.Get()));
+            check(node.backdrop.page->SetContent(useSideBackdrop ? sideBackdrop.Get() : page.Get()));
+            node.usesSideBackdrop = useSideBackdrop;
+        }
+    }
     HRESULT presentPageFrame(DDPageFrame frame, const DDFill* fills, int fillCount)
     {
         if (sceneUpdateIncomplete) check(E_UNEXPECTED);
@@ -553,11 +659,28 @@ public:
         if (pageSurface.Get() != next.Get()) {
             if (base.page) check(base.page->SetContent(next.Get()));
             for (auto& node : glassNodes)
-                if (node.visual) check(node.backdrop.page->SetContent(next.Get()));
+                if (node.visual && !node.usesSideBackdrop) check(node.backdrop.page->SetContent(next.Get()));
         }
         check(next.As(&page));
+        auto frameFills = std::span(fills, static_cast<size_t>(fillCount));
+        const auto material = materialWithPageSide(previousMaterial, items, frameFills);
+        const bool sideMaterialChanged = sceneReady && material.sideTint != appliedSideTint;
+        if (sideMaterialChanged) {
+            // Side tint only changes the painted glass decoration. Keep its
+            // surface and glyphs attached and commit with the new page pixels.
+            paintSurface(decorations, [&](ID2D1DeviceContext* context) {
+                for (const auto& item : items) paintItem(context, item, material, true);
+            });
+        }
+        if (sceneReady) updateSideBackdrop(material, true);
         const auto commit = monotonicSeconds();
         check(composition->Commit());
+        if (fillCount) std::copy_n(fills, fillCount, pageFills.begin());
+        pageFillCount = frameFills.size();
+        if (sideMaterialChanged) {
+            appliedSideTint = material.sideTint;
+            ++materialUpdates;
+        }
         pageSurface = next;
         presentedPageTexture = finalPageTexture;
         pageSurfaceWidth = width; pageSurfaceHeight = height;
@@ -624,11 +747,14 @@ public:
             return std::tuple { f.kind, f.x, f.y, f.width, f.height, f.visualX, f.visualY, f.visualWidth, f.visualHeight, f.radius };
         };
         auto materialKey = [](const DDMaterial& m) {
-            return std::tuple { m.tint, m.sideTint, m.alpha, m.strength, m.shadow, m.scale, m.blur, m.saturation, m.brightness,
+            return std::tuple { m.tint, m.alpha, m.strength, m.shadow, m.scale, m.blur, m.saturation, m.brightness,
                 m.contrast, m.topHighlight, m.edgeHighlight, m.sheen, m.shadowBlur, m.shadowOffset };
         };
         auto fillKey = [](const DDFill& f) { return std::tuple { f.x, f.y, f.width, f.height, f.color }; };
         const bool surfaceSizeChanged = !sceneReady || w != width || h != height;
+        const bool sideOpticsChanged = material.blur != previousMaterial.blur || material.scale != previousMaterial.scale
+            || material.saturation != previousMaterial.saturation || material.brightness != previousMaterial.brightness
+            || material.contrast != previousMaterial.contrast;
         std::array<int, TabGroup + 1> glassIndices;
         glassIndices.fill(-1);
         for (int i = 0; i < count; ++i) {
@@ -662,11 +788,19 @@ public:
         height = h;
         std::vector<Item> nextItems;
         for (int i = 0; i < count; ++i) nextItems.push_back({ frames[i], frames[i].text ? frames[i].text : L"" });
+        const auto requestedMaterial = material;
+        auto retainedPageFills = std::span<const DDFill> { pageFills.data(), surfaceSizeChanged ? 0 : pageFillCount };
+        material = materialWithPageSide(material, nextItems, retainedPageFills);
+        materialChanged |= material.sideTint != appliedSideTint;
 
         // EndDraw records surface damage for the next Commit. Retain same-size
         // surfaces so effect caches receive that damage, including boundary fills.
         // Block every other commit if any part of this transaction fails.
         sceneUpdateIncomplete = true;
+        if (surfaceSizeChanged && sideBackdrop) {
+            sideBackdrop.Reset();
+            sideBlur->SetInput(0, nullptr);
+        }
         ComPtr<IDCompositionSurface> nextBoundary, nextShadow, nextDecoration, nextForeground;
         if (!surfaceSizeChanged) {
             if (fillsChanged) nextBoundary = boundary;
@@ -775,22 +909,19 @@ public:
                 const auto optics = materialFor(frame, material);
                 check(node.blur->SetStandardDeviation(optics.blur * material.scale));
                 check(node.opacity->SetOpacity(std::clamp(optics.strength, 0.f, 1.f)));
-                const float s = material.saturation, gain = material.brightness * material.contrast;
-                const float r = .2126f * (1 - s), g = .7152f * (1 - s), b = .0722f * (1 - s);
-                const float offset = material.brightness * .5f * (1 - material.contrast);
-                D2D1_MATRIX_5X4_F matrix = {
-                    (r + s) * gain, r * gain, r * gain, 0, g * gain, (g + s) * gain, g * gain, 0,
-                    b * gain, b * gain, (b + s) * gain, 0, 0, 0, 0, 1, offset, offset, offset, 0
-                };
-                check(node.correction->SetMatrix(matrix));
+                check(node.correction->SetMatrix(backdropCorrection(material)));
             }
         }
+        if (geometryChanged || structureChanged || sideOpticsChanged || (material.sideTint <= 0xffffff) != (appliedSideTint <= 0xffffff))
+            updateSideBackdrop(material, geometryChanged || sideOpticsChanged);
         commitStartSeconds = monotonicSeconds();
         check(composition->Commit());
         commitEndSeconds = monotonicSeconds();
         sceneUpdateIncomplete = false;
         sceneReady = true;
-        previousMaterial = material;
+        previousMaterial = requestedMaterial;
+        appliedSideTint = material.sideTint;
+        if (surfaceSizeChanged) pageFillCount = 0;
         previousFills.clear();
         for (int i = 0; i < fillCount; ++i) previousFills.push_back(fills[i]);
         structureUpdates += structureChanged;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadMetadata } from "../lib/metadata.mts";
+import { repoRoot } from "../lib/paths.mts";
 import { assemble, digest, windowsRuntime } from "../lib/release-artifacts.mts";
 import {
   artifactName,
@@ -22,6 +24,26 @@ import {
 
 const sha = "a".repeat(40);
 const metadata = loadMetadata();
+
+test("application planning leaves engine availability to the dependency workflow", () => {
+  const result = spawnSync(
+    process.execPath,
+    [join(repoRoot, "scripts/release.mts"), "plan"],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        GITHUB_REF: `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`,
+        GITHUB_SHA: sha,
+        GH_TOKEN: "invalid-test-token",
+        GITHUB_OUTPUT: "",
+      },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).publish, true);
+});
 
 test("release policy accepts release branches and matching tags for prerelease and stable versions", () => {
   for (const channel of ["alpha", "beta"]) {

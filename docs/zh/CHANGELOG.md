@@ -2,6 +2,14 @@
 
 <!-- Unreleased -->
 
+## 0.1.5
+
+DevDuo 和内置 Windows WebKit 均使用 `0.1.5`，固定的上游 WebKit revision 保持不变。
+
+- 应用打包前自动构建并发布缺失的 Windows WebKit 版本；演练改为传递未公开的运行时 artifact。
+- Windows Closed 侧栏按钮的实时模糊背景和着色来自同一页面帧，避免弹窗打开或关闭时按钮短暂显示上一帧背景。
+- 覆盖层在边缘没有可见绘制时，即使含有已清空的画布，Windows 也会在底部 inset 保留页面提供的模态背景。
+
 ## 0.1.4
 
 DevDuo 与随附的 Windows WebKit 均使用 `0.1.4`，固定的上游 WebKit 提交不变。

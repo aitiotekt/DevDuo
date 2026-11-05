@@ -1,6 +1,18 @@
 name: WebKit runtime release
 
 on:
+  workflow_call:
+    inputs:
+      dry-run:
+        type: boolean
+        default: true
+      application-release:
+        type: boolean
+        default: false
+    outputs:
+      built:
+        description: Whether this run needed to build a runtime artifact
+        value: ${{ jobs.plan.outputs.required }}
   workflow_dispatch:
     inputs:
       dry-run:
@@ -24,6 +36,7 @@ jobs:
       runner_labels: ${{ steps.plan.outputs.runner_labels }}
       stem: ${{ steps.plan.outputs.stem }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
+      required: ${{ steps.plan.outputs.required }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,14 +45,17 @@ jobs:
       - uses: ./.github/actions/setup-workspace
         with:
           tooling-only: 'true'
-      - name: Require manual dispatch on the metadata release branch
+      - name: Validate release ref and check published runtime availability
         id: plan
         env:
           RELEASE_DRY_RUN: ${{ inputs.dry-run }}
-        run: mise exec node pnpm just -- just plan-webkit-release
+          WEBKIT_APPLICATION_RELEASE: ${{ inputs.application-release || false }}
+          GH_TOKEN: ${{ github.token }}
+        run: mise exec node pnpm just gh -- just plan-webkit-release
 
   build:
     needs: plan
+    if: needs.plan.outputs.required == 'true'
     runs-on: ${{ fromJSON(needs.plan.outputs.runner_labels) }}
     # Keep the complete job below GITHUB_TOKEN's 24-hour lifetime.
     timeout-minutes: 1380
@@ -86,7 +102,7 @@ jobs:
           overwrite: true
   publish:
     needs: [plan, build]
-    if: needs.plan.outputs.dry_run == 'false'
+    if: needs.plan.outputs.dry_run == 'false' && needs.plan.outputs.required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -107,4 +123,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_DRY_RUN: ${{ needs.plan.outputs.dry_run }}
+          WEBKIT_APPLICATION_RELEASE: ${{ inputs.application-release || false }}
         run: mise exec node pnpm just gh -- just publish-webkit-release

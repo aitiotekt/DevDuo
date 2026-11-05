@@ -1,0 +1,169 @@
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -63,6 +63,7 @@
+ #include "FrameInlines.h"
+ #include "FrameLoader.h"
+ #include "FrameSelection.h"
++#include "FrameSnapshotting.h"
+ #include "FrameTree.h"
+ #include "GraphicsContext.h"
+ #include "GraphicsLayer.h"
+@@ -77,6 +78,7 @@
+ #include "HTMLObjectElement.h"
+ #include "HTMLPlugInElement.h"
+ #include "HighlightRegistry.h"
++#include "ImageBuffer.h"
+ #include "ImageDocument.h"
+ #include "InspectorBackendClient.h"
+ #include "InspectorInstrumentation.h"
+@@ -96,6 +98,7 @@
+ #include "PageOverlayController.h"
+ #include "ParsedContentType.h"
+ #include "PerformanceLoggingClient.h"
++#include "PixelBuffer.h"
+ #include "PlatformRenderTheme.h"
+ #include "ProgressTracker.h"
+ #include "Quirks.h"
+@@ -2796,6 +2799,93 @@
+         return blendSourceOver(page->pageExtendedBackgroundColor(), color);
+     };
+ 
++    auto overlayLeavesStripUnpainted = [&](Element& overlay, const LayoutRect& innerStrip) {
++        CheckedPtr renderer = overlay.renderer();
++        if (!renderer)
++            return false;
++        bool mayPaint = false;
++        for (CheckedPtr child = renderer->firstChild(); child; child = child->nextSibling()) {
++            if (child->absoluteClippedOverflowRectForRepaint().intersects(innerStrip)) {
++                mayPaint = true;
++                break;
++            }
++        }
++        if (!mayPaint)
++            return true;
++
++        // A node snapshot leaves the document root unpainted, while retaining
++        // the subtree's real text and replaced content, including canvas.
++        auto strip = enclosingIntRect(innerStrip);
++        constexpr unsigned maximumStripPixels = 32768;
++        if (strip.isEmpty() || static_cast<uint64_t>(strip.width()) * strip.height() > maximumStripPixels)
++            return false;
++        auto colorSpace = ColorSpace::SRGB();
++        auto snapshot = snapshotFrameRect(frame(), strip, { { SnapshotFlags::PaintEverythingExcludingSelection },
++            PixelFormat::BGRA8, colorSpace }, &overlay);
++        if (!snapshot)
++            return false;
++        auto pixels = snapshot->getPixelBuffer({ AlphaPremultiplication::Premultiplied, PixelFormat::BGRA8, colorSpace },
++            { { }, snapshot->truncatedLogicalSize() });
++        if (!pixels)
++            return false;
++        auto bytes = pixels->bytes();
++        for (size_t alpha = 3; alpha < bytes.size(); alpha += 4) {
++            if (bytes[alpha])
++                return false;
++        }
++        return true;
++    };
++
++    auto isInputTransparentOverlay = [](const RenderElement& renderer) {
++        CheckedPtr model = dynamicDowncast<RenderLayerModelObject>(renderer);
++        CheckedPtr layer = model ? model->layer() : nullptr;
++        return layer && layer->currentTransform().isIdentity() && renderer.isFixedPositioned()
++            && renderer.usedPointerEvents() == PointerEvents::None && !renderer.hasBackground()
++            && !renderer.hasFilter() && !renderer.hasBackdropFilter() && !renderer.hasMask() && !renderer.hasBlendMode()
++            && !renderer.hasVisibleBoxDecorations() && !renderer.hasOutline();
++    };
++
++    auto overlaysLeaveStripUnpainted = [&](BoxSide side, const RenderElement& lower) {
++        using enum HitTestRequest::Type;
++        auto innerStrip = computeSampleRectIgnoringBorderWidth(fixedRect, side);
++        HitTestResult hit { innerStrip };
++        document->hitTest({ HitTestSource::User, { ReadOnly, DisallowUserAgentShadowContent,
++            ForFixedContainerSampling, IgnoreCSSPointerEventsProperty, CollectMultipleElements, IncludeAllElementsUnderPoint } }, hit);
++
++        // The list is in hit order. Include each pointer-transparent fixed
++        // subtree above the modal, including paint between the five point hits.
++        constexpr size_t maximumOverlays = 4;
++        Vector<RefPtr<Element>, maximumOverlays> overlays;
++        bool foundLower = false;
++        for (auto& node : hit.listBasedTestResult()) {
++            CheckedPtr renderer = node->renderer();
++            if (!renderer)
++                return false;
++            CheckedPtr<RenderElement> overlay;
++            for (CheckedRef ancestor : lineageOfType<RenderElement>(*renderer)) {
++                if (&ancestor.get() == &lower) {
++                    foundLower = true;
++                    break;
++                }
++                if (ancestor->isFixedPositioned())
++                    overlay = &ancestor.get();
++            }
++            if (foundLower)
++                break;
++            RefPtr element = overlay ? overlay->element() : nullptr;
++            if (!element || !isInputTransparentOverlay(*overlay) || paintPathMakesColorUncertain(side, *overlay))
++                return false;
++            if (overlays.contains(element))
++                continue;
++            if (overlays.size() == maximumOverlays)
++                return false;
++            overlays.append(WTF::move(element));
++        }
++        return foundLower && std::ranges::all_of(overlays, [&](const auto& overlay) {
++            return overlayLeavesStripUnpainted(*overlay, innerStrip);
++        });
++    };
++
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+     auto findFixedContainer = [&](BoxSide side, IgnoreCSSPointerEvents ignoreCSSPointerEvents, float fraction = 0.5f) -> FixedContainerResult {
+         using enum HitTestRequest::Type;
+@@ -3059,32 +3149,21 @@
+             && !primaryBackgroundColorForRenderer(side, *containerRenderer).isVisible()) {
+             auto color = authoredDimmingExtension(side, *containerRenderer, dimmingSheet.get());
+             if (!color.isVisible() && !dimmingSheet && !result.foregroundPaint && consistentForeground
+-                && containerRenderer->usedPointerEvents() == PointerEvents::None && !containerRenderer->hasBackground()
+-                && !containerRenderer->hasFilter() && !containerRenderer->hasMask() && !containerRenderer->hasBlendMode()
+-                && !containerRenderer->hasVisibleBoxDecorations() && !containerRenderer->hasOutline()) {
+-                // A paint-free pointer pass-through can win every sampling hit.
+-                // Recover the lower owner only for its verified authored inset.
+-                CheckedPtr model = dynamicDowncast<RenderLayerModelObject>(*containerRenderer);
+-                CheckedPtr layer = model ? model->layer() : nullptr;
+-                auto innerStrip = computeSampleRectIgnoringBorderWidth(fixedRect, side);
+-                auto hasPaintInStrip = [&] {
+-                    for (CheckedPtr child = containerRenderer->firstChild(); child; child = child->nextSibling()) {
+-                        if (child->absoluteClippedOverflowRectForRepaint().intersects(innerStrip))
+-                            return true;
+-                    }
+-                    return false;
+-                };
+-                if (layer && layer->currentTransform().isIdentity() && !hasPaintInStrip()) {
+-                    auto lower = findFixedContainer(side, IgnoreCSSPointerEvents::No);
+-                    CheckedPtr lowerRenderer = lower.container && lower.container != result.container ? lower.container->renderer() : nullptr;
+-                    if (lowerRenderer && lowerRenderer->isFixedPositioned() && lower.isViewportSized
+-                        && !lower.foundBackdropFilter && !lower.hasUnsettledTransform
+-                        && !primaryBackgroundColorForRenderer(side, *lowerRenderer).isVisible()
+-                        && std::ranges::all_of(edgeFractions, [&](auto fraction) {
+-                            auto point = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
+-                            return point.container == lower.container && !point.foundBackdropFilter && !point.hasUnsettledTransform;
+-                        }))
+-                        color = authoredDimmingExtension(side, *lowerRenderer, lower.exposedDimmingSheet.get());
++                && isInputTransparentOverlay(*containerRenderer)) {
++                // Honor pointer events to locate the lower owner, then prove
++                // its authored inset and the paint of the intervening overlays.
++                auto lower = findFixedContainer(side, IgnoreCSSPointerEvents::No);
++                CheckedPtr lowerRenderer = lower.container && lower.container != result.container ? lower.container->renderer() : nullptr;
++                if (lowerRenderer && lowerRenderer->isFixedPositioned() && lower.isViewportSized
++                    && !lower.foundBackdropFilter && !lower.hasUnsettledTransform
++                    && !primaryBackgroundColorForRenderer(side, *lowerRenderer).isVisible()
++                    && std::ranges::all_of(edgeFractions, [&](auto fraction) {
++                        auto point = findFixedContainer(side, IgnoreCSSPointerEvents::No, fraction);
++                        return point.container == lower.container && !point.foundBackdropFilter && !point.hasUnsettledTransform;
++                    })) {
++                    color = authoredDimmingExtension(side, *lowerRenderer, lower.exposedDimmingSheet.get());
++                    if (color.isVisible() && !overlaysLeaveStripUnpainted(side, *lowerRenderer))
++                        color = { };
+                 }
+             }
+             if (color.isVisible()) {

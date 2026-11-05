@@ -111,13 +111,26 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-  windows:
+  webkit:
     needs: [plan, checks, stable-approval]
     if: >-
       !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
       (needs.plan.outputs.prerelease == 'true' || needs.stable-approval.result == 'success')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/webkit-release.yml
+    with:
+      dry-run: ${{ needs.plan.outputs.dry_run == 'true' }}
+      application-release: true
+
+  windows:
+    needs: [plan, webkit]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && needs.webkit.result == 'success'
     runs-on: windows-2025
     timeout-minutes: 60
+    env:
+      DEVDUO_WEBKIT_RELEASE_DIRECTORY: ${{ needs.plan.outputs.dry_run == 'true' && needs.webkit.outputs.built == 'true' && 'temp/release/webkit-input' || '' }}
     steps:
       - name: Require real symlinks before checkout
         shell: pwsh
@@ -131,7 +144,13 @@ jobs:
       - uses: ./.github/actions/setup-workspace
         with:
           native-only: 'true'
-      - name: Fetch the published engine
+      - name: Download the unpublished dry-run engine
+        if: env.DEVDUO_WEBKIT_RELEASE_DIRECTORY != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: webkit-runtime-release
+          path: temp/release/webkit-input
+      - name: Fetch and validate the selected engine
         env:
           GH_TOKEN: ${{ github.token }}
         run: mise exec -- just fetch-windows-webkit-runtime

@@ -20,6 +20,7 @@ import { digest } from "../lib/release-artifacts.mts";
 import type { GitHubRelease, Runner } from "../lib/release-github.mts";
 import {
   preflightPublishedWebKit,
+  publishedWebKitAvailable,
   publishWebKitOutput,
   safeRelative,
   stageRuntime,
@@ -236,11 +237,21 @@ test("application preflight requires the published engine asset", () => {
       state: "uploaded",
     })),
   };
-  for (const scenario of ["valid", "channel", "draft", "missing", "asset"]) {
+  for (const scenario of [
+    "valid",
+    "channel",
+    "draft",
+    "missing",
+    "asset",
+    "empty",
+    "uploading",
+  ]) {
     const release = structuredClone(baseline);
     if (scenario === "draft") release.draft = true;
     if (scenario === "channel") release.prerelease = false;
     if (scenario === "asset") release.assets.shift();
+    if (scenario === "empty") release.assets[0].size = 0;
+    if (scenario === "uploading") release.assets[0].state = "new";
     const execute: Runner = (command, args) => {
       assert.equal(command, "gh");
       assert.equal(args[0], "api");
@@ -248,6 +259,10 @@ test("application preflight requires the published engine asset", () => {
         return JSON.stringify({ data: { repository: { release: null } } });
       return JSON.stringify([scenario === "missing" ? [] : [release]]);
     };
+    assert.equal(
+      publishedWebKitAvailable(repoRoot, execute),
+      scenario === "valid" || scenario === "channel",
+    );
     if (scenario === "valid" || scenario === "channel")
       preflightPublishedWebKit(repoRoot, execute);
     else
@@ -255,6 +270,37 @@ test("application preflight requires the published engine asset", () => {
         () => preflightPublishedWebKit(repoRoot, execute),
         scenario,
       );
+  }
+});
+
+test("runtime availability never treats an API failure as a missing version", () => {
+  assert.throws(
+    () =>
+      publishedWebKitAvailable(repoRoot, () => {
+        throw new Error("API unavailable");
+      }),
+    /API unavailable/,
+  );
+  assert.throws(() =>
+    publishedWebKitAvailable(repoRoot, () => "invalid response"),
+  );
+});
+
+test("application releases can prepare the engine from their exact release ref", () => {
+  const metadata = loadMetadata();
+  for (const ref of [
+    `refs/heads/${metadata.release.branch}`,
+    `refs/tags/${metadata.release.tagPrefix}${metadata.project.version}`,
+  ]) {
+    assert.equal(webkitPlan(ref, sha, metadata, true).sourceSha, sha);
+    assert.throws(() => webkitPlan(ref, sha, metadata));
+  }
+  for (const ref of [
+    "refs/pull/1/merge",
+    "refs/heads/other",
+    "refs/tags/v0.0.0",
+  ]) {
+    assert.throws(() => webkitPlan(ref, sha, metadata, true));
   }
 });
 
@@ -437,6 +483,63 @@ test("publication resumes missing engine assets from the preserved package", () 
         ),
       );
     }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("dry-run artifact fetch validates a local runtime without GitHub access", {
+  skip: process.platform !== "win32",
+}, () => {
+  const root = fixture();
+  try {
+    const { build } = runtimeFixture(root);
+    const stage = join(root, "stage"),
+      archive = join(root, webkitNames().asset);
+    stageRuntime(build, stage, sha, root);
+    const pack = () => {
+      const result = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-File",
+          join(repoRoot, "native/webkit/windows/RuntimeArchive.ps1"),
+          "-Mode",
+          "Pack",
+          "-Directory",
+          stage,
+          "-Archive",
+          archive,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+    };
+    const fetch = () =>
+      spawnSync(
+        process.execPath,
+        [join(repoRoot, "scripts/webkit-release.mts"), "fetch"],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            DEVDUO_WEBKIT_RELEASE_DIRECTORY: root,
+            GH_TOKEN: "invalid-test-token",
+          },
+          encoding: "utf8",
+        },
+      );
+    pack();
+    const result = fetch();
+    assert.equal(result.status, 0, result.stderr);
+    validateRuntimeRelease(result.stdout.trim());
+    const releasePath = join(stage, "runtime-release.json");
+    const release = JSON.parse(readFileSync(releasePath, "utf8"));
+    release.version = "0.0.0";
+    writeJson(releasePath, release);
+    rmSync(archive);
+    pack();
+    assert.notEqual(fetch().status, 0);
   } finally {
     cleanup(root);
   }

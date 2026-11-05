@@ -11,7 +11,6 @@ import {
   currentVersion,
   releasePlan,
 } from "./lib/release-policy.mts";
-import { preflightApplicationRelease } from "./lib/release-preflight.mts";
 import {
   bumpVersion,
   checkVersion,
@@ -45,7 +44,6 @@ try {
     );
     const mode = dryRun(process.env.RELEASE_DRY_RUN ?? "");
     if (command === "plan") {
-      preflightApplicationRelease(plan);
       if (process.env.GITHUB_OUTPUT)
         for (const [key, value] of Object.entries({ ...plan, dry_run: mode }))
           appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);

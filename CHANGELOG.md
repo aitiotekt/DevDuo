@@ -2,6 +2,14 @@
 
 <!-- Unreleased -->
 
+## 0.1.5
+
+DevDuo and its bundled Windows WebKit both use `0.1.5`. The pinned upstream WebKit revision is unchanged.
+
+- Prepare a missing Windows WebKit release automatically before application packaging; dry runs pass an unpublished runtime artifact instead.
+- Give Windows Closed side buttons a shared live blur from the same page frame as their tint, avoiding stale button backgrounds when a modal opens or closes.
+- Keep an authored Windows modal's backdrop in the bottom inset when transparent overlay paint, including a cleared canvas, leaves the edge visible.
+
 ## 0.1.4
 
 DevDuo and its bundled Windows WebKit both use `0.1.4`. The pinned upstream WebKit revision is unchanged.
