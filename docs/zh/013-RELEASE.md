@@ -78,6 +78,8 @@ Alpha 和 beta 均跳过正式版审批。打包、组装和发布显式检查�
 
 ## 产物和重试
 
+应用发布计划要求 `CHANGELOG.md` 与 `docs/zh/CHANGELOG.md` 均含唯一、非空的 `## VERSION` 条目。组装阶段只提取这两个当前版本条目，再附上 `.github/release-notes.md` 中的安装与签名说明，生成 `release-final/release-notes.md`。演练保留该预览，正式发布使用同一文件作为 GitHub Release 正文；不包含未发布或旧版本条目。重试不覆盖已公开 Release 的正文。独立版本的 WebKit Release 继续保留引擎专用说明。
+
 已存在的应用 tag 直接沿用，发布时不与触发提交比较。恢复发布应复用原始 `release-final` artifact，不能替换已签名字节。
 
 - `DevDuo-vVERSION-osx-arm64.zip`：已签名、公证的 `.app`，含 .NET 和声明文件。

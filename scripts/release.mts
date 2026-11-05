@@ -6,6 +6,7 @@ import {
   publishRelease,
   repositoryName,
 } from "./lib/release-github.mts";
+import { releaseNotes } from "./lib/release-notes.mts";
 import {
   checksMatrix,
   currentVersion,
@@ -44,6 +45,7 @@ try {
     );
     const mode = dryRun(process.env.RELEASE_DRY_RUN ?? "");
     if (command === "plan") {
+      if (plan.publish) releaseNotes(plan.version);
       if (process.env.GITHUB_OUTPUT)
         for (const [key, value] of Object.entries({ ...plan, dry_run: mode }))
           appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
@@ -66,7 +68,7 @@ try {
           prerelease: plan.prerelease,
           latest: !plan.prerelease,
           title: `${plan.displayName} ${plan.tag}`,
-          notes: ".github/release-notes.md",
+          notes: `${directory}/release-notes.md`,
           directory,
           files: readdirSync(directory),
         });

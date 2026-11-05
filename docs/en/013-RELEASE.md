@@ -78,6 +78,8 @@ Alpha and beta both skip stable approval. Packaging, assembly and publication us
 
 ## Artifacts and retries
 
+Application release planning requires exactly one nonempty `## VERSION` entry in both `CHANGELOG.md` and `docs/zh/CHANGELOG.md`. Assembly includes only those entries, followed by the installation/signing information from `.github/release-notes.md`, in `release-final/release-notes.md`. Dry runs retain this preview; publication uses the same file as the GitHub Release body. Unreleased and older entries are excluded. Already published Release bodies are not overwritten on retries. The separately versioned WebKit release retains its engine-specific notes.
+
 An existing application tag is reused as is; publication does not compare it with the triggering commit. Reuse the original `release-final` artifact for publication recovery instead of replacing signed bytes.
 
 - `DevDuo-vVERSION-osx-arm64.zip`: signed/notarized `.app`, bundled .NET and notices.

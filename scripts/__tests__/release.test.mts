@@ -14,6 +14,7 @@ import test from "node:test";
 import { loadMetadata } from "../lib/metadata.mts";
 import { repoRoot } from "../lib/paths.mts";
 import { assemble, digest, windowsRuntime } from "../lib/release-artifacts.mts";
+import { changelogEntry, releaseNotes } from "../lib/release-notes.mts";
 import {
   artifactName,
   currentVersion,
@@ -96,6 +97,20 @@ test("assembly copies platform archives and writes the published manifest and ch
     const input = join(root, "input"),
       output = join(root, "final");
     const plan = releasePlan("1.2.3-beta.1", "refs/heads/release", sha);
+    mkdirSync(join(root, "docs/zh"), { recursive: true });
+    mkdirSync(join(root, ".github"));
+    writeFileSync(
+      join(root, "CHANGELOG.md"),
+      `## ${plan.version}\n\n- Current fix.\n\n## 1.2.2\n\n- Old fix.`,
+    );
+    writeFileSync(
+      join(root, "docs/zh/CHANGELOG.md"),
+      `## ${plan.version}\n\n- 当前修复。`,
+    );
+    writeFileSync(
+      join(root, ".github/release-notes.md"),
+      "Installation instructions.",
+    );
     for (const target of targets) {
       const directory = join(input, `release-${target}`);
       mkdirSync(directory, { recursive: true });
@@ -104,11 +119,22 @@ test("assembly copies platform archives and writes the published manifest and ch
         `fake zip for ${target}`,
       );
     }
-    assemble(input, output, plan, metadata);
+    assemble(input, output, plan, metadata, root);
+    const notes = readFileSync(join(output, "release-notes.md"), "utf8");
+    assert.equal(notes, releaseNotes(plan.version, root));
+    assert.match(notes, /Current fix/);
+    assert.match(notes, /当前修复/);
+    assert.match(notes, /Installation instructions/);
+    assert.doesNotMatch(notes, /Old fix/);
     const names = targets.map((target) => artifactName(plan.version, target));
     assert.deepEqual(
       readdirSync(output).sort(),
-      [...names, "SHA256SUMS", "release-manifest.json"].sort(),
+      [
+        ...names,
+        "SHA256SUMS",
+        "release-manifest.json",
+        "release-notes.md",
+      ].sort(),
     );
     const manifest = JSON.parse(
       readFileSync(join(output, "release-manifest.json"), "utf8"),
@@ -124,8 +150,35 @@ test("assembly copies platform archives and writes the published manifest and ch
       ].join("\n")}\n`,
     );
     rmSync(join(input, "release-osx-arm64"), { recursive: true });
-    assert.throws(() => assemble(input, join(root, "missing"), plan, metadata));
+    assert.throws(() =>
+      assemble(input, join(root, "missing"), plan, metadata, root),
+    );
+    writeFileSync(
+      join(root, "docs/zh/CHANGELOG.md"),
+      "## 0.0.1\n\nOther version.",
+    );
+    assert.throws(
+      () => releaseNotes(plan.version, root),
+      /docs\/zh\/CHANGELOG.md/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("changelog extraction selects exact versions and preserves nested markdown", () => {
+  const source =
+    "# Changes\r\n\r\n## Unreleased\r\nFuture\r\n## 1.2.3-beta.1\r\n\r\n### Fixed\r\n\r\n- **Detail**\r\n\r\n```md\r\n## 9.9.9\r\n```\r\n\r\n## 1.2.3\r\nStable\r\n## 1.2.2\r\nOld";
+  assert.equal(
+    changelogEntry(source, "1.2.3-beta.1"),
+    "### Fixed\n\n- **Detail**\n\n```md\n## 9.9.9\n```",
+  );
+  assert.equal(changelogEntry(source, "1.2.3"), "Stable");
+  for (const text of [
+    "## 1.2.30\nWrong",
+    "## 1.2.3\n\n",
+    "## 1.2.3\n<!-- pending -->",
+    "## 1.2.3\nOne\n## 1.2.3\nTwo",
+  ])
+    assert.throws(() => changelogEntry(text, "1.2.3"), /exactly one nonempty/);
 });

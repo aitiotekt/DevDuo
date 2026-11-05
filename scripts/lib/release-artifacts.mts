@@ -10,6 +10,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { type DevDuoMetadata, loadMetadata } from "./metadata.mts";
+import { repoRoot } from "./paths.mts";
+import { releaseNotes } from "./release-notes.mts";
 import {
   artifactName,
   type ReleasePlan,
@@ -77,7 +79,9 @@ export function assemble(
   output: string,
   plan: ReleasePlan,
   metadata: DevDuoMetadata = loadMetadata(),
+  root = repoRoot,
 ): void {
+  const notes = releaseNotes(plan.version, root);
   mkdirSync(output, { recursive: true });
   const artifacts = targets.map((target) => {
     const name = artifactName(plan.version, target, metadata),
@@ -102,4 +106,5 @@ export function assemble(
       `${digest(manifestPath)}  release-manifest.json`,
     ].join("\n")}\n`,
   );
+  writeFileSync(join(output, "release-notes.md"), notes);
 }
