@@ -57,7 +57,8 @@ $viewportFixedPatch = Join-Path $PSScriptRoot 'patches/0018-windows-viewport-fix
 $dimmingSheetPatch = Join-Path $PSScriptRoot 'patches/0019-windows-fixed-dimming-sheet.patch'
 $fixedPortalPatch = Join-Path $PSScriptRoot 'patches/0020-windows-fixed-portal-clip.patch'
 $dimmingOverlayPatch = Join-Path $PSScriptRoot 'patches/0021-windows-dimming-overlay-paint.patch'
-Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch, $edgeColorPatch, $framePipelinePatch, $atomicContinuationPatch, $frameSurfacePatch, $frameClockPatch, $scrollingLayersPatch, $directFrameRelayPatch, $asyncPresentationPatch, $nativeTouchPatch, $rasterCoveragePatch, $asyncViewportPatch, $directPanPatch, $preciseTouchPatch, $viewportFixedPatch, $dimmingSheetPatch, $fixedPortalPatch, $dimmingOverlayPatch)
+$sideDimmingPatch = Join-Path $PSScriptRoot 'patches/0022-windows-side-dimming-continuation.patch'
+Sync-WebKitPatches $source $cache $pin.revision $build $previousInputRoot @($patch, $paintingPatch, $developerPatch, $desktopPatch, $edgeColorPatch, $framePipelinePatch, $atomicContinuationPatch, $frameSurfacePatch, $frameClockPatch, $scrollingLayersPatch, $directFrameRelayPatch, $asyncPresentationPatch, $nativeTouchPatch, $rasterCoveragePatch, $asyncViewportPatch, $directPanPatch, $preciseTouchPatch, $viewportFixedPatch, $dimmingSheetPatch, $fixedPortalPatch, $dimmingOverlayPatch, $sideDimmingPatch)
 $registry = Get-Content -LiteralPath (Join-Path $source 'vcpkg-configuration.json') -Raw | ConvertFrom-Json
 $vcpkgRoot = Join-Path $cache ('vcpkg-' + $registry.'default-registry'.baseline.Substring(0, 8))
 Initialize-PinnedSource $vcpkgRoot 'https://github.com/microsoft/vcpkg.git' $registry.'default-registry'.baseline @('scripts', 'triplets')
@@ -120,6 +121,7 @@ $inputFiles = @('mise.toml', 'mise.lock', 'mise.windows-webkit.toml', 'mise.wind
     'native/webkit/windows/patches/0019-windows-fixed-dimming-sheet.patch',
     'native/webkit/windows/patches/0020-windows-fixed-portal-clip.patch',
     'native/webkit/windows/patches/0021-windows-dimming-overlay-paint.patch',
+    'native/webkit/windows/patches/0022-windows-side-dimming-continuation.patch',
     'native/webkit/windows/runtime.lock.json')
 $inputRecords = foreach ($relative in $inputFiles) {
     $path = Join-Path $repository $relative

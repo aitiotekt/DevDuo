@@ -41,6 +41,8 @@ Use the fixture's fixed scrim and native dialog backdrop separately, clearing ea
 
 Safari's relevant distinction is **color extension**, not a larger fixed DOM box: viewport pixels receive authored alpha, while obscured strips may use a flat blended canvas color instead of continued texture. [WebKit's backdrop implementation](https://github.com/WebKit/WebKit/commit/2ae949b78743) and [filter/gradient qualification](https://bugs.webkit.org/show_bug.cgi?id=300965) explain that boundary. Footer color-history behavior is a qualification, not a universal target rule. Do not generalize to arbitrary filters, gradients or ancestor group opacity.
 
+Opening order also matters. In the iOS 27.1 simulator at 382 × 580, Safari left the bottom extension white when the card was present at first paint, and dark when the dimming sheet appeared before the card. The macOS 27.0.1 WKWebView probe showed the same split at layer level with view-level automatic fill enabled; ScreenCaptureKit access was unavailable, so it records layer state rather than window pixels. Evidence: `captures/desktop-validation/macos-dimming/20261105T094102Z`.
+
 `fixed-overlay.html` and `just test-windows-fixed-overlay` compare viewport alpha and inset colors independently. Record document identity, extent, scroll, fixed rectangles and viewport units before/during/after. Exclude chrome-covered pixels from direct-page sampling and retain final-window evidence there. Current Windows and macOS system/fallback acceptance belongs in [Windows handoff](009-WINDOWS-HANDOFF.md) and [Platform capabilities](015-PLATFORM-PARITY.md).
 
 ## Safari scroll indicators

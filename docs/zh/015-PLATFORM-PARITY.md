@@ -4,9 +4,9 @@
 
 ## 当前验收状态
 
-维护者于 2026-10-28 确认 beta.3 候选版的 macOS 手工验收完成，逐项回执由该轮记录保存。本轮 Windows 文档工作不增加 macOS 通过结论，后续原生变化仍需针对性验证。
+最近一次 macOS 手工验收覆盖 0.1.0-beta.3 候选版（2026-10-28），逐项回执由该轮记录保存。后续影响 macOS 原生行为的变化需针对性验证。
 
-Windows 沿用 [`windows-desktop/2026-10-29`](009-WINDOWS-HANDOFF.md#当前状态) 里程碑，保留运行时／宿主归属及待完成的依赖／应用包交付门槛。实现、编译、原生检查和不支持行为分别记录；构建、签名或共享测试不代表光学／输入一致。
+Windows 沿用 [`windows-desktop/2026-10-29`](009-WINDOWS-HANDOFF.md#当前状态) 里程碑及其后的限定复验，未完成项列在该页。实现、编译、原生检查和不支持行为分别记录；构建、签名或共享测试不代表光学／输入一致。
 
 ## 当前实现与差异
 
@@ -48,10 +48,10 @@ mise exec -- uv run --locked python -m http.server 8878 --bind 127.0.0.1 --direc
 | 变化范围 | 可观察要求 |
 | --- | --- |
 | 导航、身份与标题 | 离线欢迎／Home、重定向／历史／错误处理、原生首文档／子资源／fetch UA、动态／空／长标题；无 provisional 标题泄漏 |
-| 存储与服务 | 同源 token 化 localStorage／IndexedDB／持久 cookie 跨正常重启保留；工具存储隔离，服务重启默认关闭 |
+| 存储与服务 | 同源 token 化 localStorage／IndexedDB／持久 cookie 跨正常重启保留；工具存储隔离；已启用服务独立恢复，恢复失败时保留下次启动意图 |
 | 场景与呈现 | 呈现变化保留 URL、文档／time origin、表单／历史及合法滚动；记录 clamp 而不脚本恢复；在相关 Fit 检查独立遮罩、完整标签容器和原生框 |
 | Inspector 与快捷键 | 独立窗口真实 DOM／Console，网页焦点下 F12／Ctrl+Shift+I，无 docking 视口预留；能力缺失明确报错，无过期前端 |
-| 远程／CDP／代理 | 真实 Safari 发现或页面桥、目标重连、listener 清理、互斥及未来流量路由，且不重载当前页面；不绕过 Console 粘贴保护，不将失败 TLS 握手当可信 HTTPS 通过 |
+| 远程／CDP／代理 | 真实 Safari 发现或页面桥、原生远程连接／断开、真实 chii DOM／Console 交互、目标重连、listener 清理、互斥及未来流量路由，且不重载当前页面；不绕过 Console 粘贴保护，不将失败 TLS 握手当可信 HTTPS 通过 |
 | 延伸、alpha 与材质 | 静态／动画真实流、文档边界、遮罩／backdrop 和原生返回色；明确 Open 近似及系统／回退分支，同时比较实际窗口及 DOM／快照 |
 | 输入、生命周期与无障碍 | 变换后点击、键盘／IME、弹窗、VoiceOver、相关 resize／关闭／替换竞争及资源清理；不回调已销毁容器 |
 

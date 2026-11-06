@@ -2,6 +2,12 @@
 
 <!-- Unreleased -->
 
+## 0.1.6
+
+DevDuo and its bundled Windows WebKit both use `0.1.6`.
+
+- Continue a verified translucent modal backdrop into the Windows Closed landscape side inset, preserving its gray tint under transparent overlays.
+
 ## 0.1.5
 
 DevDuo and its bundled Windows WebKit both use `0.1.5`. The pinned upstream WebKit revision is unchanged.
@@ -158,6 +164,6 @@ Initial beta release. Application and Windows WebKit engine versions are managed
 - `just` drives repository workflows, mise selects the runtimes, and pnpm and uv keep their own ecosystems and frozen locks. The former 20 tools are consolidated into maintained Python and Swift utilities, obsolete wrappers are removed, and historical-only archives are documented. The macOS WKWebView bridge lives in `src/DevDuo/macos`, and the Device Hub XCUITest probe lives in `scripts/DeviceHubUITests`.
 - Numbered English and Chinese documentation, plus a VitePress site that requires real relative symlinks and source-parity checks. Fifteen technical guides are consolidated into eight, with one daily development guide and task-based navigation in both languages.
 - `devduo-metadata.toml` is the release source of truth, with synchronized version setting, incrementing and drift checks. The Checks platform matrix follows that metadata, and unverified Linux checks and releases stay disabled. macOS and Windows release packaging is gated, macOS releases are signed and notarized, artifacts carry integrity and provenance checks, and Pages deploys from `main` only. A verified local Windows Release packaging recipe is included. Publication audits cover device and network identities, private addresses, internal domains, MAC addresses, paths and read-only staged text. Controlled fixtures replace the literal LAN test endpoint.
-- Windows WebKit runtime releases are manual and metadata-managed, on a persistent self-hosted runner, with exact download and bundling, archive and file integrity checks, preserved native build caches, and engine pins in the application manifests. First-release preparation covers manual dry runs, published-engine preflight, resumable verified draft uploads, bounded archive hashing, token-safe native build timeouts, and a publication audit before Pages deployment. The first server publication has not run. This entry records development work, and the release itself is still unpublished. See [Validation](docs/en/003-CALIBRATION-WORKFLOW.md) and [Roadmap](docs/en/100-ROADMAP.md).
+- Windows WebKit runtime releases are manual and metadata-managed, on a persistent self-hosted runner, with exact download and bundling, archive and file integrity checks, preserved native build caches, and engine pins in the application manifests. First-release preparation covers manual dry runs, published-engine preflight, resumable verified draft uploads, bounded archive hashing, token-safe native build timeouts, and a publication audit before Pages deployment. See [Validation](docs/en/003-CALIBRATION-WORKFLOW.md) and [Roadmap](docs/en/100-ROADMAP.md).
 
 [English](CHANGELOG.md) | [中文](docs/zh/CHANGELOG.md)

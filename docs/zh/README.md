@@ -56,7 +56,7 @@ DevDuo 是使用桌面 WebKit 的实验性布局辅助工具，不是 iOS 运行
 | 想了解… | 从这里开始 |
 | --- | --- |
 | 操作、调试和设置 | [使用指南](004-USAGE.md) |
-| 更新内容与后续改进 | [变更日志](CHANGELOG.md) · [UI 路线图](100-ROADMAP.md) |
+| 更新内容与后续改进 | [变更日志](CHANGELOG.md) · [路线图](100-ROADMAP.md) |
 | 报告问题或提出建议 | [GitHub Issues](https://github.com/aitiotekt/DevDuo/issues) — 请提供应用版本、操作系统及复现步骤。 |
 | 开发与 AI 辅助贡献 | [贡献指南](CONTRIBUTING.md)负责环境和验证；[AGENTS.md](../../AGENTS.md)负责编码代理规范。 |
 | 漏洞报告与本地数据 | [安全](SECURITY.md) · [隐私](PRIVACY.md) |

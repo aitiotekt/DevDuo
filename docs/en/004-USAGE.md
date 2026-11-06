@@ -25,7 +25,7 @@ New profiles default to **Touch · single finger** under **Preview → Interacti
 
 Touch mode presents one contact to the page. It supports nested scrolling and follows `touch-action`, event cancellation and scroll containment. Gesture direction drives Safari shell expansion and compaction. Mouse mode restores the desktop touch-point count. The selected mode applies to existing and future frames.
 
-Windows releases from 0.1.4 enable host touch API v1 by default, dispatching trusted WebKit touch and pointer events. WebKit handles pan and inertia. Other platforms and older runtimes can use DOM emulation with `isTrusted = false` and batch drag updates per animation frame. CSS pointer and hover media queries reflect the desktop engine. Set the mode with `PATCH /api/settings` and `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`. The `/api/state` telemetry identifies the active path.
+On Windows, touch mode dispatches trusted WebKit touch and pointer events, and WebKit handles pan and inertia. macOS and runtimes without the native touch capability use DOM emulation with `isTrusted = false` and batch drag updates per animation frame. CSS pointer and hover media queries reflect the desktop engine. Set the mode with `PATCH /api/settings` and `{"interactionMode":"touch"}` or `{"interactionMode":"mouse"}`. The `/api/state` telemetry identifies the active path.
 
 Windows Safari widgets ease between their measured expanded and compact sizes according to the system animation preference. The page viewport changes to the target size once per transition.
 
@@ -46,11 +46,13 @@ Expand **Developer** at the top of the sidebar. **Open Web Inspector** toggles t
 
 For a Chrome-style DOM/Console panel, enable **chobitsu CDP**, then open **Chrome DevTools**. Its frontend is bundled offline; Node is not required. This JavaScript CDP subset does not offer engine breakpoints, profiling, full network coverage or browser-wide targets. After navigating the target page, refresh the tools panel to reconnect. Disabling CDP stops the service; refresh the target page yourself to remove hooks already injected into that document.
 
-**Native remote inspection** is separate: macOS uses Safari's Develop discovery, while Windows uses WebKit's native Inspector TCP protocol. Both remote services start disabled; enable only the one you need. Connection exposure, tokens and sharing precautions are documented in [Security](../../SECURITY.md); protocol details belong to [Architecture](001-ARCHITECTURE.md#developer-tools-and-page-proxy).
+**Native remote inspection** is separate: macOS uses Safari's Develop discovery, while Windows uses WebKit's native Inspector TCP protocol. Enable only the one you need. Connection exposure, tokens and sharing precautions are documented in [Security](../../SECURITY.md); protocol details belong to [Architecture](001-ARCHITECTURE.md#developer-tools-and-page-proxy).
+
+Native remote inspection, CDP and the REST control API start disabled in a new profile. Each switch remembers its enablement, and enabled services restore independently at the next launch with their saved port and token; the status and address show whether a listener actually started. An occupied port or another startup error leaves only that service stopped for the session and keeps its next-launch intent; DevDuo never picks another port. Turn the switch off to cancel restoration, or apply settings to retry. Invalid saved settings for an enabled service block its restoration and stay preserved until you correct and apply them or reset settings.
 
 ## Agent clients and fixed CDP addresses
 
-Enable **chobitsu CDP** in **Developer**. The default base address is `http://127.0.0.1:9222/`; the configured port and paths stay the same across restarts and scene changes. The listener still starts disabled on app launch. **Copy CDP address** copies the base address without credentials.
+Enable **chobitsu CDP** in **Developer**. The default base address is `http://127.0.0.1:9222/`; the configured port and paths stay the same across restarts and scene changes. **Copy CDP address** copies the base address without credentials. **9222 is only the default port**: change **CDP port** and apply the listener settings when another service uses it.
 
 ```sh
 curl http://127.0.0.1:9222/json/list
@@ -71,11 +73,7 @@ This is an endpoint for a compatible agent/MCP/skill client, not a bundled MCP s
 
 ## REST control API
 
-The service switches represent remembered enablement; the status and address show whether a listener actually started. After a restore failure, turn the switch off to cancel future restoration, or apply settings to retry. Invalid saved settings for an enabled service block its restoration and remain preserved until explicitly corrected/applied or reset; startup does not substitute a default port or empty token.
-
-**9222 is only CDP's default port.** Change **CDP port** and apply the listener settings when another service uses it. Fixed addresses mean a stable configured port/path without a random prefix; an occupied port reports an error rather than silently choosing another.
-
-Enable **REST control API** under **Developer** when needed. It starts **off for a new preference file**, independently of CDP. Its **Control API port** defaults to **9224** and is editable; **Apply control API settings** saves the port/token and restarts an already running listener. It binds only `127.0.0.1`, regardless of **Allow LAN connections**. Enabled control services restore on the next launch with the same port and token. A startup failure leaves the service stopped for that session and retains its next-launch intent. Closing the app stops it; reset also clears that intent. Changing the device/container keeps it running.
+Enable **REST control API** under **Developer** when needed; it is independent of CDP. Its **Control API port** defaults to **9224** and is editable; **Apply control API settings** saves the port/token and restarts an already running listener. It binds only `127.0.0.1`, regardless of **Allow LAN connections**. Closing the app stops it, and **Reset settings** also clears its restore intent. Changing the device/container keeps it running.
 
 - Open `http://127.0.0.1:9224/api/openapi` for offline **Swagger UI**, including **Try it out**.
 - Fetch `http://127.0.0.1:9224/api/openapi.json` for the OpenAPI 3.1 JSON contract. Its server address and authentication requirement reflect the running configuration.
@@ -136,7 +134,7 @@ PNG/JPEG and JPEG quality are supported. Omit `clip`; region/full-document captu
 
 ## Page proxy
 
-Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. Proxy/listener configuration and an explicitly configured CDP bearer token persist; remote-service enablement also persists. Enabled services restore independently on launch; an occupied port or another startup error leaves that service stopped for this session and retains its preference for next launch. Apply settings or toggle the service to retry manually. See [Privacy](../../PRIVACY.md) for stored settings and network data.
+Choose a proxy mode and click **Apply proxy**. Windows supports system, direct and custom modes; macOS supports system and custom. A custom endpoint uses unauthenticated `http`, `https` or `socks5` with a port. Applying it preserves the current document and affects future requests. The proxy configuration persists; see [Privacy](../../PRIVACY.md) for stored settings and network data.
 
 ## Diagnostics and troubleshooting
 
@@ -144,6 +142,6 @@ Choose a proxy mode and click **Apply proxy**. Windows supports system, direct a
 
 If a page will not load, check its full URL and whether the local development server is running, then use **Retry** or **Reload**. On Windows, a missing-runtime error usually means the application archive was only partly extracted: retain its entire `webkit/` folder. Runtime overrides and source builds belong to the [Windows WebKit guide](014-WINDOWS-WEBKIT.md#avalonia-backend); blocked app downloads belong to [installation help](013-RELEASE.md#download-trust-and-installation-help).
 
-Both containers use the observed mobile Safari request identity, but the actual engine, platform and DPR remain native desktop values. See [mobile request identity](014-WINDOWS-WEBKIT.md#mobile-request-identity) for compatibility limits. Current platform gaps are tracked once in [Platform parity](015-PLATFORM-PARITY.md), and future host UI work in the [roadmap](100-ROADMAP.md).
+Both containers use the observed mobile Safari request identity, but the actual engine, platform and DPR remain native desktop values. See [mobile request identity](014-WINDOWS-WEBKIT.md#mobile-request-identity) for compatibility limits. Current platform gaps are tracked once in [Platform parity](015-PLATFORM-PARITY.md), and planned work in the [roadmap](100-ROADMAP.md).
 
 [English](004-USAGE.md) | [中文](../zh/004-USAGE.md)

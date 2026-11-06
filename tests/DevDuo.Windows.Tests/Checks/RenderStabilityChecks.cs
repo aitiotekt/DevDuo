@@ -24,6 +24,12 @@ internal sealed partial class WindowsChecks
         PresentationSetForegroundWindow(owner);
         await Task.Delay(250);
         Check(PresentationGetForegroundWindow() == owner, "Render stability requires the independent foreground window");
+        if (Environment.GetEnvironmentVariable("DEVDUO_TEST_RENDER_STABILITY_LANDSCAPE_MODAL_ONLY") == "1")
+        {
+            await CheckLandscapeModalContinuation(panel, owner);
+            Console.WriteLine($"PASS Closed landscape modal continuation: {assertions} assertions; {Program.Output}");
+            return;
+        }
         var outsetOnly = Environment.GetEnvironmentVariable("DEVDUO_TEST_RENDER_STABILITY_OUTSET_ONLY") == "1";
         var failures = new List<string>();
         if (!outsetOnly) await CheckSideChromeBackdropTransition(panel, owner);
@@ -96,7 +102,78 @@ internal sealed partial class WindowsChecks
                 failures.Add(leftFailure);
         }
         Check(failures.Count == 0, string.Join(Environment.NewLine, failures));
+        await CheckLandscapeModalContinuation(panel, owner);
         Console.WriteLine($"PASS translated fixed footer and Safari buttons: {assertions} assertions; consecutive composed-window frames at {Program.Output}");
+    }
+
+    private async Task CheckLandscapeModalContinuation(WindowsWebViewPanel panel, nint owner)
+    {
+        var fixture = File.ReadAllText("tests/DevDuo.WebKitProbe/pages/outset-footer.html");
+        File.WriteAllText(Path.Combine(Program.Output, "outset-footer.html"), fixture);
+        foreach (var (angle, side) in new[] { (90, "right"), (270, "left") })
+        {
+            while (State().GetProperty("bodyRotationDegrees").GetInt32() != angle)
+            {
+                Rotate();
+                await Task.Delay(100);
+            }
+            panel.ShowHtml(fixture);
+            await WaitForScript("typeof setModalCanvasPaint", value => value == "function", "Landscape modal fixture");
+            var geometryBefore = await Web.EvaluateResultAsync("JSON.stringify([innerWidth,innerHeight,scrollX,scrollY,document.scrollingElement.scrollHeight])");
+            var browser = panel.Browser;
+            var bounds = browser.PresentationBounds!(browser.ClientRectangle);
+            var pixels = new PixelRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            var sideX = side == "left" ? 12 : pixels.Width - 13;
+            var bottomX = pixels.Width / (side == "left" ? 4 : 7);
+            var geometry = State().GetProperty("webKit").GetProperty("logicalGeometry");
+            var scale = browser.BackingScale;
+            int Pixel(double css) => (int)Math.Round(css * scale);
+            var paintX = side == "left" ? Pixel(geometry.GetProperty("left").GetInt32() + 3) :
+                Pixel(geometry.GetProperty("width").GetInt32() - geometry.GetProperty("right").GetInt32() - 3);
+            var paintY = Pixel((geometry.GetProperty("height").GetInt32() - geometry.GetProperty("bottom").GetInt32()) * .34 + 12);
+            int[] Rgb(ComposedWindowSequence.Frame frame, int x, int y)
+            {
+                var index = (y * pixels.Width + x) * 4;
+                return [frame.Bgra[index + 2], frame.Bgra[index + 1], frame.Bgra[index]];
+            }
+            foreach (var (phase, script, expectsGray, expectsPaint) in new[]
+            {
+                ("open", "document.querySelector('.modal').hidden=false;setModalCanvasPaint('show');'opened'", true, false),
+                ("paint", $"setModalCanvasPaint('paint','{side}');'painted'", false, true),
+                ("clear", "setModalCanvasPaint('clear');'cleared'", true, false),
+                ("bare-sheet", "setModalCanvasPaint('hide');document.querySelector('.modal-pass-through').style.display='none';'bare'", true, false),
+                ("close", "document.querySelector('.modal').hidden=true;'closed'", false, false),
+            })
+            {
+                var capture = new ComposedWindowSequence(owner, pixels, 1350);
+                await Task.WhenAny(capture.Ready, capture.Completed);
+                if (capture.Completed.IsCompleted) await capture.Completed;
+                await Web.EvaluateResultAsync(script);
+                var frames = await capture.Completed;
+                var samples = frames.Select(frame => new
+                {
+                    side = Rgb(frame, sideX, pixels.Height / 2),
+                    bottom = Rgb(frame, bottomX, pixels.Height - 14),
+                    card = Rgb(frame, pixels.Width / 2, pixels.Height / 2),
+                    foreground = Rgb(frame, paintX, paintY),
+                }).ToArray();
+                var edge = FixedExtension(State());
+                Save($"outset-landscape-modal-{angle}-{phase}", JsonSerializer.SerializeToElement(new { geometryBefore, edge, samples }));
+                static bool Gray(int[] rgb) => rgb.All(channel => Math.Abs(channel - 25) <= 3);
+                static bool Red(int[] rgb) => rgb[0] > 180 && rgb[1] < 70 && rgb[2] < 70;
+                Check((edge.GetProperty(side + "Rgb").GetRawText() == "[25,25,25]") == expectsGray &&
+                    (edge.GetProperty("bottomRgb").GetRawText() == "[25,25,25]") == (phase != "close"),
+                    $"Closed {angle} {phase} reports the expected {side} and bottom colors: {edge}");
+                var settled = phase == "open" ? samples.SkipWhile(sample => !Gray(sample.side)).ToArray() : samples.TakeLast(1).ToArray();
+                Check(settled.Length >= (phase == "open" ? 3 : 1) && settled.All(sample =>
+                    Gray(sample.side) == expectsGray && Gray(sample.bottom) == (phase != "close") &&
+                    Red(sample.foreground) == expectsPaint && !Red(sample.side) &&
+                    (phase == "close" || sample.card.All(channel => channel >= 250))),
+                    $"Closed {angle} {phase} presents matching inset pixels, with foreground paint confined to the viewport");
+            }
+            Check(await Web.EvaluateResultAsync("JSON.stringify([innerWidth,innerHeight,scrollX,scrollY,document.scrollingElement.scrollHeight])") == geometryBefore,
+                $"Closed {angle} modal continuation preserves viewport and scroll geometry");
+        }
     }
 
     private async Task CheckOutsetFixedVisibilityAndFill(WindowsWebViewPanel panel, nint owner)

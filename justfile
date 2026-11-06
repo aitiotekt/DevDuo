@@ -1,4 +1,5 @@
-set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+[windows]
+set shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
 import "justfiles/setup.just"
 import "justfiles/dev.just"

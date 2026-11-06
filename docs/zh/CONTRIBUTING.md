@@ -16,14 +16,14 @@ mise exec -- just doctor
 
 完成下述平台设置后，用 `mise exec -- just dev` 从源码启动。离线欢迎页无需接收服务；进行测量时，先在独立终端运行 `mise exec -- just serve`，再打开**本地标定页**，详见[标定指南](003-CALIBRATION-WORKFLOW.md)。
 
-Windows 首次执行 `just dev` 或 `just test-windows` 前需构建原生运行时：
+Windows 首次执行 `just dev` 或 `just test-windows` 前需构建原生运行时。构建使用 `mise.windows-webkit.toml` 及其锁文件管理的便携工具；Visual Studio C++/Clang 和 Windows SDK 仍为系统依赖。只有引擎输入变化时才需重建。
 
 ```powershell
 mise --env windows-webkit install
 mise --env windows-webkit exec -- just build-windows-webkit-runtime
 ```
 
-应用自动查找源码检出中的 `temp/build/windows-webkit-host/bin`。在检出目录外，可在应用旁提供 `webkit/bin` 与 `webkit/runtime-manifest.json`，或将 `DEVDUO_WEBKIT_RUNTIME` 设为匹配的绝对 bin 目录。这只选择运行时位置；浏览器实现固定为 WebKit。缺失或不兼容时明确报错，详见 [Windows WebKit 指南](014-WINDOWS-WEBKIT.md)。
+应用自动查找源码检出中的 `temp/build/windows-webkit-host/bin`。在检出目录外，可在应用旁提供 `webkit/bin` 与 `webkit/runtime-manifest.json`，或将 `DEVDUO_WEBKIT_RUNTIME` 设为匹配的绝对 bin 目录。缺失或不兼容时明确报错。固定源码、补丁及运行时选择见 [Windows WebKit 指南](014-WINDOWS-WEBKIT.md#宿主-api-源码构建)。
 
 这些命令也适用于 PowerShell。`doctor` 实际测试链接创建，同步操作拒绝覆盖普通文件。若链接被检出成文本，先保留改动，再使用正确的符号链接检出。参见 [Windows 开发者设置](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode)与 [Git core.symlinks](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)。
 
@@ -72,13 +72,14 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-browser-identity` | 两种容器的首文档/子资源/fetch 原生 User-Agent、重定向及旋转保持检查；会打开 Windows 窗口 |
 | `just test-windows-navigation-latency` | HTTP/内联冷启动、首次源像素、无外链导航计时及独立进程的 Network 崩溃恢复；会打开 Windows 窗口 |
 | `just test-windows-presentation` | 检查 WebKit 物理窗口尺寸、重绘区域及最大化/Inspector/恢复后的实时像素，会打开 Windows 窗口 |
-| `just test-windows-presentation-insets` | 单独检查工具栏收起后新露出的未经修改颜色页源像素；会打开 Windows 窗口，与最终 DWM 验收分开 |
-| `just test-windows-presentation-rotations` | 检查八种姿态、弹窗关闭和快速旋转后的新文档动画帧；会打开 Windows 窗口，与完整固定遮罩历史分开 |
-| `just test-windows-fixed-overlay` | 原生弹窗遮罩视口 alpha、inset 颜色及几何保持检查；会打开 Windows 窗口，不代表完整 Safari 光学验收 |
+| `just test-windows-presentation-insets` | 工具栏收起后新露出的未经修改颜色页实时源像素；会打开 Windows 窗口 |
+| `just test-windows-presentation-rotations` | 检查八种姿态、弹窗关闭和快速旋转后的新文档动画帧；会打开 Windows 窗口 |
+| `just test-windows-fixed-overlay` | 原生弹窗遮罩视口 alpha、inset 颜色及几何保持检查；会打开 Windows 窗口 |
 | `just test-windows-modal-sequence` | 单一 DPI 下嵌套弹窗交替、材质／前景局部更新及实际帧证据 |
 | `just test-windows-upstream-fixed-colors` | 原生 fixed/sticky 取色规则、图案底层、保留的上游导出及实际 inset 像素 |
 | `just test-windows-fixed-color-transitions` | inset 同步失效及原生滚轮外壳切换时的颜色连续性 |
 | `just test-windows-chrome-motion` | Closed／Open 横屏控件中间帧、实测端点及合成结构复用 |
+| `just test-windows-render-stability` | 弹窗、fixed 页脚和侧栏控件变化期间的连续合成窗口帧，并与原生边缘及材质状态对照 |
 | `just test-windows-touch-performance` | 深层本地夹具的真实 OS 拖动与鼠标滚轮帧间隔；需要前台桌面 |
 | `just test-windows-atomic-continuation` | 当前 DPI、1:1／Fit 及确认过的合成／软件路径，比较动态页面与 inset；顶边来源像素和合成窗口证据分别记录 |
 | `just test-windows-developer-restore` | 真实应用重启、端口占用隔离及服务记忆恢复 |
@@ -87,13 +88,13 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 | `just test-windows-popups` | 八种机身姿态下真实原生 select 锚点、鼠标／键盘选择及 Escape 关闭 |
 | `just test-windows-ime` | 已安装中文文本服务在 input／textarea／contenteditable 中的预编辑、候选提交、取消及选区替换 |
 | `just test-windows-screenshots` | 原生 REST/CDP 截图、八种姿态及滚动/fixed 几何保持；会打开 Windows 窗口 |
-| `just test-windows-scroll-indicators` | 原生输入、淡出、CSS 抑制及屏幕外缘指示器像素与页面几何保持检查；会打开 Windows 窗口，不声明 Safari 精确线宽或淡出时长 |
+| `just test-windows-scroll-indicators` | 原生输入、淡出、CSS 抑制及屏幕外缘指示器像素与页面几何保持检查；会打开 Windows 窗口 |
 | `just test-windows-touch-pointer` | 当前 DPI 下的外壳旧位置像素恢复、快速移动合并及页面几何保持；会打开 Windows 窗口 |
+| `just test-windows-interaction` | 交互夹具上的触控模式轻点、拖动及指针行为；需要宿主窗口位于前台 |
 | `just test-windows-run-loop` | 在外部 Windows 消息泵和 WTF 自有循环下检查实际固定版本 WTF 定时器；需要已构建的原生运行时 |
-| `just test-windows-scrolling-layers` | 无窗口原生 WC 图层发布、合并及确认机制检查；需要实验异步运行时，不认证实际滚动呈现 |
-| `just test-windows-async-scrolling` | 当前 DPI 与 1:1／Fit 下的真实滚轮、页面主线程阻塞、fixed／延伸像素及 DOM 收敛，需要实验运行时 |
-| `just test-windows-native-touch` | 可信触点、原生手势规则、嵌套滚动及繁忙页面 GPU 呈现，需要实验原生触控运行时 |
-| `just test-windows-async-scrolling` | 实验原生滚轮、合成窗口像素及主线程繁忙期间的 fixed／延伸检查，保留阻塞监听器语义 |
+| `just test-windows-scrolling-layers` | 无窗口原生 WC 图层发布、合并及确认机制检查；不涉及实际呈现 |
+| `just test-windows-async-scrolling` | 当前 DPI 与 1:1／Fit 下的真实滚轮、页面主线程阻塞、fixed／延伸像素及 DOM 收敛 |
+| `just test-windows-native-touch` | 可信触点、原生手势规则、嵌套滚动及繁忙页面 GPU 呈现 |
 | `just test-debugging` | 真实回环 CDP HTTP/WebSocket 发现、token/Origin/生命周期检查，不证明原生页内注入 |
 | `just prepare-debugging` | 将锁定的 chii/chobitsu 离线资源复制到 `temp/build/debugging/`，已纳入应用 dev/build/package 命令 |
 | `just probe-windows-webkit` | 固定官方 WebKit 版本的独立实时延伸/文档边界诊断，会打开 Windows 窗口 |
@@ -107,19 +108,15 @@ mise --env windows-webkit exec -- just build-windows-webkit-runtime
 
 Core、本地化和调试检查使用无外部测试框架依赖的 .NET 检查程序及已提交锁文件，不启动原生应用。Windows 应用场景位于 `tests/DevDuo.Windows.Tests/Checks/`，生命周期/服务支持位于 `Harness/`，截图/来源支持位于 `Evidence/`。构建该项目不会执行原生检查。可移植结果、编译和实际窗口验收应分别报告；跨平台交接见[平台对齐与macOS验收](015-PLATFORM-PARITY.md)。
 
-Windows 增量工作采用[已验收里程碑与回归选择规则](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)。未受影响的结果沿用基线，只在当前可用的单一实际 DPI 执行相关 recipe；系统缩放切换、全部原生 recipe 和三 DPI 矩阵都不是日常要求。`just verify` 仍是可移植检查／构建的集成入口，不会启动 Windows 原生验收套件。只有引擎输入发生变化才重建引擎，文档或托管宿主修改不需要重建 WebKit。
+Windows 增量工作只在当前可用的单一实际 DPI 执行受影响的 recipe，并沿用未受影响的基线证据；[回归选择规则](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)给出修改与检查的对应关系。`just verify` 不会启动 Windows 原生套件。
 
 自定义参数直接传给对应生态，例如 `mise exec -- uv run --locked devduo-tools --help` 或 `mise exec -- pnpm --dir docsite dev --port 5174 --strictPort`。重新构建后需重启静态 preview。安装可选 hooks 使用 `mise exec -- prek install`。
 
 构建和缓存放在 `temp/build/`、`temp/cache/`；.NET 还使用标准且被忽略的 `bin/`、`obj/`。`just clean` 保留应用包、依赖环境和原始证据。一次性验证副本使用系统临时目录，用完清理。原始截图与测量保存在各自的忽略目录。`.gitignore` 不会移除已有暂存项，发布前仍需检查差异。
 
-必需的 Windows WebKit 源码构建通过 `mise.windows-webkit.toml` 及锁文件管理便携工具。先执行 `mise --env windows-webkit install`，再执行 `mise --env windows-webkit exec -- just build-windows-webkit-runtime`。Visual Studio C++/Clang 和 Windows SDK 仍为系统依赖；固定源码补丁与验收门槛见 [WebKit 指南](014-WINDOWS-WEBKIT.md#宿主-api-源码构建)。
+Windows 引擎独立定版，在持久自托管 runner 上构建；应用打包下载 metadata 指定版本的运行时。见[运行时发布](013-RELEASE.md#windows-webkit-运行时发布)。
 
-Windows 引擎独立手动发布，专用自托管 runner 保留原生缓存；普通应用发布下载 metadata 指定版本的运行时。配置和命令见[运行时发布说明](013-RELEASE.md#windows-webkit-运行时发布)。
-
-`just test-debugging` 使用真实回环 HTTP/WebSocket 检查 CDP 发现、token、Origin 及生命周期，不证明原生页内注入通过。`just prepare-debugging` 从锁定的 chii/chobitsu 复制离线资源到 `temp/build/debugging/`，应用 dev/build/package 命令均依赖该步骤；直接使用 `dotnet` 命令前先执行它，安装后用户无需 Node。
-
-原生开发工具和代理需单独验收：独立 Inspector 不改变视口，原生远程连接/断开，真实 chii DOM/Console 交互，目标导航后的前端重连，监听释放，以及各平台代理路由。Windows 需包含第三宿主补丁及 `hostDeveloperApiVersion: 1` 的新运行时；macOS 使用系统 WebKit，当前原生验收状态见[平台对齐](015-PLATFORM-PARITY.md)。参见[开发工具架构](001-ARCHITECTURE.md#开发工具与页面代理)。
+直接使用 `dotnet` 命令前先执行 `just prepare-debugging`。原生开发工具和代理的验收要求见[平台验收矩阵](015-PLATFORM-PARITY.md#原生验收矩阵)。
 
 ## 依赖与版本
 

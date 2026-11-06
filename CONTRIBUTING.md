@@ -16,14 +16,14 @@ mise exec -- just doctor
 
 After the platform setup below, launch from source with `mise exec -- just dev`. The offline welcome page needs no receiver. For measurement work, run `mise exec -- just serve` in a separate terminal before opening **Local calibration page**; see [Calibration](docs/en/003-CALIBRATION-WORKFLOW.md).
 
-Windows requires a one-time native runtime build before `just dev` or `just test-windows`:
+Windows requires a one-time native runtime build before `just dev` or `just test-windows`. It uses portable tools from `mise.windows-webkit.toml` and its lock; Visual Studio C++/Clang and the Windows SDK remain system dependencies. Rebuild only when engine inputs change.
 
 ```powershell
 mise --env windows-webkit install
 mise --env windows-webkit exec -- just build-windows-webkit-runtime
 ```
 
-The app finds `temp/build/windows-webkit-host/bin` in a checkout automatically. Outside a checkout, provide `webkit/bin` and `webkit/runtime-manifest.json` beside the app, or set `DEVDUO_WEBKIT_RUNTIME` to the matching absolute bin directory. This selects a runtime location, not a browser backend. Missing or incompatible files fail explicitly. See the [Windows WebKit guide](docs/en/014-WINDOWS-WEBKIT.md).
+The app finds `temp/build/windows-webkit-host/bin` in a checkout automatically. Outside a checkout, provide `webkit/bin` and `webkit/runtime-manifest.json` beside the app, or set `DEVDUO_WEBKIT_RUNTIME` to the matching absolute bin directory. Missing or incompatible files fail explicitly. The pinned source, patches and runtime selection are described in the [Windows WebKit guide](docs/en/014-WINDOWS-WEBKIT.md#host-api-source-build).
 
 The commands also work in PowerShell. `doctor` tests actual link creation; synchronization refuses to overwrite regular files. If links were checked out as text, preserve your changes and use a proper symlink checkout. See [Windows developer settings](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode) and [Git core.symlinks](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks).
 
@@ -72,13 +72,14 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-browser-identity` | Native first-document/subresource/fetch User-Agent, redirects and rotation preservation in both containers; opens Windows UI |
 | `just test-windows-navigation-latency` | Cold HTTP/inline, first source pixels, resource-free navigation timing and a separate Network crash-recovery process; opens Windows UI |
 | `just test-windows-presentation` | Physical WebKit bounds, repaint damage and live raster checks across maximize/Inspector/restore; opens Windows UI |
-| `just test-windows-presentation-insets` | Isolated live-source checks for unmodified color-page pixels exposed by compact chrome; opens Windows UI, separate from final DWM acceptance |
-| `just test-windows-presentation-rotations` | Fresh-document animation frames through eight poses, modal close and rapid rotation; opens Windows UI and is separate from the full fixed-overlay history |
-| `just test-windows-fixed-overlay` | Native modal-overlay viewport alpha, inset colors and geometry preservation; opens Windows UI, not full Safari optical acceptance |
+| `just test-windows-presentation-insets` | Live source pixels of an unmodified color page exposed by compact chrome; opens Windows UI |
+| `just test-windows-presentation-rotations` | Fresh-document animation frames through eight poses, modal close and rapid rotation; opens Windows UI |
+| `just test-windows-fixed-overlay` | Native modal-overlay viewport alpha, inset colors and geometry preservation; opens Windows UI |
 | `just test-windows-modal-sequence` | Nested popup replacement, retained material/foreground updates and presented frame evidence at one DPI |
 | `just test-windows-upstream-fixed-colors` | Native fixed/sticky color rules, patterned underlays, preserved upstream export and presented inset pixels |
 | `just test-windows-fixed-color-transitions` | Synchronous inset invalidation and native-wheel shell transition color continuity |
 | `just test-windows-chrome-motion` | Closed/Open landscape intermediate widget frames, measured endpoints and retained visual structure |
+| `just test-windows-render-stability` | Consecutive composed-window frames through modal, fixed-footer and side-control changes, correlated with native edge and material state |
 | `just test-windows-touch-performance` | Real OS drag and mouse-wheel cadence on a deep local fixture; foreground desktop required |
 | `just test-windows-atomic-continuation` | Animated page/inset pixel agreement at current DPI, 1:1/Fit and verified composited/software paths; top source pixels and composed-window evidence are separate |
 | `just test-windows-developer-restore` | Real application restart, occupied-port isolation and remembered service recovery |
@@ -87,12 +88,13 @@ The commands below assume an activated mise environment. Use separate terminals 
 | `just test-windows-popups` | Actual native select anchors, mouse/keyboard selection and Escape dismissal across eight body poses |
 | `just test-windows-ime` | Installed Chinese text service preedit, candidate commit, cancellation and selected-range replacement in input/textarea/contenteditable |
 | `just test-windows-screenshots` | Native REST/CDP screenshots, eight poses and unchanged scroll/fixed geometry; opens Windows UI |
-| `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI, without claiming exact Safari thickness or fade timing |
+| `just test-windows-scroll-indicators` | Native input, fade, CSS suppression and screen-edge indicator pixels with unchanged page geometry; opens Windows UI |
 | `just test-windows-touch-pointer` | Foreground chrome pixel restoration, rapid-motion coalescing and unchanged page geometry at the current DPI; opens Windows UI |
+| `just test-windows-interaction` | Touch-mode tap, drag and pointer behavior on the interaction fixture; foreground host window required |
 | `just test-windows-run-loop` | Actual pinned WTF timers under an external Windows message pump and WTF's own loop; requires the native runtime build |
-| `just test-windows-scrolling-layers` | Headless native WC layer publication, coalescing and acknowledgement primitives; requires the experimental async runtime and does not certify scrolling presentation |
-| `just test-windows-async-scrolling` | Real wheel input, blocked page main thread, fixed/inset pixels and DOM convergence at current DPI and 1:1/Fit; experimental runtime |
-| `just test-windows-native-touch` | Trusted contacts, native gesture policy, nested scrolling and busy-page GPU presentation; experimental native-touch runtime |
+| `just test-windows-scrolling-layers` | Headless native WC layer publication, coalescing and acknowledgement primitives; does not exercise presentation |
+| `just test-windows-async-scrolling` | Real wheel input, blocked page main thread, fixed/inset pixels and DOM convergence at current DPI and 1:1/Fit |
+| `just test-windows-native-touch` | Trusted contacts, native gesture policy, nested scrolling and busy-page GPU presentation |
 | `just test-debugging` | Real loopback CDP HTTP/WebSocket discovery, token/origin/lifecycle checks; does not certify native page injection |
 | `just prepare-debugging` | Copy locked chii/chobitsu offline assets into `temp/build/debugging/`; included in app dev/build/package recipes |
 | `just probe-windows-webkit` | Pinned official WebKit standalone continuation/boundary diagnostic; opens Windows UI |
@@ -106,17 +108,15 @@ The commands below assume an activated mise environment. Use separate terminals 
 
 Core, localization and debugging checks use dependency-free .NET harnesses and their committed locks. They do not launch a native app. Windows app scenarios live in `tests/DevDuo.Windows.Tests/Checks/`, with lifecycle/server support in `Harness/` and capture/provenance support in `Evidence/`. Building that project does not execute its native checks. Keep portable results, compilation and presented-window acceptance separate; use [Platform parity and macOS acceptance](docs/en/015-PLATFORM-PARITY.md) for the cross-platform handoff.
 
-For incremental Windows work, use the [accepted milestone and regression selection](docs/en/009-WINDOWS-HANDOFF.md#windows-milestone-and-incremental-regression). Reuse unaffected baseline evidence and run the affected recipe at one available actual DPI. System scale changes, all native recipes and a three-DPI matrix are not routine requirements. `just verify` remains the portable/build integration check; it does not launch the Windows native acceptance suites. Engine rebuilds are needed only when engine inputs change, not for documentation or managed-host edits.
+For incremental Windows work, run only the affected recipes at one available actual DPI and reuse unaffected baseline evidence; the [regression selection](docs/en/009-WINDOWS-HANDOFF.md#windows-milestone-and-incremental-regression) maps changes to checks. `just verify` does not launch the Windows native suites.
 
 Pass custom arguments directly to the relevant ecosystem, for example `mise exec -- uv run --locked devduo-tools --help` or `mise exec -- pnpm --dir docsite dev --port 5174 --strictPort`. Restart static preview after rebuilding. Install optional hooks explicitly with `mise exec -- prek install`.
 
 Generated builds/caches belong in `temp/build/` and `temp/cache/`; .NET also uses standard ignored `bin/` and `obj/`. `just clean` retains packaged apps, installed dependencies and original evidence. Use OS temporary directories for disposable validation checkouts and remove them afterwards. Keep original captures and measurements in their dedicated ignored directories. `.gitignore` does not untrack existing index entries; review the diff before publishing.
 
-The required Windows WebKit source build uses portable tools from `mise.windows-webkit.toml` and its lock. Run `mise --env windows-webkit install`, then `mise --env windows-webkit exec -- just build-windows-webkit-runtime`. Visual Studio C++/Clang and Windows SDK remain system dependencies. The [WebKit guide](docs/en/014-WINDOWS-WEBKIT.md#host-api-source-build) owns the pinned source patch and acceptance gate.
+Windows engine releases are independently versioned and built on a persistent self-hosted runner; application packaging downloads the metadata-selected runtime. See [runtime releases](docs/en/013-RELEASE.md#windows-webkit-runtime-releases).
 
-Windows engine releases are manual and independent from application releases. A dedicated persistent self-hosted runner keeps native caches; ordinary release packaging downloads the metadata-selected runtime version. See [runtime release setup and commands](docs/en/013-RELEASE.md#windows-webkit-runtime-releases).
-
-Native developer tools and proxy acceptance is separate from service tests: verify a detached Inspector without viewport changes, native remote connect/disconnect, actual chii DOM/Console interactions, target navigation reconnect, listener release and per-platform proxy routing. Windows requires a rebuilt runtime with `hostDeveloperApiVersion: 1` and the third host patch. macOS uses system WebKit; current native acceptance status is recorded in [Platform parity](docs/en/015-PLATFORM-PARITY.md). Direct `dotnet` commands require `just prepare-debugging` first; packaged users need no Node installation. See [developer architecture](docs/en/001-ARCHITECTURE.md#developer-tools-and-page-proxy).
+Direct `dotnet` commands require `just prepare-debugging` first. Native developer-tools and proxy acceptance criteria are in the [platform acceptance matrix](docs/en/015-PLATFORM-PARITY.md#native-acceptance-matrix).
 
 ## Dependencies and versions
 

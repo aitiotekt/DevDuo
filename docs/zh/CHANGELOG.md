@@ -2,6 +2,12 @@
 
 <!-- Unreleased -->
 
+## 0.1.6
+
+DevDuo 和随附的 Windows WebKit 均使用 `0.1.6`。
+
+- Windows 折叠横屏的侧边延伸区域可延续经验证的半透明弹窗遮罩，在无绘制内容的透明覆盖层下保留正确的灰色。
+
 ## 0.1.5
 
 DevDuo 和内置 Windows WebKit 均使用 `0.1.5`，固定的上游 WebKit revision 保持不变。
@@ -158,6 +164,6 @@ DevDuo 与 bundled Windows WebKit 均使用 `0.1.0`，分别以 `v0.1.0`、`webk
 - `just` 驱动仓库流程，mise 选择运行时，pnpm 与 uv 各自维护本生态和冻结锁。原先 20 个工具归并为仍在维护的 Python 与 Swift 工具，过时包装已移除，仅供历史复现的归档已写明用法。macOS WKWebView 桥接位于 `src/DevDuo/macos`，Device Hub XCUITest 探针位于 `scripts/DeviceHubUITests`。
 - 中英文文档按编号整理，VitePress 文档站要求真实相对符号链接和源文件配对。15 篇技术指南合并为 8 篇，两种语言都有一份日常开发指南和按任务组织的导航。
 - `devduo-metadata.toml` 是发布配置来源，版本可同步设置、递增并检查漂移。Checks 平台矩阵跟随该元数据，尚未验证的 Linux 检查和发布保持关闭。macOS 与 Windows 发布打包有门禁，macOS 发行包签名并公证，产物带完整性与来源校验，Pages 只从 `main` 部署。另有经过校验的本地 Windows Release 打包命令。发布审计覆盖设备与网络标识、私网地址、内网域名、MAC 地址、路径和只读暂存文本。字面的局域网测试地址改为受控夹具。
-- Windows WebKit 运行时发布为手动、由元数据管理，在持久自托管 runner 上构建，包含精确下载与打包、归档和文件完整性校验、保留的原生构建缓存，以及应用清单中的引擎 pin。首次发布准备包括手动演练、已发布引擎预检、经校验且可续传的草稿、定界归档哈希、避开 token 过期的原生构建时限，以及 Pages 部署前的发布审计。首次服务器发布尚未执行。本节记录开发工作，发行版本身尚未发布。详见[验证记录](003-CALIBRATION-WORKFLOW.md)和[路线图](100-ROADMAP.md)。
+- Windows WebKit 运行时发布为手动、由元数据管理，在持久自托管 runner 上构建，包含精确下载与打包、归档和文件完整性校验、保留的原生构建缓存，以及应用清单中的引擎 pin。首次发布准备包括手动演练、已发布引擎预检、经校验且可续传的草稿、定界归档哈希、避开 token 过期的原生构建时限，以及 Pages 部署前的发布审计。详见[验证记录](003-CALIBRATION-WORKFLOW.md)和[路线图](100-ROADMAP.md)。
 
 [English](../../CHANGELOG.md) | [中文](CHANGELOG.md)

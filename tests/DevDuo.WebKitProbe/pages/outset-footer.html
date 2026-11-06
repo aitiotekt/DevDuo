@@ -73,7 +73,7 @@
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
   canvasRoot.append(overlayCanvas);
-  window.setModalCanvasPaint = mode => {
+  window.setModalCanvasPaint = (mode, side) => {
     if (mode === 'show') {
       overlayCanvas.width = innerWidth;
       overlayCanvas.height = innerHeight;
@@ -83,7 +83,10 @@
     context.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     if (mode === 'paint') {
       context.fillStyle = '#eb2a2c';
-      context.fillRect(48, overlayCanvas.height - 5, 76, 5);
+      if (side === 'left' || side === 'right')
+        context.fillRect(side === 'left' ? 0 : overlayCanvas.width - 6, overlayCanvas.height * .34, 6, 26);
+      else
+        context.fillRect(48, overlayCanvas.height - 5, 76, 5);
     }
     document.querySelector('.modal-pass-through-decoration').hidden = mode !== 'lower-paint';
     if (mode === 'hide') canvasCover.hidden = true;

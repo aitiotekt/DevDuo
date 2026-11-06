@@ -1,0 +1,177 @@
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -2680,24 +2680,25 @@
+         return std::ranges::any_of(hit.listBasedTestResult(), [&](const auto& node) { return &node.get() == &sheet; });
+     };
+ 
++    auto hasPlainPaint = [&](BoxSide side, const RenderElement& renderer) {
++        return renderer.opacity() == 1 && !renderer.hasClip() && !renderer.hasClipPath() && !renderer.hasMask()
++            && !renderer.hasNonVisibleOverflow() && !renderer.hasFilter() && !renderer.hasBackdropFilter() && !renderer.hasBlendMode()
++            && !renderer.isTransformed() && !renderer.style().border().hasBorderRadius()
++            && !paintPathMakesColorUncertain(side, renderer);
++    };
++    auto hasSolidBackground = [&](BoxSide side, const RenderElement& renderer) {
++        const auto& layers = renderer.style().backgroundLayers();
++        return hasPlainPaint(side, renderer) && !renderer.style().border().hasBorder()
++            && !Style::hasImageInAnyLayer(layers) && layers.usedLength() == 1
++            && layers.usedFirst().clip() == FillBox::BorderBox;
++    };
++
+     auto authoredDimmingExtension = [&](BoxSide side, const RenderElement& container, const Element* exposedSheet) -> Color {
+         const auto depth = LayoutUnit::fromFloatRound(page->obscuredContentInsets().at(side));
+         if (depth <= 0)
+             return { };
+-        auto hasPlainPaint = [&](const RenderElement& renderer) {
+-            return renderer.opacity() == 1 && !renderer.hasClip() && !renderer.hasClipPath() && !renderer.hasMask()
+-                && !renderer.hasNonVisibleOverflow() && !renderer.hasFilter() && !renderer.hasBackdropFilter() && !renderer.hasBlendMode()
+-                && !renderer.isTransformed() && !renderer.style().border().hasBorderRadius()
+-                && !paintPathMakesColorUncertain(side, renderer);
+-        };
+-        auto hasSolidBackground = [&](const RenderElement& renderer) {
+-            const auto& layers = renderer.style().backgroundLayers();
+-            return hasPlainPaint(renderer) && !renderer.style().border().hasBorder()
+-                && !Style::hasImageInAnyLayer(layers) && layers.usedLength() == 1
+-                && layers.usedFirst().clip() == FillBox::BorderBox;
+-        };
+         for (CheckedRef ancestor : lineageOfType<RenderElement>(container)) {
+-            if (!ancestor->isRenderView() && !hasPlainPaint(ancestor))
++            if (!ancestor->isRenderView() && !hasPlainPaint(side, ancestor))
+                 return { };
+         }
+ 
+@@ -2725,7 +2726,7 @@
+         CheckedPtr box = exterior ? dynamicDowncast<RenderBox>(exterior->renderer()) : nullptr;
+         if (!box || box->parent() != &container || !box->isFixedPositioned() || box->firstChild()
+             || !box->containingBlock() || !box->containingBlock()->isRenderView()
+-            || !hasSolidBackground(*box))
++            || !hasSolidBackground(side, *box))
+             return { };
+ 
+         auto bounds = LayoutRect { box->absoluteBoundingBoxRect() };
+@@ -2762,7 +2763,7 @@
+             if (!candidate || candidate == box.get() || !isDimmingSheet(side, *candidate)
+                 || !LayoutRect { candidate->absoluteBoundingBoxRect() }.contains(fixedLayoutRect))
+                 continue;
+-            if (sheet || !hasSolidBackground(*candidate) || candidate->firstChild()
++            if (sheet || !hasSolidBackground(side, *candidate) || candidate->firstChild()
+                 || (exposedSheet && candidate->element() != exposedSheet)
+                 || primaryBackgroundColorForRenderer(side, *candidate) != color)
+                 return { };
+@@ -2789,7 +2790,7 @@
+             if (!backgroundBounds.intersects(outside))
+                 continue;
+             auto background = primaryBackgroundColorForRenderer(side, ancestor);
+-            if (ancestor->isOutOfFlowPositioned() || !background.isOpaque() || !hasSolidBackground(ancestor)
++            if (ancestor->isOutOfFlowPositioned() || !background.isOpaque() || !hasSolidBackground(side, ancestor)
+                 || (partialBacking.isVisible() && partialBacking != background))
+                 break;
+             if (backgroundBounds.contains(outside))
+@@ -2845,7 +2846,7 @@
+             && !renderer.hasVisibleBoxDecorations() && !renderer.hasOutline();
+     };
+ 
+-    auto overlaysLeaveStripUnpainted = [&](BoxSide side, const RenderElement& lower) {
++    auto overlaysLeaveStripUnpainted = [&](BoxSide side, const RenderElement& lower, const RenderElement* modal = nullptr) {
+         using enum HitTestRequest::Type;
+         auto innerStrip = computeSampleRectIgnoringBorderWidth(fixedRect, side);
+         HitTestResult hit { innerStrip };
+@@ -2862,18 +2863,35 @@
+             if (!renderer)
+                 return false;
+             CheckedPtr<RenderElement> overlay;
++            CheckedPtr<RenderElement> previous;
++            bool insideModal = false;
+             for (CheckedRef ancestor : lineageOfType<RenderElement>(*renderer)) {
+                 if (&ancestor.get() == &lower) {
+                     foundLower = true;
+                     break;
+                 }
++                if (&ancestor.get() == modal) {
++                    overlay = previous;
++                    insideModal = true;
++                    break;
++                }
+                 if (ancestor->isFixedPositioned())
+                     overlay = &ancestor.get();
++                previous = &ancestor.get();
+             }
+             if (foundLower)
+                 break;
+             RefPtr element = overlay ? overlay->element() : nullptr;
+-            if (!element || !isInputTransparentOverlay(*overlay) || paintPathMakesColorUncertain(side, *overlay))
++            if (!element)
++                return false;
++            if (insideModal) {
++                // Transparent hit targets can be ordinary positioned children
++                // of the modal. Prove that the whole child subtree is unpainted.
++                if (!overlay->isRenderBlock() || overlay->usedPointerEvents() != PointerEvents::None
++                    || overlay->hasBackground() || overlay->hasVisibleBoxDecorations() || overlay->hasOutline()
++                    || !hasPlainPaint(side, *overlay))
++                    return false;
++            } else if (!isInputTransparentOverlay(*overlay) || paintPathMakesColorUncertain(side, *overlay))
+                 return false;
+             if (overlays.contains(element))
+                 continue;
+@@ -2884,6 +2902,36 @@
+         return foundLower && std::ranges::all_of(overlays, [&](const auto& overlay) {
+             return overlayLeavesStripUnpainted(*overlay, innerStrip);
+         });
++    };
++
++    auto exposedSideDimmingExtension = [&](BoxSide side, const RenderElement& container, const Element* exposedSheet) -> Color {
++        if ((side != BoxSide::Left && side != BoxSide::Right) || page->obscuredContentInsets().at(side) <= 0)
++            return { };
++        // A paint-free hit target can hide the sheet from the point hits.
++        // Identify a unique full-viewport sheet, then verify its paint order.
++        CheckedPtr<RenderElement> sheet;
++        for (CheckedPtr child = container.firstChild(); child; child = child->nextSibling()) {
++            CheckedPtr candidate = dynamicDowncast<RenderElement>(*child);
++            if (!candidate || !isDimmingSheet(side, *candidate)
++                || !LayoutRect { candidate->absoluteBoundingBoxRect() }.contains(fixedLayoutRect))
++                continue;
++            if (sheet || candidate->firstChild() || !hasSolidBackground(side, *candidate)
++                || (exposedSheet && candidate->element() != exposedSheet))
++                return { };
++            sheet = candidate;
++        }
++        if (!sheet)
++            return { };
++        for (CheckedRef ancestor : lineageOfType<RenderElement>(container)) {
++            if (!ancestor->isRenderView() && !hasPlainPaint(side, ancestor))
++                return { };
++        }
++        // A modal need not author separate strips beyond the horizontal viewport.
++        // Continue only the actual exposed sheet, with its original alpha. The
++        // strip hit list rejects a foreground card or overlay paint between hits.
++        if (!overlaysLeaveStripUnpainted(side, *sheet, &container))
++            return { };
++        return blendSourceOver(page->pageExtendedBackgroundColor(), primaryBackgroundColorForRenderer(side, *sheet));
+     };
+ 
+     enum class IgnoreCSSPointerEvents : bool { No, Yes };
+@@ -3162,10 +3210,22 @@
+                         return point.container == lower.container && !point.foundBackdropFilter && !point.hasUnsettledTransform;
+                     })) {
+                     color = authoredDimmingExtension(side, *lowerRenderer, lower.exposedDimmingSheet.get());
+-                    if (color.isVisible() && !overlaysLeaveStripUnpainted(side, *lowerRenderer))
+-                        color = { };
++                    if (color.isVisible()) {
++                        if (!overlaysLeaveStripUnpainted(side, *lowerRenderer))
++                            color = { };
++                    } else
++                        color = exposedSideDimmingExtension(side, *lowerRenderer, lower.exposedDimmingSheet.get());
+                 }
+             }
++            if (color.isVisible()) {
++                edges.colors.setAt(side, color);
++                continue;
++            }
++        }
++
++        if (confirmed && result.isViewportSized && containerRenderer && containerRenderer->isFixedPositioned()
++            && !conflictingSheets && !primaryBackgroundColorForRenderer(side, *containerRenderer).isVisible()) {
++            auto color = exposedSideDimmingExtension(side, *containerRenderer, dimmingSheet.get());
+             if (color.isVisible()) {
+                 edges.colors.setAt(side, color);
+                 continue;

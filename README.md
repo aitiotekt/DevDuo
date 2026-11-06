@@ -56,7 +56,7 @@ Use **⌘L / Ctrl+L** to focus the address bar and **⌘R / Ctrl+R** to reload. 
 | Looking for… | Start here |
 | --- | --- |
 | Controls, debugging and settings | [Usage guide](docs/en/004-USAGE.md) |
-| Changes and planned improvements | [Changelog](CHANGELOG.md) · [UI roadmap](docs/en/100-ROADMAP.md) |
+| Changes and planned improvements | [Changelog](CHANGELOG.md) · [Roadmap](docs/en/100-ROADMAP.md) |
 | A bug report or feature request | [GitHub Issues](https://github.com/aitiotekt/DevDuo/issues) — include your app version, OS and steps to reproduce. |
 | Development and AI-assisted contributions | [Contributing](CONTRIBUTING.md) — setup and checks; [AGENTS.md](AGENTS.md) — coding-agent rules. |
 | Vulnerability reporting and local data | [Security](SECURITY.md) · [Privacy](PRIVACY.md) |

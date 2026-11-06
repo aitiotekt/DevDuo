@@ -41,6 +41,8 @@ mise exec -- uv run --locked devduo-tools safari-probe --udid SIMULATOR_UDID --m
 
 Safari 的关键区别是**颜色延伸**而非更大的 fixed DOM 框：视口像素接收 authored alpha，遮挡条带可使用平坦混合画布色而非连续纹理。[WebKit backdrop 实现](https://github.com/WebKit/WebKit/commit/2ae949b78743)及[滤镜／渐变限定](https://bugs.webkit.org/show_bug.cgi?id=300965)说明此边界。Footer 颜色历史是限定，不能当通用目标，也不推广到任意滤镜、渐变或祖先组 opacity。
 
+打开顺序同样有影响。iOS 27.1 模拟器在 382 × 580 下，卡片首次绘制即存在时 Safari 底部延伸为白色，暗化遮罩先于卡片出现时则为深色。macOS 27.0.1 WKWebView 探针在启用视图级自动填充时于图层层面观察到相同差异；ScreenCaptureKit 未获权限，因此记录的是图层状态而非窗口像素。证据：`captures/desktop-validation/macos-dimming/20261105T094102Z`。
+
 `fixed-overlay.html` 和 `just test-windows-fixed-overlay` 分别比较视口 alpha 与 inset 颜色。记录前／中／后的文档标识、范围、滚动、fixed 框及视口单位；被 chrome 遮盖的像素不算直接页面采样，该处另保留最终窗口证据。Windows 和 macOS 系统／回退的当前验收见 [Windows 交接](009-WINDOWS-HANDOFF.md)与[平台能力](015-PLATFORM-PARITY.md)。
 
 ## Safari 滚动指示器

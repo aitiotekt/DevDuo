@@ -2,15 +2,11 @@
 
 ## 当前范围
 
-DevDuo 是实验性 Avalonia 工作台，已有 macOS WKWebView 基线及 Windows WebKit 实现，已完成有限视口/内容延伸原生验收，能力与交付限制由平台指南记录。Linux 平台检查与发布由 `[platforms.linux]` 的 `check = false`、`release = false` 关闭；工作流计划和文档仍可使用 Ubuntu。构建和签名成功不代表原生验收通过，也不代表已取得模拟器衍生几何数据的再分发权。保留[第三方声明](THIRD_PARTY_NOTICES.md)。
-
-发布流水线生成自带 .NET 10 的 **macOS 27 arm64** 和 **Windows x64** 包。Windows 唯一依赖固定源码构建的 WebKit 宿主运行时，独立发布，再按 metadata 的精确版本下载并放入 Windows 应用归档的 `webkit/`。在应用旁 `webkit/` 下安装完整 `bin` 目录与清单，或设置绝对路径 `DEVDUO_WEBKIT_RUNTIME`；文件缺失或不兼容即明确报错。官方预编译测试运行时不能替代必需的正式宿主 API，见 [Windows WebKit 初始化](014-WINDOWS-WEBKIT.md#avalonia-后端)。macOS 使用 GitHub 的 `xcode-27` 预览运行器，已对照[运行器清单](https://github.com/actions/runner-images#available-images)核实；运行器可用性是外部依赖。原有 `just package-macos` 仍生成未签名、依赖外部 .NET 的开发包。发布包保留 `local.DevDuo.Calibration` Bundle ID，直接使用原生应用启动器。
+发布流水线生成自带 .NET 10 的 **macOS 27 arm64** 和 **Windows x64** 包。Linux 平台检查与发布由 `[platforms.linux]` 的 `check = false`、`release = false` 关闭；工作流计划和文档仍可使用 Ubuntu。Windows 归档在 `webkit/` 下附带固定源码构建的 WebKit 宿主运行时，按 metadata 的精确版本获取；运行时发现见 [WebKit 指南](014-WINDOWS-WEBKIT.md#avalonia-后端)。macOS 使用 GitHub 的 `xcode-27` 预览运行器，已对照[运行器清单](https://github.com/actions/runner-images#available-images)核实；运行器可用性是外部依赖。原有 `just package-macos` 仍生成未签名、依赖外部 .NET 的开发包。发布包保留 `local.DevDuo.Calibration` Bundle ID，直接使用原生应用启动器。
 
 ## 交付前提
 
-发布、签名及 CI 成功不代表原生验收或再分发权。Windows 的 desktop API v1 修复已建立本地限定里程碑；metadata 为 DevDuo 0.1.0 选择 WebKit 0.1.0，应先发布引擎，再使用该依赖打包并验收应用。按[增量回归策略](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)沿用未受影响的证据，打包本身不要求再次多 DPI 审计。macOS 验收及能力限制见[平台能力](015-PLATFORM-PARITY.md)。
-
-运行时完整验收标记保持 false。UIA TextPattern／IAccessible2、广泛兼容性及故障注入限制由 [Windows 交接](009-WINDOWS-HANDOFF.md#当前状态)明确记录；第三方／模拟器素材再分发审查独立于功能测试。
+发布、签名及 CI 成功不代表原生验收，也不代表已取得模拟器衍生几何数据的再分发权；保留[第三方声明](THIRD_PARTY_NOTICES.md)，该审查独立于功能测试。metadata 为每个应用版本选择附带的 WebKit 版本，发布工作流会在 Windows 打包前发布缺失的引擎。打包本身不要求再次多 DPI 审计，按[增量回归策略](009-WINDOWS-HANDOFF.md#windows-里程碑与增量回归)沿用未受影响的证据。Windows 未完成项见 [Windows 交接](009-WINDOWS-HANDOFF.md#当前状态)，macOS 验收见[平台能力](015-PLATFORM-PARITY.md)。
 
 ## CI 职责与资源预算
 
@@ -36,9 +32,7 @@ macOS 官方应用发行包必须通过 Developer ID 签名、Apple 公证并附
 
 ## Windows WebKit 运行时发布
 
-从 0.1.4 起默认构建始终启用异步滚动和原生触摸。运行时暂存检查构建选项与能力清单；复用归档、新下载及缓存的运行时、最终 Windows 应用归档均须通过能力与元数据身份检查。不合格的旧包会明确报错并要求重建，不会静默回退。0.1.3 已发布引擎包含最新补丁，但关闭了这些能力，本地原生验收不能算作该发布产物的验收。请先发布新 WebKit 版本，再推送对应应用版本标签。
-
-应用 dev/build/package 命令执行 `just prepare-debugging`，将根 pnpm 锁定的精确 chii/chobitsu 浏览器资源及许可复制到 `temp/build/debugging/`，MSBuild 再将该树作为 `debugging/` 复制到应用输出/发布目录。安装后的应用通过 .NET 和原生 WebView 离线提供资源，不要求用户安装 Node，也不启动 chii Node 服务。每个包须保留生成清单及许可目录；资源缺失时启用 CDP 会明确失败。Windows 运行时包须提供当前宿主要求的全部 API，包括 desktop API v1；旧视口／开发 API 构建不够。原生运行时验收与资源打包、CDP 传输测试分别记录。
+默认引擎构建启用异步滚动和原生触摸。运行时暂存检查构建选项与能力清单；复用归档、新下载及缓存的运行时、最终 Windows 应用归档均须提供当前宿主要求的全部 API 并匹配元数据身份，不合格的旧包会明确报错并要求重建，不会静默回退。官方预编译测试运行时不能替代正式宿主 API。
 
 `devduo-metadata.toml` 的 `[webkit]` 统一管理独立的引擎版本、tag/产物前缀、Windows 目标、DLL 标识、上游 revision、手动发布分支和 runner 标签。当前 ABI 保留上游 `WebKit2.dll` 名称，ZIP 名称按 `<asset_prefix>-<version>-win-x64.zip` 派生。应用版本变化不会提升引擎版本。`runtime.lock.json` 继续固定官方诊断归档，并须与 metadata 的上游 revision 一致；更新上游时还须审查原生绑定及其要求的能力。
 
@@ -72,7 +66,7 @@ Checkout 使用 `clean: false`，不以持久工作区状态作为门禁。任�
 
 推送到 `release` 或 `v*` tag 继续触发**自动正式发布**。手动触发默认 `dry-run=true`，仍执行验证、签名公证、组装、来源证明和 Actions 产物上传，但跳过创建 tag 和公开 Release；手动正式发布须明确设置 `dry-run=false`。演练选项不会抑制另一次推送触发的发布。手动触发使用所选 ref 及其 `github.sha`，所有任务检出该触发提交。验证和适用的稳定版审批完成后，Windows 依赖任务通过可复用引擎工作流准备 metadata 指定的 WebKit 版本。Windows 打包等待其成功，macOS 打包可独立继续。演练在需要时将未公开引擎 artifact 传递给 Windows；公开引擎下载与 artifact 输入均保留运行时版本及能力校验。macOS 签名任务在构建前检查六个环境输入及 SDK；检查存在性不代表证书或 Apple 凭据有效。可复用 Checks 从元数据生成平台矩阵，在签名任务启动前重新执行跨平台测试、本地化测试、lint/typecheck、文档构建及 macOS/Windows 原生编译。发布串行执行，凭据不传给 PR 或可复用检查任务。
 
-正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证；与参考项目的可配置未签名预览版不同，本项目没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
+正式版需通过 `stable-release` 环境审批。预览版与正式版的 macOS 包均强制 Developer ID 签名和 Apple 公证，没有未签名发布降级。签名启用安全时间戳、加固运行时和 .NET JIT 权限。发行包资源和托管程序集位于 `Contents/Resources`；相对符号链接保留 .NET 程序集/资源查找，以及两个目录中的本地原生运行时查找。先签原生 Mach-O 库，最后由外层 bundle 签署主程序。macOS CI 同时运行 `just test-macos-bundle`，无需 Apple 凭据即可检查资源链接和 ZIP 解压后的原生 ad-hoc 验签；然后再公证、装订票据并通过 Gatekeeper 检查后压缩。参见 [Microsoft macOS 部署指南](https://learn.microsoft.com/en-us/dotnet/core/deploying/macos)。
 
 Alpha 和 beta 均跳过正式版审批。打包、组装和发布显式检查取消状态及直接依赖是否成功，避免已跳过的审批连带抑制后续任务。构建失败或取消仍会阻止组装与发布；dry-run 完成组装，仅跳过发布。
 
@@ -86,6 +80,8 @@ Alpha 和 beta 均跳过正式版审批。打包、组装和发布显式检查�
 - `DevDuo-vVERSION-win-x64.zip`：自带运行时的便携目录和声明文件；**没有 Authenticode 签名**。
 - `release-manifest.json`：精确版本、源码 ref/SHA、预期文件、大小、SHA-256、平台签名状态，以及所带 Windows WebKit 的版本、tag、资产和上游 revision。
 - `SHA256SUMS`：两份压缩包及清单的哈希。四个下载文件均生成 GitHub 构建来源证明；它不会让 Windows 显示“已验证的发布者”。
+
+应用 dev/build/package 命令执行 `just prepare-debugging`，将根 pnpm 锁定的精确 chii/chobitsu 浏览器资源及许可复制到 `temp/build/debugging/`，MSBuild 再将该树作为 `debugging/` 复制到应用输出/发布目录。安装后的应用通过 .NET 和原生 WebView 离线提供资源，不需要 Node 或 chii Node 服务。每个包须保留生成清单及许可目录；资源缺失时启用 CDP 会明确失败。
 
 这些哈希和来源证明是供下载者使用的输出，流水线不校验它们。组装复制两个平台的压缩包，写出清单和校验和。发布在 tag 缺失时创建 tag，Release 不存在时创建草稿，只上传 Release 尚未包含的资产，然后公开草稿。已有资产不替换也不比较，已公开 Release 只补充缺失资产。中断后若留下未完成资产，须先检查草稿，工具不会自动删除。重建签名包可能改变字节，重试发布应使用原始 `release-final` artifact。WebKit 始终使用 `latest=false`。哈希使用固定大小缓冲区，不把整个引擎归档读入内存。
 

@@ -4,9 +4,9 @@ The [Safari scene matrix](005-SAFARI-SCENES.md) is the reference for both platfo
 
 ## Current acceptance status
 
-The maintainer confirmed macOS manual acceptance of the beta.3 candidate on 2026-10-28. Case-level receipts remain with that run; this Windows documentation work does not add new macOS passes. Later affected native changes still require scoped verification.
+The latest macOS manual acceptance covers the 0.1.0-beta.3 candidate (2026-10-28); case-level receipts remain with that run. Later changes that affect macOS native behavior need scoped verification.
 
-Windows uses milestone [`windows-desktop/2026-10-29`](009-WINDOWS-HANDOFF.md#current-status), with qualified runtime/host evidence and outstanding dependency/package delivery gates. Record implementation, compilation, native checks and unsupported behavior separately. Builds, signatures and shared tests do not establish optical or input parity.
+Windows uses milestone [`windows-desktop/2026-10-29`](009-WINDOWS-HANDOFF.md#current-status) with scoped follow-up checks; open gaps are listed there. Record implementation, compilation, native checks and unsupported behavior separately. Builds, signatures and shared tests do not establish optical or input parity.
 
 ## Current implementation and differences
 
@@ -48,10 +48,10 @@ Apply relevant rows to the exact candidate. For geometry changes, include both c
 | Changed area | Observable requirements |
 | --- | --- |
 | Navigation, identity and titles | Offline welcome/Home, redirects/history/error handling, native first-document/subresource/fetch UA and dynamic/empty/long titles; no provisional title leakage |
-| Storage and services | Same-origin tokenized localStorage/IndexedDB/persistent cookies survive normal restart; tools storage stays separate; services restart disabled |
+| Storage and services | Same-origin tokenized localStorage/IndexedDB/persistent cookies survive normal restart; tools storage stays separate; enabled services restore independently and a failed restore keeps the next-launch intent |
 | Scene and presentation | Presentation changes retain URL, document/time origin, form/history and valid scroll; record clamps rather than restoring by script. Check independent masks, complete tab containers and native frames at affected Fit values |
 | Inspector and shortcuts | Actual separate DOM/Console, F12/Ctrl+Shift+I with native page focus, no docking viewport reservation, explicit missing-capability errors and no stale frontend |
-| Remote/CDP/proxy | Actual Safari discovery or page bridge, target reconnect, listener cleanup, mutual exclusion and future traffic routing without reloading the current page. Do not bypass Console paste protection or claim trusted HTTPS from a failed TLS handshake |
+| Remote/CDP/proxy | Actual Safari discovery or page bridge, native remote connect/disconnect, real chii DOM/Console interaction, target reconnect, listener cleanup, mutual exclusion and future traffic routing without reloading the current page. Do not bypass Console paste protection or claim trusted HTTPS from a failed TLS handshake |
 | Continuation, alpha and material | Static and animated real flow, document boundaries, masks/backdrops and returned native colors; distinguish Open approximation and system/fallback capabilities. Compare actual windows as well as DOM/snapshots |
 | Input, lifecycle and access | Transformed clicks, keyboard/IME, popups, VoiceOver, relevant resize/close/replacement races and resource cleanup; no callbacks into disposed containers |
 

@@ -4,7 +4,7 @@
 
 ## 宿主 API 源码构建
 
-`native/webkit/windows/` 管理源码固定版本、正式／实验补丁、便携构建环境、缓存和运行时打包；`tests/DevDuo.WebKitProbe/` 管理独立诊断及夹具。参见[运行时职责](../../native/webkit/windows/README.md)和[运行时发布策略](013-RELEASE.md#windows-webkit-运行时发布)。
+`native/webkit/windows/` 管理源码固定版本、正式补丁、便携构建环境、缓存和运行时打包；`tests/DevDuo.WebKitProbe/` 管理独立诊断及夹具。参见[运行时职责](../../native/webkit/windows/README.md)和[运行时发布策略](013-RELEASE.md#windows-webkit-运行时发布)。
 
 当前上游固定为 `324423@main`，revision 为 `6a67801395e5dfc1a7ac4ceb60ddd2ca9735aa2d`。诊断归档锁与发布 metadata 的上游 revision 必须一致。生产使用打补丁后的源码构建，不使用官方测试 DLL 替代。
 
@@ -29,20 +29,25 @@ mise 管理便携 CMake／Ninja／Ruby／Perl／gperf／pkgconf／vcpkg 和常�
 | `0007-windows-atomic-continuation.patch` | 同帧延伸、来源几何及关联时钟 |
 | `0008-windows-frame-surfaces.patch` | GPU 纹理／CPU 缓冲租借、呈现背压及帧确认 |
 | `0009-windows-frame-clock.patch` | 跨进程 QPC 时间戳及滚轮合并时的原始输入时刻 |
-| `0010-windows-scrolling-layers.patch` | 实验 WC 滚动图层桥，复用上游线程命中、滚动链及 fixed／sticky 约束 |
-| `0011-windows-direct-frame-relay.patch` | 实验 GPU 到 UI 的帧传输及确认，绕过网页主线程回传 |
-| `0012-windows-async-presentation.patch` | 实验性保留图层滚动帧、修订次序、独立时钟和原生滚动诊断 |
-| `0013-windows-native-touch.patch` | 实验性可信单触点输入、原生手势许可及上游精确／惯性滚动，已有范围限定的原生验收 |
+| `0010-windows-scrolling-layers.patch` | WC 滚动图层桥，复用上游线程命中、滚动链及 fixed／sticky 约束 |
+| `0011-windows-direct-frame-relay.patch` | GPU 到 UI 的帧传输及确认，绕过网页主线程回传 |
+| `0012-windows-async-presentation.patch` | 保留图层滚动帧、修订次序、独立时钟和原生滚动诊断 |
+| `0013-windows-native-touch.patch` | 可信单触点输入、原生手势许可及上游精确／惯性滚动 |
 | `0014-windows-wc-raster-coverage.patch` | 统一 Windows WC 瓦片绘制、损伤区域与纹理映射的像素边界 |
 | `0015-windows-async-viewport-publication.patch` | 将独立滚动提交排在匹配视口几何的场景之后 |
 | `0016-windows-direct-pan-work.patch` | 直接使用 Windows 滚动节拍，每次原生拖动只清理一次键盘滚动 |
 | `0017-windows-precise-touch-coordinates.patch` | 在原生触点和按住拖动的滚动处理中保留小数 CSS 坐标 |
+| `0018-windows-viewport-fixed-transition.patch` | 将合成 fixed 内容裁剪到真实视口，并将平移中的 fixed 图层视为边缘颜色不确定 |
+| `0019-windows-fixed-dimming-sheet.patch` | 卡片覆盖部分遮罩时，保留已确认的连续暗化遮罩边缘色 |
+| `0020-windows-fixed-portal-clip.patch` | 将视口裁剪映射到定位堆叠上下文下的 fixed 图层，异步滚动时保持 WC fixed／sticky 位置，并检查采样带连续性 |
+| `0021-windows-dimming-overlay-paint.patch` | 在使用页面自带模态背景填充底部 inset 前，验证透明覆盖层（含已清空画布）的实际绘制 |
+| `0022-windows-side-dimming-continuation.patch` | 页面未提供外侧条带时，将已验证的半透明遮罩延伸到左右 inset |
 
 工作区宿主要求 viewport v2、painting v2、content color v1、appearance v1、developer v1、fixed-container color v2、scroll-indicator v1、desktop v1、异步 accessibility v2、frame timing v2、frame presentation v1 和 frame surface v1。应用自带的合成器另要求 composition v6、page frame v2、presentation v1。启动检查版本及必需导出；清单哈希是来源输出，不是运行时通过门槛。缺失能力须重建匹配运行时，应用交付须使用 metadata 选择的匹配引擎发行版。
 
 ## Avalonia 后端
 
-成功的源码构建会原子写入忽略目录中的 `temp/build/windows-webkit-runtime.json`，选择本次输出。checkout 在下次进程启动时读取此选择；没有选择记录时发现 `temp/build/windows-webkit-host/bin`。无效／过期选择明确报错，不静默加载旧运行时。安装版使用可执行文件旁的 `webkit/bin` 和 `webkit/runtime-manifest.json`。绝对路径 `DEVDUO_WEBKIT_RUNTIME` 覆盖具有权威性：缺失／不兼容能力明确报错，不选择其他引擎。测试专用 IPC 保持关闭。
+成功的源码构建会原子写入忽略目录中的 `temp/build/windows-webkit-runtime.json`，选择本次输出。checkout 在下次进程启动时读取此选择；没有选择记录时发现 `temp/build/windows-webkit-host/bin`。无效／过期选择明确报错，不静默加载旧运行时。安装版使用可执行文件旁的 `webkit/bin` 和 `webkit/runtime-manifest.json`。绝对路径 `DEVDUO_WEBKIT_RUNTIME` 覆盖具有权威性：缺失／不兼容能力明确报错，不选择其他引擎。`build-windows-webkit-runtime -RuntimeRoot <绝对构建目录>` 构建独立验证运行时并选择它；加 `-KeepRuntimeSelection` 则不改变 checkout 选择。已运行实例继续使用已加载的 DLL。测试专用 IPC 保持关闭。
 
 `WindowsWebKitApi.cs` 绑定 C ABI，`WindowsWebKitView*.cs` 管理导航、存储、输入、对话框和无障碍，`WindowsWebViewPanel.cs` 配置场景几何。持久网站存储位于本地应用数据的 `DevDuo/WebKit`；绝对路径 `DEVDUO_WEBKIT_PROFILE` 可隔离 Windows 测试 profile。原生视图共享同一 store session，持久 cookie、localStorage、IndexedDB 和缓存跨重启保留，sessionStorage 沿用文档会话语义。重置宿主偏好不会清除网站数据，也不迁移／删除旧引擎 profile。
 
@@ -58,11 +63,11 @@ mise 管理便携 CMake／Ninja／Ruby／Perl／gperf／pkgconf／vcpkg 和常�
 
 宿主确认传输前仅允许一帧在途。过期几何仍归还生产者锁，但不呈现；资源重放区分已消费的锁与新帧。原始正文和延伸分开保留，填色到期不会累积旧填色。失败明确报告能力／呈现错误。多适配器共享及设备丢失恢复仍未验收。
 
-Windows 运行时默认启用异步滚动和原生触摸。补丁 `0010`–`0013` 将上游滚动树与可信触摸事件接至保留式 GPU 图层，只租借一帧并合并待处理位置。在创建 WebPage 前选择帧模式，滚动线程时钟由已处理输入唤醒，在近期活动和原生动画结束后停止。范围限定的原生验收覆盖页面 JavaScript 阻塞、触摸取消、touch-action、overflow 锁定及嵌套滚动。复杂页面流畅性仍需按场景验收，不再通过编译开关关闭已验证路径。`build-windows-webkit-runtime -RuntimeRoot <绝对构建目录> -KeepRuntimeSelection` 可隔离构建且不改变 checkout 运行时选择。提交几何代次拒绝旧帧，缓存字形显示列表在本地 Skia 与远端 GPU 记录上下文之间使用后端无关操作。
+Windows 运行时默认启用异步滚动和原生触摸。补丁 `0010`–`0013` 将上游滚动树与可信触摸事件接至保留式 GPU 图层，只租借一帧并合并待处理位置。在创建 WebPage 前选择帧模式，滚动线程时钟由已处理输入唤醒，在近期活动和原生动画结束后停止。发布工具拒绝未带这些能力构建的运行时。提交几何代次拒绝旧帧，缓存字形显示列表在本地 Skia 与远端 GPU 记录上下文之间使用后端无关操作。
 
-实验性 host scroll-frame API v1 返回源绘制标识、文档／几何代次、滚动修订、真实根滚动位置及输入／提交／GPU／宿主时序，独立合成的滚动帧不填写主线程渲染阶段。只读原生滚动树请求使用正式 IPC，不返回页面图像；现有 frame timing API v2 的 ABI 不变。两种接口均不能证明 DWM 扫描输出。
+可选的 host scroll-frame API v1 返回源绘制标识、文档／几何代次、滚动修订、真实根滚动位置及输入／提交／GPU／宿主时序，独立合成的滚动帧不填写主线程渲染阶段。只读原生滚动树请求使用正式 IPC，不返回页面图像；现有 frame timing API v2 的 ABI 不变。两种接口均不能证明 DWM 扫描输出。
 
-实验性 host touch API v1 提供模式设置及触点代次诊断，托管宿主按可选能力协商启用。原生路径的文档启动脚本仅报告模式／能力，不重放事件或写入滚动位置。引擎先通过事件区域与常规 WebCore 触摸处理分派触点，再决定是否允许原生平移；非 passive 取消及 `touch-action` 仍由网页控制，平移不会伪造 DOM wheel 事件。取消 pointerdown 抑制兼容鼠标 down／up，不取消原生平移及可信触摸 click。失焦、丢失捕获、导航和模式切换会取消触点，创建参数保证进程替换后保留模式。初始按下时间用于平移速度基准，窗口变化引起的同坐标鼠标消息不产生额外触摸移动。当前仅支持单触点，不支持双指缩放或多触点；限定范围的原生结果及剩余验收边界见 [Windows 交接](009-WINDOWS-HANDOFF.md)。
+Host touch API v1 提供模式设置及触点代次诊断，托管宿主按可选能力协商启用。原生路径的文档启动脚本仅报告模式／能力，不重放事件或写入滚动位置。引擎先通过事件区域与常规 WebCore 触摸处理分派触点，再决定是否允许原生平移；非 passive 取消及 `touch-action` 仍由网页控制，平移不会伪造 DOM wheel 事件。取消 pointerdown 抑制兼容鼠标 down／up，不取消原生平移及可信触摸 click。失焦、丢失捕获、导航和模式切换会取消触点，创建参数保证进程替换后保留模式。初始按下时间用于平移速度基准，窗口变化引起的同坐标鼠标消息不产生额外触摸移动。当前仅支持单触点，不支持双指缩放或多触点。原生结果及未完成项见 [Windows 交接](009-WINDOWS-HANDOFF.md)。
 
 监听器与 touch-action 变化会调度正常的事件区域渲染步骤，包括没有像素损伤的变化；WC 将新区域提交至滚动图层镜像。仅在 WebProcess 中开启区域设置还不够，后续偏好更新可能覆盖它。缺失已提交区域时，必须等待主线程真实的触摸回复。没有异步根节点的文档保留原生同步默认／overflow 滚动，不将内部 wheel 载荷分派给网页监听器；这些路径继续遵守取消行为、overflow 锁定与嵌套滚动链。
 
@@ -118,7 +123,6 @@ WC 瓦片绘制、TextureMapper 与 CSS 背景像素吸附共用设备缩放和�
 
 Direct2D 从已完成的页面帧缓冲生成一份可复用的 Closed 侧栏模糊背景。各按钮的现有视觉节点按自身形状裁剪这份背景，前景和玻璃装饰仍独立。即使 inset 填色均匀，滤镜也会读取相邻正文的像素。页面、模糊背景和更新后的玻璃装饰一并提交。Open 玻璃继续使用现有 DirectComposition 滤镜。
 
-
 各取样区域独立做时间滤波。每通道不超过 3 的变化视为噪声，两次相差不超过 6 的采样确定目标，确认窗口最长 400ms。随后以 120ms 插值调整着色及派生参数，实时背景和前景字形各自呈现，稳定后停止动画。Composition v6 将展开／紧凑材质配方与几何一起插值，地址栏或控件变化时按角色保留仍在使用的玻璃节点。页面、玻璃、装饰和前景使用独立视觉节点，同尺寸表面通过 `EndDraw` 提交损伤并保留内容绑定。`just test-windows-render-stability` 持续采集合成窗口帧，并与原生边缘及材质观察对照。更新计数描述合成工作，捕获时间戳描述 WGC 实际采样。
 
 Appearance API v1 通知 WebKit 和页面媒体查询，不导航。原生输入意图与同向正文移动相关联：累计向下超过 24 CSS px 收起，向上超过 8 展开，意图 350ms 过期；零／反向运动、视口 clamp 和纯脚本滚动不切状态，并发脚本／原生移动仍有限定。
@@ -147,13 +151,13 @@ Scroll-indicator API v1 提供文档 epoch、根范围／位置、CSS 抑制及�
 
 页面也可以在布局视口外单独放置与遮罩同色的 fixed 背景块。当前景命中使内侧边缘颜色无法确定时，Windows 宿主在当前非零 inset 内检查属于同一容器的 fixed 背景块。外侧背景块须与同级唯一一块覆盖整个视口的纯色半透明遮罩同色，覆盖整个 inset，在代表性的深度和位置保持最上层命中，绘制路径须避开页面裁剪和效果。如果横跨视口的 `pointer-events: none` 图层先命中，宿主可按 CSS 命中规则定位下方容器并验证其外侧背景，再检查内侧采样带上位于该容器前方的 fixed 子树。重绘边界与采样带相交时，宿主使用范围受限的子树快照检查实际绘制的 alpha，覆盖文字和替换内容。画布有可见像素或快照不可用时，停止恢复下方颜色。模态普通流祖先有统一且覆盖整个 inset 的不透明背景时，宿主将外侧块与该背景混合，否则使用页面延伸背景。这样可在普通流底板盖住文档根背景时使用实际底板。直接合并视口外绘制可能把 WC 已在视口处裁掉的内侧 fixed 遮罩重新计入。宿主仅绘制验证后的颜色标量，保持原有布局和滚动范围。
 
-macOS 桥接在选用系统 WKWebView 的 inset 填充前检查私有偏好 `_setContentInsetBackgroundFillEnabled:` 和 `_updateFixedColorExtensionViews`，可用性随系统 WebKit 版本变化。实测 macOS 27.0.1 提供 `_updateFixedColorExtensionViews` 及视图级的 `_setUsesAutomaticContentInsetBackgroundFill:`，但缺少偏好设置接口。独立探针用视图级接口观察图层，应用桥接兼容性还需独立验证。
+页面未提供外侧条带时，Windows 可将沿视口内侧边缘露出的纯色半透明遮罩延伸到左右 inset。采样带须确认遮罩上方只有未绘制内容的覆盖层。填色保留遮罩的原始透明度，与页面延伸背景混合，避免侧边延伸变成近黑色。渲染稳定性夹具检查折叠横屏两个方向的透明画布、画布绘制、清空和弹窗关闭。
 
-`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素，并检查卡片出现及遮罩变色、替换和关闭时的连续遮罩。可用 `just build-windows-webkit-runtime -RuntimeRoot <绝对临时构建目录>` 链接独立验证运行时，成功构建的运行时供后续 checkout 启动使用，已运行实例继续保留加载的 DLL。`DEVDUO_WEBKIT_RUNTIME` 可显式覆盖选择。
+`just test-windows-upstream-fixed-colors` 使用通用图案底层夹具，在新文档中比较 v2、保留的上游规则导出和实际 inset 像素，并检查卡片出现及遮罩变色、替换和关闭时的连续遮罩。
 
 Frame presentation API v1 将边缘状态绑定到产出的页面帧及其提交几何。渲染帧内确认无覆盖时立即撤除对应边缘；可靠颜色替换旧值，不确定颜色最多保留 600ms，重复失败不续期。一次性原生失效使用保留页面过期静态不确定颜色，不循环强制 WebCore 重绘。导航／文档及 backing-store 代次拒绝旧结果，侧边拥有角部交点；fixed 取色快照仍只产出标量。
 
-Frame timing API v2 将原生输入序号贯穿渲染／提交、GPU 工作、UI 接收及宿主帧传输／提交。宿主分别记录 `WM_PAINT` 验证及 DirectComposition 提交前后时间，所有时序阶段使用跨进程一致的 Windows QPC 秒，包含合并后保留的原始输入时刻；明确的锚点检查与宿主 Stopwatch 的一致性。时间戳及帧号均不代表屏幕扫描输出。参见 [Microsoft QPC 说明](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps)。诊断历史有界。`DEVDUO_FRAME_TIMING_HISTORY=1` 将可读取历史从默认 8 项扩为最多 128 项，并记录每次成功页面帧提交的物理填充矩形和 RGB。帧表面诊断区分实际 GPU／CPU 传输、GDI 上传及显式捕获。CPU 调用栈属于离散采样，不等于统计 CPU profile。正确的异步滚动仍在实施。
+Frame timing API v2 将原生输入序号贯穿渲染／提交、GPU 工作、UI 接收及宿主帧传输／提交。宿主分别记录 `WM_PAINT` 验证及 DirectComposition 提交前后时间，所有时序阶段使用跨进程一致的 Windows QPC 秒，包含合并后保留的原始输入时刻；明确的锚点检查与宿主 Stopwatch 的一致性。时间戳及帧号均不代表屏幕扫描输出。参见 [Microsoft QPC 说明](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps)。诊断历史有界。`DEVDUO_FRAME_TIMING_HISTORY=1` 将可读取历史从默认 8 项扩为最多 128 项，并记录每次成功页面帧提交的物理填充矩形和 RGB。帧表面诊断区分实际 GPU／CPU 传输、GDI 上传及显式捕获。CPU 调用栈属于离散采样，不等于统计 CPU profile。
 
 ## 桌面输入、对话框与无障碍
 
@@ -199,6 +203,9 @@ mise exec -- uv run --locked python -m http.server 8878 --bind 127.0.0.1 --direc
 - **绘制：** DOM／AX 有内容或提交成功时，像素仍可能全白；静态原生绘制与最终窗口分别验。旧远程白帧停滞未独立定位，不能编造单一根因。
 - **后端转换：** 缓存的本地 Skia `DrawTextBlob` 被远程 recorder 重放时发生崩溃。图层提升之间使用后端无关字形操作，并保留旧帧代次保护。
 - **就绪与可重入：** 过早同步 AX 发现阻塞启动，回复后清失效会丢新事件；须等待已提交文档并保留泵消息期间的新通知。
+- **fixed 图层：** WC 曾在提交滚动位置时重复应用锚点偏移；透明全视口命中层也曾让边缘取色跳过实际绘制采样带的连续性检查。独立轮询的边缘状态仍显示正常时，完整窗口捕获和逐次提交的填色暴露了这两处故障。内置 CDP 检查器还会留下 alpha 为零、不接收指针事件的视口画布，因此遮罩检查必须依据实际绘制 alpha，而非命中结果。
+- **共享模糊背景：** 各侧栏按钮独立的模糊滤镜曾在正确着色提交后仍显示上一帧页面背景。现在所有侧栏按钮从同一已完成页面帧取样。
+- **圆点拖影：** 圆点逐消息提交并与玻璃共用设备时会留下短时拖影。圆点改用独立合成设备，并合并到最新位置。
 - **坐标与参照：** 保留完整标签容器、独立机身／正文变换及 Closed 180° 历史。原生弹窗／caret 必须沿可见 presenter 映射，不能只用离屏源的 `ClientToScreen`。
 
 原始诊断截图、失败尝试及对应构建输入保持私有且不改写。当前限制和指标集中在里程碑，本文不累积逐轮总数。

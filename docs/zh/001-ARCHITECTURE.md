@@ -29,7 +29,7 @@ Avalonia 管理宿主窗口和设备/场景选择。`NativeWebView` 在 macOS �
 
 Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。两种容器使用已记录的移动 Safari 请求身份；真实引擎、platform、DPR、方向、safe area 和键盘仍保持原生行为。Safari 外观不代表引擎变成 iPhone Safari。
 
-机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 在 composition API v6 旁增加 presentation API v1，旋转完整的实时页面/材质/字形树。旋转场景将完整尺寸、cloak 的 WebKit 子窗口放在应用拥有的 `WS_EX_NOREDIRECTIONBITMAP` 源宿主中，防止较小物理屏幕的 HWND 祖先在旋转前裁掉原生绘制。源宿主不产生桌面像素，随合成器释放。指针坐标和无障碍矩形使用逆向/正向变换；Avalonia 逻辑焦点委托给真实 WebKit HWND。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
+机身角度在预览画布中旋转外框；内容相对机身采用独立变换。实测场景保留其原始逻辑尺寸、Safari 组件框和视口预留。`NativeWebView` 接收物理屏幕尺寸、裁剪偏移和最终的场景到画布四分之一圈旋转。Windows 旋转完整的实时合成树，并通过逆变换映射指针、焦点和无障碍坐标（见[实时表面合成](014-WINDOWS-WEBKIT.md#实时表面合成)）。macOS 旋转原生 NSView frame，由 AppKit 完成输入坐标转换。参见[双坐标系约定](005-SAFARI-SCENES.md#机身与内容坐标系)。
 
 ## 宿主控件与导航
 
@@ -52,7 +52,7 @@ Back/Reload 使用原生导航，其它图示组件仅有有限演示交互。�
 
 ## 开发工具与页面代理
 
-开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存；旧 JSON 的 `developerExpanded` 作为未知字段兼容忽略。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。原生远程检查、CDP 与控制 API 分别保存启用意图及现有监听设置；缺失的启用字段默认关闭。启动失败保留下次恢复意图，不循环重试或换端口；容器重建只延续已运行或启动中的服务。临时前端凭据不保存。
+开发工具是设置侧栏最顶部的折叠区，每次启动默认折叠。区内依次提供原生 Inspector、原生远程检查、CDP/chii 和代理控件，最后放置颜色演示、标定操作及标定服务提示。展开状态属于当前窗口会话，切换语言或重新应用设置时保留，不恢复也不保存。侧栏可见性、材质和诊断的展开状态继续保存。原生本地检查使用独立窗口，避免停靠改变实测视口。本地与原生远程 Inspector 互斥，页面 CDP 独立运行。原生远程检查、CDP 与控制 API 分别保存启用意图及现有监听设置；缺失的启用字段默认关闭。启动失败保留下次恢复意图，不循环重试或换端口；容器重建只延续已运行或启动中的服务。临时前端凭据不保存。
 
 | 路径 | 传输与范围 |
 | --- | --- |
@@ -65,9 +65,11 @@ CDP 默认只绑定回环，显式选择局域网后才开放活动 IPv4 接口�
 
 完整离线脚本在原生 document start 安装，并立即在当前页执行。响应/事件走专用原生 script-message handler，命令由原生求值投递到消息桥。目标页不创建调试 WebSocket，也不加载远程调试脚本，因此不依赖 HTTPS 混合内容或 `connect-src` 放行；单项操作仍可能受 CSP、跨源资源及上游实现限制。这是 page world 插桩，不是浏览器安全边界。
 
-chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观测到的 Network 操作，不能提供原生 JavaScript 断点、CPU/堆分析、完整导航/资源流量、浏览器级目标或等价引擎协议；部分上游兼容命令为空操作。中途启用无法补回此前的 Console/Network 观测。新文档会重置传输，只刷新已有 chii 工具窗口以重连；外部客户端自行重连。同文档重复就绪不会刷新工具。停止时关闭 socket/监听、拒绝过期回调并移除专用后续脚本，不移除被动测量观察器；当前桥会静音，已安装的 JavaScript hook 需用户明确刷新目标页才会消失。
+chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观测到的 Network 操作，不能提供原生 JavaScript 断点、CPU/堆分析、完整导航/资源流量、浏览器级目标或等价引擎协议；部分上游兼容命令为空操作，此类命令成功返回 `{}` 不代表生效；计划中的 CDP 工作见[路线图](100-ROADMAP.md#cdp-与-agent-能力)。中途启用无法补回此前的 Console/Network 观测。新文档会重置传输，只刷新已有 chii 工具窗口以重连；外部客户端自行重连。同文档重复就绪不会刷新工具。停止时关闭 socket/监听、拒绝过期回调并移除专用后续脚本，不移除被动测量观察器；当前桥会静音，已安装的 JavaScript hook 需用户明确刷新目标页才会消失。
 
 代理更改保留文档、视口和滚动，为后续请求配置原生网站数据存储。Windows 支持系统、直连和自定义。macOS 通过公开 `WKWebsiteDataStore.proxyConfigurations` 支持系统/自定义，空列表恢复系统行为，不能强制直连，因此直连明确报告不支持。自定义 `http`、`https` 或 `socks5` 端点带端口，不含凭据、query 或 fragment；认证/PAC 不在此 UI 范围。已有连接可能按原生网络规则继续使用。平台专项验收及限制由[平台能力](015-PLATFORM-PARITY.md)记录。
+
+宿主窗口拥有的 `ControlApiService` 使用 Kestrel 提供独立、默认关闭的本机 REST 监听。校验后的命令在 Avalonia UI 调度器上调用相同的导航/设置操作，不持有原生句柄，窗口关闭后不再执行。切换设备/容器保留监听。离线 Swagger UI 和 OpenAPI JSON 约定见[使用指南](004-USAGE.md#rest-控制-api)。
 
 ## 原生截图管线
 
@@ -79,21 +81,6 @@ chobitsu 在其支持范围内提供 DOM/CSS、Console/Runtime、Storage 及观�
 
 手机必须完整显示在可见预览区内。裁切、最小化/隐藏、原生捕获不可用及文档/viewport/呈现变化均明确报错；截图不会自动适应或移动视图。原生回调检查销毁状态，C# 检查容器/呈现代次，并在捕获前后读取真实页面几何。这些检查检测布局/滚动变化，但不冻结动画，也不承诺 DOM/像素是原子事务。截图仅为临时输出，不用于应用渲染。示例及格式约定归[使用指南](004-USAGE.md#原生截图)维护。
 
-### CDP 后续能力
-
-固定版本 [chobitsu 1.8.6 注册表](https://github.com/liriliri/chobitsu/blob/v1.8.6/src/index.ts)的源码审查区分了真实实现和兼容空操作。成功返回 `{}` 不代表命令生效；本次原生截图不会改变其他命令。
-
-| 优先级 | 当前限制 | 保留 WebKit 时可补充的方向 |
-| --- | --- | --- |
-| 下一步 | Runtime 的按值序列化/context 语义不完整，对象释放注册含空操作。 | 修正序列化/错误边界，释放长时间 agent 会话追踪的对象与分组。 |
-| 下一步 | `DOM.getBoxModel` 为空操作，frame/context 路由不完整。 | 补 DOM 几何和选择器，明确 transform、滚动和 frame 坐标。 |
-| 下一步 | 输入依靠合成 JS，无法等同原生焦点、默认行为和 IME。 | 桥接经验证的原生点击/输入/滚轮/触控，并保留场景/Fit 映射。 |
-| 下一步 | 导航/历史/资源为页面近似，没有能力清单。 | 复用原生导航，暴露真实布局指标/生命周期及逐方法的实现/近似/不支持状态。 |
-| 后续 | Network hook 无法补回早期请求、主导航或完整资源/cookie；缓存/配额响应存在占位。 | 明确接入原生网络/存储，不能把页面 JS 当成 HttpOnly cookie 或完整流量来源。 |
-| 独立项目 | 断点、Target 自动附加、Emulation 含空操作；缺少 CPU/heap profile、CDP Accessibility 域、真实 worker/browser 会话。 | 评估 WebKit Inspector Protocol/JSC 适配及平台/版本边界；JS 注入无法提供这些引擎能力。 |
-
-优先完成状态 → DOM/几何 → 原生输入/导航 → 截图的 agent 闭环。DevDuo 专用 MCP 可封装已验证的 REST/CDP 操作，不必伪装成 Chromium。[Playwright 的 CDP 连接](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)仅支持 Chromium；其 [WebKit 后端](https://playwright.dev/docs/browsers#webkit)依赖补丁，不能直接附着系统 WKWebView。完整 CDP/Playwright 兼容不属于已验收能力。
-
 ## 悬浮组件下方绘制
 
 已验证的 macOS 27 折叠模式保留完整 WKWebView，通过公开 `obscuredContentInsets` 调整页面视口。466 × 678 原生框设置侧边 84、底部 98，得到 382 × 580 页面视口；紧凑底部 80 得到 382 × 598。普通流继续绘制到地址栏下方，fixed-bottom 保持在较小视口内；270° 场景将侧边 inset 移到左侧。
@@ -104,7 +91,7 @@ macOS 展开仍采用较小原生内容框，顶部延伸为衍生颜色近似�
 
 API 参考：[WKWebView obscuredContentInsets](https://developer.apple.com/documentation/webkit/wkwebview/obscuredcontentinsets)、[WebKit viewport 支持](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)。
 
-WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用时，macOS 桥接启用系统 content-inset 背景填充实现，并在该路径移除宿主自己的不透明底部/侧边表面，使用引擎的固定容器和 backdrop 颜色延伸，不改变 DOM 样式、视口预留、fixed 框或滚动范围。验收按实际系统／回退能力分支记录，见[平台能力](015-PLATFORM-PARITY.md)。私有能力缺失时，诊断明确记录限制，保留旧的只读 DOM 不透明通栏 fixed 底栏近似；该回退不能证明半透明遮罩兼容。Windows 使用明确的[原生四边颜色 API](014-WINDOWS-WEBKIT.md#半透明固定遮罩)。[标定指南](003-CALIBRATION-WORKFLOW.md#半透明弹窗背景)分别记录 Safari 目标行为和桌面验收。
+WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用时，macOS 桥接启用系统 content-inset 背景填充实现，并在该路径移除宿主自己的不透明底部/侧边表面，使用引擎的固定容器和 backdrop 颜色延伸，不改变 DOM 样式、视口预留、fixed 框或滚动范围。桥接在运行时检查私有偏好 `_setContentInsetBackgroundFillEnabled:` 和 `_updateFixedColorExtensionViews`，可用性随系统 WebKit 版本变化。实测 macOS 27.0.1 提供 `_updateFixedColorExtensionViews` 及视图级 `_setUsesAutomaticContentInsetBackgroundFill:`，但缺少偏好设置接口，因此应用桥接在该运行时上的兼容性需独立验证。验收按实际系统／回退能力分支记录，见[平台能力](015-PLATFORM-PARITY.md)。私有能力缺失时，诊断明确记录限制，保留旧的只读 DOM 不透明通栏 fixed 底栏近似；该回退不能证明半透明遮罩兼容。Windows 使用明确的[原生四边颜色 API](014-WINDOWS-WEBKIT.md#半透明固定遮罩)。[标定指南](003-CALIBRATION-WORKFLOW.md#半透明弹窗背景)分别记录 Safari 目标行为和桌面验收。
 
 原生位置在 Avalonia 布局后的 `Loaded` 调度优先级统一同步，包括裁剪/内容配置。AppKit 容器关闭隐式子视图缩放，并在自身框尺寸变化时重新布局，使冷启动、resize 和 Fit 时屏幕内容与外框保持对齐；`nativeClipGeometry` 记录完整容器、逻辑 bounds 和裁剪偏移。详见[验收记录](003-CALIBRATION-WORKFLOW.md)。
 
@@ -112,12 +99,10 @@ WKWebView 保留原生 canvas/页面边界外背景绘制。系统能力可用�
 
 macOS 通过同一贝塞尔遮罩裁剪 WKWebView 和兄弟 AppKit 视图，避免普通 Avalonia 控件覆盖原生浏览器。当前 macOS 27 包使用 `NSGlassEffectView` clear/tint；较旧 `NSVisualEffectView` 分支需要降低部署目标重编并另行验证。着色、材质贡献、阴影和半径可调，iOS Liquid Glass 私有模糊/折射内核仍未知。
 
-外壳外观独立决定 Light/Dark 字形、材质及原生页面配色；即使存在相反 theme-color 提示，两端也采样 WebKit 实际边缘条带，meta 只作诊断，computed background 仅作标明的回退。Windows 内容取色 API v1 通过普通快照 IPC 仅返回 RGB/状态，图像不进入页面渲染。采样异步防抖，可能滞后移动内容；导航、文档和几何代次拒绝过期结果。D3D11/DirectComposition 通过保留式 GPU 页面帧缓冲消费租借的原生帧，先高斯模糊和色彩处理再圆角裁剪，并用 Direct2D/DirectWrite 分层绘制着色、定向高光、边框、阴影和清晰字形。被动摄像头/Wi-Fi/时钟示意及独立外壳动作遵循 macOS 场景规则。文档外条带遵循根背景规则，与工具栏着色独立；有效横向正文继续可见。更广泛的输入、DPI 和实际呈现仍是独立门槛，见 [Windows 实现及限制](014-WINDOWS-WEBKIT.md#实时表面合成)。
+外壳外观独立决定 Light/Dark 字形、材质及原生页面配色；即使存在相反 theme-color 提示，两端也采样 WebKit 实际边缘条带，meta 只作诊断，computed background 仅作标明的回退。Windows 内容取色 API v1 通过普通快照 IPC 仅返回 RGB/状态，图像不进入页面渲染。采样异步防抖，可能滞后移动内容；导航、文档和几何代次拒绝过期结果。Windows 使用 DirectComposition 及 Direct2D/DirectWrite 在实时页面帧上合成模糊、着色、高光和字形，被动摄像头/Wi-Fi/时钟示意遵循相同场景规则；见[实时表面合成](014-WINDOWS-WEBKIT.md#实时表面合成)。
 
 **颜色演示**是用于主题色及内容取色的独立夹具。**保存状态**和 `window.devduoContainerTelemetry` 提供请求/实际框、滚动/chrome 状态、可见与点击边界、颜色来源/RGB 和材质参数。`previewScale` 记录实际呈现比例。源码检出写入 `captures/desktop-validation/container-modes/`，独立安装使用本地应用数据的 `DevDuo/captures`；`DEVDUO_OUTPUT_DIR` 可覆盖位置。
 
 测量语义与来源统一见[测量约定](002-MEASUREMENT-CONTRACT.md)，验收和已有平台边界见[标定与验证](003-CALIBRATION-WORKFLOW.md)。后续宿主控件与实测 Safari 几何分开推进，见[路线图](100-ROADMAP.md)。
-
-宿主窗口拥有的 `ControlApiService` 使用 Kestrel 提供独立、默认关闭的本机 REST 监听。校验后的命令在 Avalonia UI 调度器上调用相同的导航/设置操作，不持有原生句柄，窗口关闭后不再执行。切换设备/容器保留监听。离线 Swagger UI 和 OpenAPI JSON 约定见[使用指南](004-USAGE.md#rest-控制-api)。
 
 [English](../en/001-ARCHITECTURE.md) | [中文](001-ARCHITECTURE.md)
